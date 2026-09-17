@@ -1,0 +1,70 @@
+apiVersion: infra.nilx.one/v1
+kind: EdgeContract
+metadata:
+  name: nilx-edge
+  owner: aiaiaiai-org/infra
+spec:
+  placement:
+    target: edge-prod-1
+  network:
+    name: nilx-edge
+    external: true
+    driver: bridge
+  entrypoint:
+    service: caddy
+    image: caddy:2-alpine
+    ports:
+      - 80/tcp
+      - 443/tcp
+      - 443/udp
+    tls: automatic
+  routes:
+    - id: market-bot-test
+      host: ${MARKET_DOMAIN}
+      pathPrefix: /bot-test/
+      stripPrefix: true
+      service: market-bot-test
+      upstream: market-bot-development:10000
+      health: /health
+    - id: market-bot-production
+      host: ${MARKET_DOMAIN}
+      pathPrefix: /bot/
+      stripPrefix: true
+      service: market-bot-production
+      upstream: market-bot-production:10000
+      health: /health
+    - id: market-api-production
+      host: ${MARKET_DOMAIN}
+      pathPrefix: /
+      stripPrefix: false
+      service: market-api-production
+      upstream: market-api-production:10000
+      health: /health
+    - id: ox1-telegram
+      host: ${NILX_WEB_DOMAIN}
+      pathPrefix: /telegram/
+      stripPrefix: true
+      service: ox1-telegram
+      upstream: ox1-telegram:8080
+      health: /health
+    - id: ox1-discord
+      host: ${NILX_WEB_DOMAIN}
+      pathPrefix: /discord/
+      stripPrefix: true
+      service: ox1-discord
+      upstream: ox1-discord:8080
+      health: /health
+    - id: ox1-web
+      host: ${NILX_WEB_DOMAIN}
+      pathPrefix: /
+      stripPrefix: false
+      service: ox1-web
+      upstream: ox1-web:8080
+      health: /health
+    - id: mind-web
+      host: ${MIND_WEB_DOMAIN}
+      pathPrefix: /
+      stripPrefix: false
+      service: mind-web
+      upstream: mind-web:8080
+      health: /health

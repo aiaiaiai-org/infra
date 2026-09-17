@@ -1,0 +1,15 @@
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: mind-web
+  owner: aiaiaiai-org/mind-web
+spec:
+  network: nilx-edge
+  aliases:
+    - mind-web
+  protocol: http
+  port: 8080
+  health: /health
+  public:
+    host: mind.aiaiaiai.org
+    pathPrefix: /

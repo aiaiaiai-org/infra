@@ -1,0 +1,198 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Deploy workload
+
+on:
+  repository_dispatch:
+    types: [deploy-workload]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-workload-${{ github.event.client_payload.workload }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve placement from contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      target: ${{ steps.resolve.outputs.target }}
+      network: ${{ steps.resolve.outputs.network }}
+      alias: ${{ steps.resolve.outputs.alias }}
+      port: ${{ steps.resolve.outputs.port }}
+      health: ${{ steps.resolve.outputs.health }}
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - name: Validate dispatch payload shape
+        env:
+          WORKLOAD: ${{ github.event.client_payload.workload }}
+          IMAGE_REF: ${{ github.event.client_payload.image }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$WORKLOAD" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "::error::invalid workload identifier"; exit 1; }
+          [[ "$IMAGE_REF" =~ ^[a-z0-9.-]+(/[a-z0-9._-]+)*(:[A-Za-z0-9_.-]+|@sha256:[0-9a-f]{64})$ ]] || { echo "::error::invalid image reference"; exit 1; }
+
+      - name: Checkout infra contracts
+        uses: actions/checkout@v4
+
+      - name: Resolve workload placement, network, alias, port, and health from contracts
+        id: resolve
+        env:
+          WORKLOAD: ${{ github.event.client_payload.workload }}
+        run: ruby scripts/resolve-workload-target.rb "$WORKLOAD"
+
+      - name: Pass through the validated image reference
+        id: image
+        env:
+          IMAGE_REF: ${{ github.event.client_payload.image }}
+        run: echo "image=$IMAGE_REF" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Deploy to resolved target
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: ${{ needs.resolve.outputs.target }}
+    env:
+      WORKLOAD: ${{ github.event.client_payload.workload }}
+      IMAGE_REF: ${{ needs.resolve.outputs.image }}
+      EDGE_NETWORK: ${{ needs.resolve.outputs.network }}
+      WORKLOAD_ALIAS: ${{ needs.resolve.outputs.alias }}
+      WORKLOAD_PORT: ${{ needs.resolve.outputs.port }}
+      WORKLOAD_HEALTH: ${{ needs.resolve.outputs.health }}
+      REMOTE_WORKLOAD_DIR: .local/share/aiaiaiai-infra/workloads/${{ github.event.client_payload.workload }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
+
+    steps:
+      - name: Validate deployment credentials
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$SSH_HOST"
+          test -n "$SSH_USER"
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure and verify SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          install -m 0700 -d "$HOME/.ssh"
+          key_path="$HOME/.ssh/id_ed25519"
+          known_hosts="$HOME/.ssh/known_hosts"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$key_path"
+          chmod 0600 "$key_path"
+          ssh-keyscan -T 10 -p "$SSH_PORT" -H "$SSH_HOST" > "$known_hosts"
+          test -s "$known_hosts"
+          chmod 0600 "$known_hosts"
+
+          ssh \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -i "$key_path" \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" true
+
+      - name: Prepare workload environment
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          {
+            printf 'WORKLOAD=%s\n' "$WORKLOAD"
+            printf 'IMAGE_REF=%s\n' "$IMAGE_REF"
+            printf 'EDGE_NETWORK=%s\n' "$EDGE_NETWORK"
+            printf 'WORKLOAD_ALIAS=%s\n' "$WORKLOAD_ALIAS"
+            printf 'WORKLOAD_PORT=%s\n' "$WORKLOAD_PORT"
+            printf 'WORKLOAD_HEALTH=%s\n' "$WORKLOAD_HEALTH"
+          } > "$RUNNER_TEMP/workload.env"
+
+      - name: Upload workload deploy script
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh \
+            -o IdentitiesOnly=yes \
+            -i "$HOME/.ssh/id_ed25519" \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "mkdir -p '$REMOTE_WORKLOAD_DIR' && chmod 700 '$REMOTE_WORKLOAD_DIR'"
+
+          tar -C deploy/workload -czf - deploy.sh \
+            | ssh \
+                -o IdentitiesOnly=yes \
+                -i "$HOME/.ssh/id_ed25519" \
+                -p "$SSH_PORT" \
+                "$SSH_USER@$SSH_HOST" \
+                "tar -xzf - -C '$REMOTE_WORKLOAD_DIR'"
+
+          scp \
+            -o IdentitiesOnly=yes \
+            -i "$HOME/.ssh/id_ed25519" \
+            -P "$SSH_PORT" \
+            "$RUNNER_TEMP/workload.env" \
+            "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/.env"
+
+          ssh \
+            -o IdentitiesOnly=yes \
+            -i "$HOME/.ssh/id_ed25519" \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "chmod 600 '$REMOTE_WORKLOAD_DIR/.env'; chmod 700 '$REMOTE_WORKLOAD_DIR/deploy.sh'"
+
+      - name: Validate image and network on target
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          ssh \
+            -o IdentitiesOnly=yes \
+            -i "$HOME/.ssh/id_ed25519" \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=validate bash ./deploy.sh"
+
+      - name: Activate workload
+        id: apply
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          ssh \
+            -o IdentitiesOnly=yes \
+            -i "$HOME/.ssh/id_ed25519" \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=activate bash ./deploy.sh"
+
+      - name: Clean runner secret material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/workload.env"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo "### Workload deployment"
+            echo
+            echo "- workload: \`$WORKLOAD\`"
+            echo "- target: \`${{ needs.resolve.outputs.target }}\`"
+            echo "- image: \`$IMAGE_REF\`"
+            echo "- source repository: \`${{ github.event.client_payload.source_repository || 'unknown' }}\`"
+            echo "- result: \`${{ job.status }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

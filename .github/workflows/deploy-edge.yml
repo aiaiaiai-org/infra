@@ -1,0 +1,258 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Deploy shared edge
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Infrastructure edge target
+        required: true
+        default: edge-prod-1
+        type: choice
+        options:
+          - edge-prod-1
+      scope:
+        description: Public surface to activate and verify
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - nilx-web
+          - market
+          - mind-web
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shared-edge-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: ${{ inputs.target }}
+    env:
+      EDGE_TARGET: ${{ inputs.target }}
+      EDGE_SCOPE: ${{ inputs.scope }}
+      EDGE_NETWORK: nilx-edge
+      CADDY_CONTAINER: mind-web-prod-1-caddy
+      REMOTE_EDGE_DIR: .local/share/aiaiaiai-infra/edge
+      SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
+
+    steps:
+      - name: Validate deployment intent and credentials
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$EDGE_TARGET" =~ ^[a-z0-9][a-z0-9._-]*$ ]]
+          case "$EDGE_SCOPE" in mind-web|market|nilx-web|all) ;; *) exit 1 ;; esac
+          [[ "$EDGE_NETWORK" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
+          [[ "$CADDY_CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
+          [[ "$REMOTE_EDGE_DIR" =~ ^[A-Za-z0-9][A-Za-z0-9_./-]*$ ]]
+          test -n "$SSH_HOST"
+          test -n "$SSH_USER"
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$CF_API_TOKEN"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+
+      - name: Checkout verified release source
+        uses: actions/checkout@v4
+
+      - name: Preflight rollback anchor
+        env:
+          HEALTH_RETRY: 2
+          HEALTH_RETRY_DELAY: 2
+        run: |
+          set -Eeuo pipefail
+          if ! bash deploy/edge/check-public.sh preflight "$EDGE_SCOPE"; then
+            echo "::error::Canonical mind-web rollback anchor is unhealthy before deployment; refusing to mutate the edge."
+            exit 1
+          fi
+
+      - name: Configure and verify SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          install -m 0700 -d "$HOME/.ssh"
+          key_path="$HOME/.ssh/id_ed25519"
+          known_hosts="$HOME/.ssh/known_hosts"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$key_path"
+          chmod 0600 "$key_path"
+          ssh-keyscan -T 10 -p "$SSH_PORT" -H "$SSH_HOST" > "$known_hosts"
+          test -s "$known_hosts"
+          chmod 0600 "$known_hosts"
+
+          ssh \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -i "$key_path" \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" true
+
+      - name: Prepare deployment environment
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          {
+            printf 'EDGE_TARGET=%s\n' "$EDGE_TARGET"
+            printf 'EDGE_SCOPE=%s\n' "$EDGE_SCOPE"
+            printf 'EDGE_NETWORK=%s\n' "$EDGE_NETWORK"
+            printf 'MARKET_DOMAIN=0xda-market.nilx.one\n'
+            printf 'NILX_WEB_DOMAIN=nilx.one\n'
+            printf 'NILX_BOND_DOMAIN=*.nilx.one\n'
+            printf 'NILX_BOND_TRANSPORT=bond_transport_cloudflare\n'
+            printf 'MIND_WEB_DOMAIN=mind.aiaiaiai.org\n'
+            printf 'CADDY_IMAGE=zero-x-infra-caddy-cloudflare:%s\n' "$GITHUB_SHA"
+            printf 'LEGACY_CADDY_CONTAINER=%s\n' "$CADDY_CONTAINER"
+            printf 'RELEASE_SHA=%s\n' "$GITHUB_SHA"
+            printf 'VERIFY_PUBLIC_HTTPS=1\n'
+            printf 'CF_API_TOKEN=%s\n' "$CF_API_TOKEN"
+          } > "$RUNNER_TEMP/edge.env"
+
+      - name: Upload immutable edge release inputs
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh \
+            -o IdentitiesOnly=yes \
+            -i "$HOME/.ssh/id_ed25519" \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "mkdir -p '$REMOTE_EDGE_DIR' && chmod 700 '$REMOTE_EDGE_DIR'"
+
+          tar -C deploy/edge -czf - \
+            Caddyfile \
+            Dockerfile \
+            compose.yaml \
+            deploy.sh \
+            verify.sh \
+            check-public.sh \
+            check-upstreams.sh \
+            cloudflare-wildcard.sh \
+            | ssh \
+                -o IdentitiesOnly=yes \
+                -i "$HOME/.ssh/id_ed25519" \
+                -p "$SSH_PORT" \
+                "$SSH_USER@$SSH_HOST" \
+                "tar -xzf - -C '$REMOTE_EDGE_DIR'"
+
+          scp \
+            -o IdentitiesOnly=yes \
+            -i "$HOME/.ssh/id_ed25519" \
+            -P "$SSH_PORT" \
+            "$RUNNER_TEMP/edge.env" \
+            "$SSH_USER@$SSH_HOST:$REMOTE_EDGE_DIR/.env"
+
+          ssh \
+            -o IdentitiesOnly=yes \
+            -i "$HOME/.ssh/id_ed25519" \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "chmod 600 '$REMOTE_EDGE_DIR/.env'; chmod 700 '$REMOTE_EDGE_DIR/deploy.sh' '$REMOTE_EDGE_DIR/verify.sh' '$REMOTE_EDGE_DIR/check-public.sh' '$REMOTE_EDGE_DIR/check-upstreams.sh' '$REMOTE_EDGE_DIR/cloudflare-wildcard.sh'"
+
+      - name: Activate Cloudflare-enabled edge candidate
+        id: apply
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh \
+            -o IdentitiesOnly=yes \
+            -i "$HOME/.ssh/id_ed25519" \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "cd '$REMOTE_EDGE_DIR' && DEPLOY_MODE=activate bash ./deploy.sh"
+
+      - name: Ensure wildcard DNS only after edge activation
+        id: wildcard_dns
+        if: ${{ inputs.scope == 'nilx-web' || inputs.scope == 'all' }}
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_WILDCARD_STATE_FILE: ${{ runner.temp }}/nilx-wildcard-state.json
+        run: bash deploy/edge/cloudflare-wildcard.sh ensure "$CF_WILDCARD_STATE_FILE"
+
+      - name: Verify candidate public DNS
+        if: ${{ inputs.scope == 'nilx-web' || inputs.scope == 'all' }}
+        env:
+          HEALTH_RETRY: 12
+          HEALTH_RETRY_DELAY: 5
+        run: bash deploy/edge/check-public.sh candidate-dns "$EDGE_SCOPE"
+
+      - name: Verify public edge from runner
+        id: public_verify
+        env:
+          HEALTH_RETRY: 18
+          HEALTH_RETRY_DELAY: 5
+        run: bash deploy/edge/check-public.sh post-activation "$EDGE_SCOPE"
+
+      - name: Diagnose failed public verification
+        if: ${{ failure() && steps.apply.outcome == 'success' }}
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          ssh \
+            -o IdentitiesOnly=yes \
+            -i "$HOME/.ssh/id_ed25519" \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "cd '$REMOTE_EDGE_DIR' && docker compose --file compose.yaml logs --tail 200 caddy 2>&1 || true" \
+            || true
+
+      - name: Roll back wildcard DNS created by a failed deployment
+        if: ${{ failure() && steps.wildcard_dns.outcome == 'success' }}
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_WILDCARD_STATE_FILE: ${{ runner.temp }}/nilx-wildcard-state.json
+        run: bash deploy/edge/cloudflare-wildcard.sh rollback "$CF_WILDCARD_STATE_FILE"
+
+      - name: Roll back failed edge activation
+        if: ${{ failure() && steps.apply.outcome == 'success' }}
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh \
+            -o IdentitiesOnly=yes \
+            -i "$HOME/.ssh/id_ed25519" \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "cd '$REMOTE_EDGE_DIR' && DEPLOY_MODE=rollback bash ./deploy.sh"
+
+      - name: Clean runner secret material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/edge.env" "$RUNNER_TEMP/nilx-wildcard-state.json"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo "### Shared public edge deployment"
+            echo
+            echo "- target: \`$EDGE_TARGET\`"
+            echo "- scope: \`$EDGE_SCOPE\`"
+            echo "- source: \`$GITHUB_REF_NAME\`"
+            echo "- commit: \`$GITHUB_SHA\`"
+            echo "- previous live Caddy: \`$CADDY_CONTAINER\`"
+            echo "- wildcard DNS: \`${{ steps.wildcard_dns.outcome || 'not-requested' }}\`"
+            echo "- result: \`${{ job.status }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

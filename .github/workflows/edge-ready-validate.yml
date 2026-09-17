@@ -1,0 +1,170 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Validate shared edge candidate
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - ready_for_review
+      - synchronize
+      - reopened
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-shared-edge-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: ${{ github.event.pull_request.draft == false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: edge-prod-1
+    env:
+      CADDY_CONTAINER: mind-web-prod-1-caddy
+      EDGE_NETWORK: nilx-edge
+      PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+    steps:
+      - name: Validate trusted context
+        run: |
+          set -Eeuo pipefail
+          test "$PR_HEAD_REPO" = "$GITHUB_REPOSITORY"
+          test -n "$PR_HEAD_REF"
+          [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CADDY_CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
+          [[ "$EDGE_NETWORK" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
+
+      - name: Fetch candidate edge build inputs only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          fetch_file() {
+            local path="$1"
+            local output="$2"
+            local api="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/${path}?ref=${PR_HEAD_SHA}"
+            curl \
+              --fail \
+              --silent \
+              --show-error \
+              --location \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "$api" \
+              | jq -r '.content' \
+              | tr -d '\n' \
+              | base64 --decode \
+              > "$output"
+            test -s "$output"
+          }
+
+          mkdir -p candidate
+          fetch_file deploy/edge/Caddyfile candidate/Caddyfile
+          fetch_file deploy/edge/Dockerfile candidate/Dockerfile
+
+      - name: Validate candidate with its production Caddy build
+        run: |
+          set -Eeuo pipefail
+          docker build --file candidate/Dockerfile --tag infra-edge-caddy:candidate candidate
+          docker run --rm infra-edge-caddy:candidate caddy list-modules \
+            | grep -Fx 'dns.providers.cloudflare'
+          docker run --rm \
+            --env CF_API_TOKEN=0123456789abcdef0123456789abcdef01234567 \
+            --env MARKET_DOMAIN=0xda-market.nilx.one \
+            --env NILX_WEB_DOMAIN=nilx.one \
+            --env NILX_BOND_DOMAIN=*.nilx.one \
+            --env NILX_BOND_TRANSPORT=bond_transport_cloudflare \
+            --env MIND_WEB_DOMAIN=mind.aiaiaiai.org \
+            --volume "$PWD/candidate/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            infra-edge-caddy:candidate \
+            caddy validate --config /etc/caddy/Caddyfile
+
+      - name: Configure and verify SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$SSH_HOST"
+          test -n "$SSH_USER"
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+
+          install -m 0700 -d "$HOME/.ssh"
+          key_path="$HOME/.ssh/id_ed25519"
+          known_hosts="$HOME/.ssh/known_hosts"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$key_path"
+          chmod 0600 "$key_path"
+          ssh-keyscan -T 10 -p "$SSH_PORT" -H "$SSH_HOST" > "$known_hosts"
+          test -s "$known_hosts"
+          chmod 0600 "$known_hosts"
+
+          ssh \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -i "$key_path" \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" true
+
+      - name: Validate live cutover prerequisites without mutation
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
+        run: |
+          set -Eeuo pipefail
+          ssh \
+            -o IdentitiesOnly=yes \
+            -i "$HOME/.ssh/id_ed25519" \
+            -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "CADDY_CONTAINER='$CADDY_CONTAINER' EDGE_NETWORK='$EDGE_NETWORK' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+
+          docker inspect "$CADDY_CONTAINER" >/dev/null
+          test "$(docker inspect -f '{{.State.Running}}' "$CADDY_CONTAINER")" = true
+          docker network inspect "$EDGE_NETWORK" >/dev/null
+
+          volume_for() {
+            local destination="$1"
+            docker inspect "$CADDY_CONTAINER" \
+              --format '{{range .Mounts}}{{printf "%s\t%s\t%s\n" .Destination .Type .Name}}{{end}}' \
+              | awk -F '\t' -v target="$destination" '$1 == target && $2 == "volume" {print $3; exit}'
+          }
+
+          data_volume="$(volume_for /data)"
+          config_volume="$(volume_for /config)"
+          test -n "$data_volume"
+          test -n "$config_volume"
+          docker volume inspect "$data_volume" >/dev/null
+          docker volume inspect "$config_volume" >/dev/null
+
+          echo "live edge cutover prerequisites are available"
+          REMOTE
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo "### Shared edge candidate validation"
+            echo
+            echo "- trigger: \`${{ github.event.action }}\`"
+            echo "- PR: \`#${{ github.event.pull_request.number }}\`"
+            echo "- source: \`$PR_HEAD_REF\`"
+            echo "- commit: \`$PR_HEAD_SHA\`"
+            echo "- live Caddy: \`$CADDY_CONTAINER\`"
+            echo "- result: \`${{ job.status }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

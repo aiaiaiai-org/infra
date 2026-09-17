@@ -1,0 +1,238 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate YAML contracts
+        run: ruby scripts/validate-contracts.rb
+
+      - name: Validate shell syntax
+        run: bash -n deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh
+
+      - name: Validate workload placement resolver
+        run: |
+          set -Eeuo pipefail
+          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb mind-web)"
+          grep -Fxq 'target=edge-prod-1' <<< "$output"
+          grep -Fxq 'network=nilx-edge' <<< "$output"
+          grep -Fxq 'alias=mind-web' <<< "$output"
+          grep -Fxq 'port=8080' <<< "$output"
+          grep -Fxq 'health=/health' <<< "$output"
+          ! env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb does-not-exist 2>/dev/null
+
+      - name: Validate scoped upstream isolation
+        run: |
+          set -Eeuo pipefail
+          cleanup() {
+            docker rm --force infra-ci-scope-ox1 >/dev/null 2>&1 || true
+            docker network rm infra-ci-scope >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker network create infra-ci-scope >/dev/null
+          docker run --detach --name infra-ci-scope-ox1 \
+            --network infra-ci-scope \
+            --network-alias ox1-web \
+            --network-alias ox1-telegram \
+            --network-alias ox1-discord \
+            python:3.13-alpine sh -ec \
+            "mkdir -p /srv; printf 'ok\n' > /srv/health; python3 -m http.server 8080 --bind 0.0.0.0 --directory /srv" >/dev/null
+
+          for _ in $(seq 1 20); do
+            if docker exec infra-ci-scope-ox1 wget -q -T 1 -O- http://127.0.0.1:8080/health | grep -qx ok; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec infra-ci-scope-ox1 wget -q -T 1 -O- http://127.0.0.1:8080/health | grep -qx ok
+
+          EDGE_NETWORK=infra-ci-scope bash deploy/edge/check-upstreams.sh nilx-web
+
+          if EDGE_NETWORK=infra-ci-scope bash deploy/edge/check-upstreams.sh market > /tmp/market-scope.log 2>&1; then
+            echo "market scope unexpectedly passed without market upstreams" >&2
+            exit 1
+          fi
+          grep -Fq 'market-api-production' /tmp/market-scope.log
+
+      - name: Build Cloudflare-enabled Caddy artifact
+        run: |
+          set -Eeuo pipefail
+          docker build --file deploy/edge/Dockerfile --tag infra-edge-caddy:ci deploy/edge
+          docker run --rm infra-edge-caddy:ci caddy list-modules | grep -Fx 'dns.providers.cloudflare'
+          docker save infra-edge-caddy:ci | gzip > edge-caddy-image.tar.gz
+
+      - name: Validate Compose contract
+        run: |
+          cp deploy/edge/env.example deploy/edge/.env
+          sed -i 's/^CF_API_TOKEN=.*/CF_API_TOKEN=0123456789abcdef0123456789abcdef01234567/' deploy/edge/.env
+          docker compose --file deploy/edge/compose.yaml --env-file deploy/edge/.env config --quiet
+
+      - name: Validate Caddy contract
+        run: |
+          docker run --rm \
+            --env CF_API_TOKEN=0123456789abcdef0123456789abcdef01234567 \
+            --env MARKET_DOMAIN=0xda-market.nilx.one \
+            --env NILX_WEB_DOMAIN=nilx.one \
+            --env NILX_BOND_DOMAIN=*.nilx.one \
+            --env NILX_BOND_TRANSPORT=bond_transport_cloudflare \
+            --env MIND_WEB_DOMAIN=mind.aiaiaiai.org \
+            --volume "$PWD/deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            infra-edge-caddy:ci \
+            caddy validate --config /etc/caddy/Caddyfile
+          test "$(grep -Fc 'reverse_proxy mind-web:8080' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy market-api-production:10000' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy market-bot-production:10000' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy market-bot-development:10000' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy ox1-web:8080' deploy/edge/Caddyfile)" -eq 2
+          test "$(grep -Fc 'reverse_proxy ox1-telegram:8080' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy ox1-discord:8080' deploy/edge/Caddyfile)" -eq 1
+          grep -Fq '{$NILX_WEB_DOMAIN:nilx.one}' deploy/edge/Caddyfile
+          grep -Fq '{$NILX_BOND_DOMAIN:*.nilx.one}' deploy/edge/Caddyfile
+          grep -Fq 'import {$NILX_BOND_TRANSPORT:bond_transport}' deploy/edge/Caddyfile
+          grep -Fq 'dns cloudflare {env.CF_API_TOKEN}' deploy/edge/Caddyfile
+          ! grep -Fq '0x1.nilx.one' deploy/edge/Caddyfile
+          ! grep -Fq 'reverse_proxy ox1-telegram-mini-app:8080' deploy/edge/Caddyfile
+          ! grep -Eq 'reverse_proxy api:10000|reverse_proxy market-bot:10000|infra-bot' deploy/edge/Caddyfile
+
+      - name: Preserve verified Caddy artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-caddy-${{ github.sha }}
+          path: edge-caddy-image.tar.gz
+          retention-days: 1
+
+  routing:
+    name: Routing smoke
+    needs:
+      - contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reuse verified Caddy artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: edge-caddy-${{ github.sha }}
+
+      - name: Load verified Caddy artifact
+        run: gzip -dc edge-caddy-image.tar.gz | docker load
+
+      - name: Start isolated edge fixture
+        run: |
+          set -Eeuo pipefail
+          cleanup() {
+            docker logs infra-ci-caddy >&2 || true
+            docker rm --force \
+              infra-ci-caddy \
+              infra-ci-mind \
+              infra-ci-market-api \
+              infra-ci-market-bot \
+              infra-ci-market-bot-test \
+              infra-ci-ox1-web \
+              infra-ci-ox1-telegram \
+              infra-ci-ox1-discord >/dev/null 2>&1 || true
+            docker network rm infra-ci-edge >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker network create infra-ci-edge >/dev/null
+
+          start_fixture() {
+            local name="$1"
+            local alias="$2"
+            local port="$3"
+            local body="$4"
+            docker run --detach --name "$name" \
+              --network infra-ci-edge --network-alias "$alias" \
+              python:3.13-alpine sh -ec \
+              "mkdir -p /srv; printf '%s' '$body' > /srv/health; python3 -m http.server '$port' --bind 0.0.0.0 --directory /srv" >/dev/null
+          }
+
+          start_fixture infra-ci-mind mind-web 8080 mind-web
+          start_fixture infra-ci-market-api market-api-production 10000 market-api-production
+          start_fixture infra-ci-market-bot market-bot-production 10000 market-bot-production
+          start_fixture infra-ci-market-bot-test market-bot-development 10000 market-bot-development
+          start_fixture infra-ci-ox1-web ox1-web 8080 ox1-web
+          start_fixture infra-ci-ox1-telegram ox1-telegram 8080 ox1-telegram
+          start_fixture infra-ci-ox1-discord ox1-discord 8080 ox1-discord
+
+          wait_fixture() {
+            local name="$1"
+            local port="$2"
+            local body="$3"
+            for _ in $(seq 1 30); do
+              if docker exec "$name" wget -q -T 1 -O- "http://127.0.0.1:${port}/health" | grep -qx "$body"; then
+                return 0
+              fi
+              sleep 1
+            done
+            docker exec "$name" wget -q -T 1 -O- "http://127.0.0.1:${port}/health" | grep -qx "$body"
+          }
+
+          wait_fixture infra-ci-mind 8080 mind-web
+          wait_fixture infra-ci-market-api 10000 market-api-production
+          wait_fixture infra-ci-market-bot 10000 market-bot-production
+          wait_fixture infra-ci-market-bot-test 10000 market-bot-development
+          wait_fixture infra-ci-ox1-web 8080 ox1-web
+          wait_fixture infra-ci-ox1-telegram 8080 ox1-telegram
+          wait_fixture infra-ci-ox1-discord 8080 ox1-discord
+
+          docker run --detach --name infra-ci-caddy \
+            --network infra-ci-edge \
+            --publish 18080:80 \
+            --env CF_API_TOKEN=0123456789abcdef0123456789abcdef01234567 \
+            --env MARKET_DOMAIN=http://market.localhost \
+            --env NILX_WEB_DOMAIN=http://nilx.localhost \
+            --env NILX_BOND_DOMAIN=http://bond.nilx.localhost \
+            --env NILX_BOND_TRANSPORT=bond_transport \
+            --env MIND_WEB_DOMAIN=http://mind.localhost \
+            --volume "$PWD/deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            infra-edge-caddy:ci \
+            caddy run --config /etc/caddy/Caddyfile >/dev/null
+
+          check_route() {
+            local host="$1"
+            local path="$2"
+            local expected="$3"
+            for _ in $(seq 1 30); do
+              if curl --fail --silent --show-error \
+                --resolve "${host}:18080:127.0.0.1" \
+                "http://${host}:18080${path}" | grep -qx "$expected"; then
+                return 0
+              fi
+              sleep 1
+            done
+            curl --fail --silent --show-error \
+              --resolve "${host}:18080:127.0.0.1" \
+              "http://${host}:18080${path}" | grep -qx "$expected"
+          }
+
+          check_route mind.localhost /health mind-web
+          check_route market.localhost /health market-api-production
+          check_route market.localhost /bot/health market-bot-production
+          check_route market.localhost /bot-test/health market-bot-development
+          check_route nilx.localhost /health ox1-web
+          check_route nilx.localhost /telegram/health ox1-telegram
+          check_route nilx.localhost /discord/health ox1-discord
+          check_route bond.nilx.localhost /health ox1-web

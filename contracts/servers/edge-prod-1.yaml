@@ -1,0 +1,22 @@
+apiVersion: infra.nilx.one/v1
+kind: ServerContract
+metadata:
+  name: edge-prod-1
+  owner: aiaiaiai-org/infra
+spec:
+  provider: hetzner
+  role: public-edge
+  edgeNetwork: nilx-edge
+  publicPorts:
+    - 80/tcp
+    - 443/tcp
+    - 443/udp
+  runtimeRoot: /opt/infra/targets/edge-prod-1
+  workloads:
+    - mind-web
+    - market-api-production
+    - market-bot-production
+    - market-bot-test
+    - ox1-web
+    - ox1-telegram
+    - ox1-discord
