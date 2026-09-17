@@ -52,7 +52,7 @@
 	import {$NILX_BOND_TRANSPORT:bond_transport}
 
 	handle {
-		reverse_proxy ox1-web:8080 {
+		reverse_proxy nilxone-web:1927 {
 			health_uri /health
 			health_interval 30s
 			health_timeout 5s
@@ -76,7 +76,7 @@
 	redir @discord_root /discord/ 308
 
 	handle_path /telegram/* {
-		reverse_proxy ox1-telegram:8080 {
+		reverse_proxy nilxone-telegram:1927 {
 			health_uri /health
 			health_interval 30s
 			health_timeout 5s
@@ -85,7 +85,7 @@
 	}
 
 	handle_path /discord/* {
-		reverse_proxy ox1-discord:8080 {
+		reverse_proxy nilxone-discord:1927 {
 			health_uri /health
 			health_interval 30s
 			health_timeout 5s
@@ -94,7 +94,7 @@
 	}
 
 	handle {
-		reverse_proxy ox1-web:8080 {
+		reverse_proxy nilxone-web:1927 {
 			health_uri /health
 			health_interval 30s
 			health_timeout 5s
