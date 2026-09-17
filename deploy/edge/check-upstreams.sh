@@ -34,9 +34,9 @@ check_market() {
 }
 
 check_nilx_web() {
-  check_upstream ox1-web http://ox1-web:8080/health
-  check_upstream ox1-telegram http://ox1-telegram:8080/health
-  check_upstream ox1-discord http://ox1-discord:8080/health
+  check_upstream nilxone-web http://nilxone-web:1927/health
+  check_upstream nilxone-telegram http://nilxone-telegram:1927/health
+  check_upstream nilxone-discord http://nilxone-discord:1927/health
 }
 
 case "$EDGE_SCOPE" in

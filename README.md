@@ -29,16 +29,16 @@ Internet
         │   ├── /bot/*      → market-bot-production:10000
         │   └── /*           → market-api-production:10000
         └── nilx.one
-            ├── /telegram/* → ox1-telegram:8080
-            ├── /discord/*  → ox1-discord:8080
-            └── /*           → ox1-web:8080
+            ├── /telegram/* → nilxone-telegram:1927
+            ├── /discord/*  → nilxone-discord:1927
+            └── /*           → nilxone-web:1927
 
 external Docker network: nilx-edge
 ```
 
 `nilx.one` is the canonical public Web host for 0x1, split by path prefix across three workloads. `0x1.nilx.one` is not an active edge host; introducing it later requires working public DNS and an explicit edge-contract change before Caddy may manage TLS for it.
 
-The shared edge routes seven workload identities: `mind-web`, `market-api-production`, `market-bot-production`, `market-bot-test`, `ox1-web`, `ox1-telegram`, `ox1-discord`. Development `0xda-market` core is intentionally not public; `0xda-market-test` reaches `market-api-development:10000` directly over `nilx-edge`.
+The shared edge routes seven workload identities: `mind-web`, `market-api-production`, `market-bot-production`, `market-bot-test`, `nilxone-web`, `nilxone-telegram`, `nilxone-discord`. Development `0xda-market` core is intentionally not public; `0xda-market-test` reaches `market-api-development:10000` directly over `nilx-edge`.
 
 ## Ownership boundary
 
@@ -59,7 +59,7 @@ Current workload owners:
 - `market-api-production` → `0xda-market/core`;
 - `market-bot-production` → `0xda-market/telegram-bot` (`0xda-market`);
 - `market-bot-test` → `0xda-market/telegram-bot` (`0xda-market-test`);
-- `ox1-web`, `ox1-telegram`, `ox1-discord` → `nilx-one/web` (`0x1`).
+- `nilxone-web`, `nilxone-telegram`, `nilxone-discord` → `nilx-one/web` (`0x1`).
 
 ## Contracts
 
@@ -75,11 +75,11 @@ Public routes:
 | `https://0xda-market.nilx.one/bot/*` | `market-bot-production:10000` | strip `/bot` |
 | `https://0xda-market.nilx.one/bot-test/*` | `market-bot-development:10000` | strip `/bot-test` |
 | `https://0xda-market.nilx.one/*` | `market-api-production:10000` | preserve |
-| `https://nilx.one/telegram/*` | `ox1-telegram:8080` | strip `/telegram` |
-| `https://nilx.one/discord/*` | `ox1-discord:8080` | strip `/discord` |
-| `https://nilx.one/*` | `ox1-web:8080` | preserve |
+| `https://nilx.one/telegram/*` | `nilxone-telegram:1927` | strip `/telegram` |
+| `https://nilx.one/discord/*` | `nilxone-discord:1927` | strip `/discord` |
+| `https://nilx.one/*` | `nilxone-web:1927` | preserve |
 
-The two market bot prefixes must be evaluated before the market API fallback, and the `/telegram` and `/discord` prefixes must be evaluated before the `ox1-web` fallback.
+The two market bot prefixes must be evaluated before the market API fallback, and the `/telegram` and `/discord` prefixes must be evaluated before the `nilxone-web` fallback.
 
 A public route is an activation dependency only when its surface is selected for the current edge activation. An unrelated product outage must remain observable without blocking another product's otherwise valid edge change.
 
@@ -140,7 +140,7 @@ Optional variable:
 
 | Scope | DNS/upstream/public verification owned by the run |
 | --- | --- |
-| `nilx-web` | `nilx.one` and `ox1-web:8080`, `ox1-telegram:8080`, `ox1-discord:8080` |
+| `nilx-web` | `nilx.one` and `nilxone-web:1927`, `nilxone-telegram:1927`, `nilxone-discord:1927` |
 | `market` | `0xda-market.nilx.one` and the three production/test market upstreams |
 | `mind-web` | `mind.aiaiaiai.org` and `mind-web:8080` |
 | `all` | every active public edge surface |
@@ -175,9 +175,9 @@ mind-web                     # mind-web
 market-api-production         # market
 market-bot-production         # market
 market-bot-development        # market
-ox1-web                       # nilx-web
-ox1-telegram                  # nilx-web
-ox1-discord                   # nilx-web
+nilxone-web                   # nilx-web
+nilxone-telegram              # nilx-web
+nilxone-discord               # nilx-web
 ```
 
 The product deployments and shared-edge deployment are separate manual operations. Merge is never a deployment. `all` is appropriate only when the whole declared edge is intentionally being activated or revalidated together.
@@ -217,9 +217,9 @@ The credential a product repository needs to hold is therefore narrowed to whate
 │       ├── market-bot-production.yaml
 │       ├── market-bot-test.yaml
 │       ├── mind-web.yaml
-│       ├── ox1-discord.yaml
-│       ├── ox1-telegram.yaml
-│       └── ox1-web.yaml
+│       ├── nilxone-discord.yaml
+│       ├── nilxone-telegram.yaml
+│       └── nilxone-web.yaml
 ├── deploy/
 │   ├── edge/
 │   └── workload/deploy.sh

@@ -43,27 +43,27 @@ jobs:
         run: |
           set -Eeuo pipefail
           cleanup() {
-            docker rm --force infra-ci-scope-ox1 >/dev/null 2>&1 || true
+            docker rm --force infra-ci-scope-nilxone >/dev/null 2>&1 || true
             docker network rm infra-ci-scope >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
 
           docker network create infra-ci-scope >/dev/null
-          docker run --detach --name infra-ci-scope-ox1 \
+          docker run --detach --name infra-ci-scope-nilxone \
             --network infra-ci-scope \
-            --network-alias ox1-web \
-            --network-alias ox1-telegram \
-            --network-alias ox1-discord \
+            --network-alias nilxone-web \
+            --network-alias nilxone-telegram \
+            --network-alias nilxone-discord \
             python:3.13-alpine sh -ec \
-            "mkdir -p /srv; printf 'ok\n' > /srv/health; python3 -m http.server 8080 --bind 0.0.0.0 --directory /srv" >/dev/null
+            "mkdir -p /srv; printf 'ok\n' > /srv/health; python3 -m http.server 1927 --bind 0.0.0.0 --directory /srv" >/dev/null
 
           for _ in $(seq 1 20); do
-            if docker exec infra-ci-scope-ox1 wget -q -T 1 -O- http://127.0.0.1:8080/health | grep -qx ok; then
+            if docker exec infra-ci-scope-nilxone wget -q -T 1 -O- http://127.0.0.1:1927/health | grep -qx ok; then
               break
             fi
             sleep 1
           done
-          docker exec infra-ci-scope-ox1 wget -q -T 1 -O- http://127.0.0.1:8080/health | grep -qx ok
+          docker exec infra-ci-scope-nilxone wget -q -T 1 -O- http://127.0.0.1:1927/health | grep -qx ok
 
           EDGE_NETWORK=infra-ci-scope bash deploy/edge/check-upstreams.sh nilx-web
 
@@ -102,15 +102,14 @@ jobs:
           test "$(grep -Fc 'reverse_proxy market-api-production:10000' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy market-bot-production:10000' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy market-bot-development:10000' deploy/edge/Caddyfile)" -eq 1
-          test "$(grep -Fc 'reverse_proxy ox1-web:8080' deploy/edge/Caddyfile)" -eq 2
-          test "$(grep -Fc 'reverse_proxy ox1-telegram:8080' deploy/edge/Caddyfile)" -eq 1
-          test "$(grep -Fc 'reverse_proxy ox1-discord:8080' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy nilxone-web:1927' deploy/edge/Caddyfile)" -eq 2
+          test "$(grep -Fc 'reverse_proxy nilxone-telegram:1927' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy nilxone-discord:1927' deploy/edge/Caddyfile)" -eq 1
           grep -Fq '{$NILX_WEB_DOMAIN:nilx.one}' deploy/edge/Caddyfile
           grep -Fq '{$NILX_BOND_DOMAIN:*.nilx.one}' deploy/edge/Caddyfile
           grep -Fq 'import {$NILX_BOND_TRANSPORT:bond_transport}' deploy/edge/Caddyfile
           grep -Fq 'dns cloudflare {env.CF_API_TOKEN}' deploy/edge/Caddyfile
           ! grep -Fq '0x1.nilx.one' deploy/edge/Caddyfile
-          ! grep -Fq 'reverse_proxy ox1-telegram-mini-app:8080' deploy/edge/Caddyfile
           ! grep -Eq 'reverse_proxy api:10000|reverse_proxy market-bot:10000|infra-bot' deploy/edge/Caddyfile
 
       - name: Preserve verified Caddy artifact
@@ -149,9 +148,9 @@ jobs:
               infra-ci-market-api \
               infra-ci-market-bot \
               infra-ci-market-bot-test \
-              infra-ci-ox1-web \
-              infra-ci-ox1-telegram \
-              infra-ci-ox1-discord >/dev/null 2>&1 || true
+              infra-ci-nilxone-web \
+              infra-ci-nilxone-telegram \
+              infra-ci-nilxone-discord >/dev/null 2>&1 || true
             docker network rm infra-ci-edge >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
@@ -173,9 +172,9 @@ jobs:
           start_fixture infra-ci-market-api market-api-production 10000 market-api-production
           start_fixture infra-ci-market-bot market-bot-production 10000 market-bot-production
           start_fixture infra-ci-market-bot-test market-bot-development 10000 market-bot-development
-          start_fixture infra-ci-ox1-web ox1-web 8080 ox1-web
-          start_fixture infra-ci-ox1-telegram ox1-telegram 8080 ox1-telegram
-          start_fixture infra-ci-ox1-discord ox1-discord 8080 ox1-discord
+          start_fixture infra-ci-nilxone-web nilxone-web 1927 nilxone-web
+          start_fixture infra-ci-nilxone-telegram nilxone-telegram 1927 nilxone-telegram
+          start_fixture infra-ci-nilxone-discord nilxone-discord 1927 nilxone-discord
 
           wait_fixture() {
             local name="$1"
@@ -194,9 +193,9 @@ jobs:
           wait_fixture infra-ci-market-api 10000 market-api-production
           wait_fixture infra-ci-market-bot 10000 market-bot-production
           wait_fixture infra-ci-market-bot-test 10000 market-bot-development
-          wait_fixture infra-ci-ox1-web 8080 ox1-web
-          wait_fixture infra-ci-ox1-telegram 8080 ox1-telegram
-          wait_fixture infra-ci-ox1-discord 8080 ox1-discord
+          wait_fixture infra-ci-nilxone-web 1927 nilxone-web
+          wait_fixture infra-ci-nilxone-telegram 1927 nilxone-telegram
+          wait_fixture infra-ci-nilxone-discord 1927 nilxone-discord
 
           docker run --detach --name infra-ci-caddy \
             --network infra-ci-edge \
@@ -232,7 +231,7 @@ jobs:
           check_route market.localhost /health market-api-production
           check_route market.localhost /bot/health market-bot-production
           check_route market.localhost /bot-test/health market-bot-development
-          check_route nilx.localhost /health ox1-web
-          check_route nilx.localhost /telegram/health ox1-telegram
-          check_route nilx.localhost /discord/health ox1-discord
-          check_route bond.nilx.localhost /health ox1-web
+          check_route nilx.localhost /health nilxone-web
+          check_route nilx.localhost /telegram/health nilxone-telegram
+          check_route nilx.localhost /discord/health nilxone-discord
+          check_route bond.nilx.localhost /health nilxone-web

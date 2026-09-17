@@ -17,6 +17,6 @@ spec:
     - market-api-production
     - market-bot-production
     - market-bot-test
-    - ox1-web
-    - ox1-telegram
-    - ox1-discord
+    - nilxone-web
+    - nilxone-telegram
+    - nilxone-discord

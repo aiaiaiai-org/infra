@@ -1,16 +1,15 @@
 apiVersion: infra.nilx.one/v1
 kind: WorkloadContract
 metadata:
-  name: ox1-web
+  name: nilxone-discord
   owner: nilx-one/web
 spec:
   network: nilx-edge
   aliases:
-    - ox1-web
-    - ox1-telegram-mini-app
+    - nilxone-discord
   protocol: http
-  port: 8080
+  port: 1927
   health: /health
   public:
     host: nilx.one
-    pathPrefix: /
+    pathPrefix: /discord/

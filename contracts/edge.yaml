@@ -40,26 +40,26 @@ spec:
       service: market-api-production
       upstream: market-api-production:10000
       health: /health
-    - id: ox1-telegram
+    - id: nilxone-telegram
       host: ${NILX_WEB_DOMAIN}
       pathPrefix: /telegram/
       stripPrefix: true
-      service: ox1-telegram
-      upstream: ox1-telegram:8080
+      service: nilxone-telegram
+      upstream: nilxone-telegram:1927
       health: /health
-    - id: ox1-discord
+    - id: nilxone-discord
       host: ${NILX_WEB_DOMAIN}
       pathPrefix: /discord/
       stripPrefix: true
-      service: ox1-discord
-      upstream: ox1-discord:8080
+      service: nilxone-discord
+      upstream: nilxone-discord:1927
       health: /health
-    - id: ox1-web
+    - id: nilxone-web
       host: ${NILX_WEB_DOMAIN}
       pathPrefix: /
       stripPrefix: false
-      service: ox1-web
-      upstream: ox1-web:8080
+      service: nilxone-web
+      upstream: nilxone-web:1927
       health: /health
     - id: mind-web
       host: ${MIND_WEB_DOMAIN}

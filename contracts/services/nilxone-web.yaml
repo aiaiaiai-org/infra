@@ -1,15 +1,15 @@
 apiVersion: infra.nilx.one/v1
 kind: WorkloadContract
 metadata:
-  name: ox1-telegram
+  name: nilxone-web
   owner: nilx-one/web
 spec:
   network: nilx-edge
   aliases:
-    - ox1-telegram
+    - nilxone-web
   protocol: http
-  port: 8080
+  port: 1927
   health: /health
   public:
     host: nilx.one
-    pathPrefix: /telegram/
+    pathPrefix: /
