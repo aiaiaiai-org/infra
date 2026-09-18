@@ -70,21 +70,25 @@ volume_from_live() {
 resolve_volume() {
   local configured="$1"
   local destination="$2"
+  local default_name="$3"
 
   if [[ -n "$configured" ]] && docker volume inspect "$configured" >/dev/null 2>&1; then
     printf '%s\n' "$configured"
     return 0
   fi
 
-  docker inspect "$legacy_caddy" >/dev/null
-  local discovered
-  discovered="$(volume_from_live "$destination")"
-  [[ -n "$discovered" ]] || {
-    echo "could not discover a Docker volume mounted at $destination on $legacy_caddy" >&2
-    return 1
-  }
-  docker volume inspect "$discovered" >/dev/null
-  printf '%s\n' "$discovered"
+  if docker inspect "$legacy_caddy" >/dev/null 2>&1; then
+    local discovered
+    discovered="$(volume_from_live "$destination")"
+    if [[ -n "$discovered" ]]; then
+      docker volume inspect "$discovered" >/dev/null
+      printf '%s\n' "$discovered"
+      return 0
+    fi
+  fi
+
+  docker volume create "$default_name" >/dev/null
+  printf '%s\n' "$default_name"
 }
 
 if [[ "$mode" == "rollback" ]]; then
@@ -96,8 +100,8 @@ if [[ "$mode" == "rollback" ]]; then
   exit 0
 fi
 
-CADDY_DATA_VOLUME="$(resolve_volume "${CADDY_DATA_VOLUME:-}" /data)"
-CADDY_CONFIG_VOLUME="$(resolve_volume "${CADDY_CONFIG_VOLUME:-}" /config)"
+CADDY_DATA_VOLUME="$(resolve_volume "${CADDY_DATA_VOLUME:-}" /data "${edge_target}-caddy-data")"
+CADDY_CONFIG_VOLUME="$(resolve_volume "${CADDY_CONFIG_VOLUME:-}" /config "${edge_target}-caddy-config")"
 export CADDY_DATA_VOLUME CADDY_CONFIG_VOLUME
 
 docker build --file Dockerfile --tag "$caddy_image" .
