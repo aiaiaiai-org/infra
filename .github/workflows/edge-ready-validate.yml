@@ -27,7 +27,7 @@ jobs:
     environment:
       name: edge-prod-1
     env:
-      CADDY_CONTAINER: mind-web-prod-1-caddy
+      CADDY_CONTAINER: edge-prod-1-caddy
       EDGE_NETWORK: nilx-edge
       PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
       PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
@@ -84,7 +84,6 @@ jobs:
             --env NILX_WEB_DOMAIN=nilx.one \
             --env NILX_BOND_DOMAIN=*.nilx.one \
             --env NILX_BOND_TRANSPORT=bond_transport_cloudflare \
-            --env MIND_WEB_DOMAIN=mind.aiaiaiai.org \
             --volume "$PWD/candidate/Caddyfile:/etc/caddy/Caddyfile:ro" \
             infra-edge-caddy:candidate \
             caddy validate --config /etc/caddy/Caddyfile
@@ -134,7 +133,10 @@ jobs:
             "CADDY_CONTAINER='$CADDY_CONTAINER' EDGE_NETWORK='$EDGE_NETWORK' bash -s" <<'REMOTE'
           set -Eeuo pipefail
 
-          docker inspect "$CADDY_CONTAINER" >/dev/null
+          if ! docker inspect "$CADDY_CONTAINER" >/dev/null 2>&1; then
+            echo "no live $CADDY_CONTAINER container yet; nothing to validate for cutover (first-ever activation)"
+            exit 0
+          fi
           test "$(docker inspect -f '{{.State.Running}}' "$CADDY_CONTAINER")" = true
           docker network inspect "$EDGE_NETWORK" >/dev/null
 

@@ -17,9 +17,9 @@ set +a
 edge_scope="${EDGE_SCOPE:-all}"
 
 case "$edge_scope" in
-  mind-web|market|nilx-web|all) ;;
+  market|nilx-web|all) ;;
   *)
-    echo "EDGE_SCOPE must be mind-web, market, nilx-web, or all" >&2
+    echo "EDGE_SCOPE must be market, nilx-web, or all" >&2
     exit 2
     ;;
 esac

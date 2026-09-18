@@ -13,7 +13,6 @@ spec:
     - 443/udp
   runtimeRoot: /opt/infra/targets/edge-prod-1
   workloads:
-    - mind-web
     - market-api-production
     - market-bot-production
     - market-bot-test

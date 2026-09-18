@@ -20,9 +20,9 @@ if ! [[ "$HEALTH_RETRY_DELAY" =~ ^[0-9]+$ ]]; then
 fi
 
 case "$EDGE_SCOPE" in
-  mind-web|market|nilx-web|all) ;;
+  market|nilx-web|all) ;;
   *)
-    echo "EDGE_SCOPE must be mind-web, market, nilx-web, or all" >&2
+    echo "EDGE_SCOPE must be market, nilx-web, or all" >&2
     exit 2
     ;;
 esac
@@ -30,16 +30,9 @@ esac
 redirects=()
 
 case "$MODE" in
-  preflight)
-    hosts=(mind.aiaiaiai.org)
-    urls=(https://mind.aiaiaiai.org/health)
-    ;;
   candidate-dns)
     urls=()
     case "$EDGE_SCOPE" in
-      mind-web)
-        hosts=(mind.aiaiaiai.org)
-        ;;
       market)
         hosts=(0xda-market.nilx.one)
         ;;
@@ -47,29 +40,23 @@ case "$MODE" in
         hosts=(nilx.one "$NILX_BOND_HEALTH_HOST")
         ;;
       all)
-        hosts=(mind.aiaiaiai.org 0xda-market.nilx.one nilx.one "$NILX_BOND_HEALTH_HOST")
+        hosts=(0xda-market.nilx.one nilx.one "$NILX_BOND_HEALTH_HOST")
         ;;
     esac
     ;;
   post-activation)
     case "$EDGE_SCOPE" in
-      mind-web)
-        hosts=(mind.aiaiaiai.org)
-        urls=(https://mind.aiaiaiai.org/health)
-        ;;
       market)
-        hosts=(mind.aiaiaiai.org 0xda-market.nilx.one)
+        hosts=(0xda-market.nilx.one)
         urls=(
-          https://mind.aiaiaiai.org/health
           https://0xda-market.nilx.one/health
           https://0xda-market.nilx.one/bot/health
           https://0xda-market.nilx.one/bot-test/health
         )
         ;;
       nilx-web)
-        hosts=(mind.aiaiaiai.org nilx.one "$NILX_BOND_HEALTH_HOST")
+        hosts=(nilx.one "$NILX_BOND_HEALTH_HOST")
         urls=(
-          https://mind.aiaiaiai.org/health
           https://nilx.one/health
           https://nilx.one/telegram/health
           https://nilx.one/discord/health
@@ -81,9 +68,8 @@ case "$MODE" in
         )
         ;;
       all)
-        hosts=(mind.aiaiaiai.org 0xda-market.nilx.one nilx.one "$NILX_BOND_HEALTH_HOST")
+        hosts=(0xda-market.nilx.one nilx.one "$NILX_BOND_HEALTH_HOST")
         urls=(
-          https://mind.aiaiaiai.org/health
           https://0xda-market.nilx.one/health
           https://0xda-market.nilx.one/bot/health
           https://0xda-market.nilx.one/bot-test/health
@@ -100,7 +86,7 @@ case "$MODE" in
     esac
     ;;
   *)
-    echo "mode must be preflight, candidate-dns, or post-activation" >&2
+    echo "mode must be candidate-dns or post-activation" >&2
     exit 2
     ;;
 esac

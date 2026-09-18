@@ -12,7 +12,6 @@ services:
       NILX_WEB_DOMAIN: ${NILX_WEB_DOMAIN:-nilx.one}
       NILX_BOND_DOMAIN: ${NILX_BOND_DOMAIN:-*.nilx.one}
       NILX_BOND_TRANSPORT: ${NILX_BOND_TRANSPORT:-bond_transport_cloudflare}
-      MIND_WEB_DOMAIN: ${MIND_WEB_DOMAIN:-mind.aiaiaiai.org}
       CF_API_TOKEN: ${CF_API_TOKEN:?CF_API_TOKEN is required}
     ports:
       - "80:80"
@@ -48,8 +47,8 @@ networks:
 
 volumes:
   caddy_data:
-    name: ${CADDY_DATA_VOLUME:-zero-x-da-market-caddy-data}
+    name: ${CADDY_DATA_VOLUME:-edge-prod-1-caddy-data}
     external: true
   caddy_config:
-    name: ${CADDY_CONFIG_VOLUME:-zero-x-da-market-caddy-config}
+    name: ${CADDY_CONFIG_VOLUME:-edge-prod-1-caddy-config}
     external: true

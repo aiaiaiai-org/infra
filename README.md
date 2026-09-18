@@ -11,7 +11,7 @@ edge target:       edge-prod-1
 role:              public-edge
 provider:          Hetzner
 edge network:      nilx-edge
-live Caddy:        mind-web-prod-1-caddy
+live Caddy:        edge-prod-1-caddy
 ```
 
 `edge-prod-1` is a logical infrastructure identity. It intentionally does not encode a hardware class, provider, or product name.
@@ -21,9 +21,7 @@ live Caddy:        mind-web-prod-1-caddy
 ```text
 Internet
 └── edge-prod-1
-    └── Caddy: mind-web-prod-1-caddy
-        ├── mind.aiaiaiai.org
-        │   └── mind-web:8080
+    └── Caddy: edge-prod-1-caddy
         ├── 0xda-market.nilx.one
         │   ├── /bot-test/* → market-bot-development:10000
         │   ├── /bot/*      → market-bot-production:10000
@@ -38,7 +36,7 @@ external Docker network: nilx-edge
 
 `nilx.one` is the canonical public Web host for 0x1, split by path prefix across three workloads. `0x1.nilx.one` is not an active edge host; introducing it later requires working public DNS and an explicit edge-contract change before Caddy may manage TLS for it.
 
-The shared edge routes seven workload identities: `mind-web`, `market-api-production`, `market-bot-production`, `market-bot-test`, `nilxone-web`, `nilxone-telegram`, `nilxone-discord`. Development `0xda-market` core is intentionally not public; `0xda-market-test` reaches `market-api-development:10000` directly over `nilx-edge`.
+The shared edge routes six workload identities: `market-api-production`, `market-bot-production`, `market-bot-test`, `nilxone-web`, `nilxone-telegram`, `nilxone-discord`. Development `0xda-market` core is intentionally not public; `0xda-market-test` reaches `market-api-development:10000` directly over `nilx-edge`. `0xda-market` DNS is already pointed at `edge-prod-1`, but the workload itself has not been implemented yet — its contract and routes exist ahead of that build.
 
 ## Ownership boundary
 
@@ -55,7 +53,6 @@ The shared edge routes seven workload identities: `mind-web`, `market-api-produc
 
 Current workload owners:
 
-- `mind-web` → `aiaiaiai-org/mind-web`;
 - `market-api-production` → `0xda-market/core`;
 - `market-bot-production` → `0xda-market/telegram-bot` (`0xda-market`);
 - `market-bot-test` → `0xda-market/telegram-bot` (`0xda-market-test`);
@@ -71,7 +68,6 @@ Public routes:
 
 | Public route | Upstream | Prefix behavior |
 | --- | --- | --- |
-| `https://mind.aiaiaiai.org/*` | `mind-web:8080` | preserve |
 | `https://0xda-market.nilx.one/bot/*` | `market-bot-production:10000` | strip `/bot` |
 | `https://0xda-market.nilx.one/bot-test/*` | `market-bot-development:10000` | strip `/bot-test` |
 | `https://0xda-market.nilx.one/*` | `market-api-production:10000` | preserve |
@@ -104,11 +100,8 @@ Environment contract:
 EDGE_TARGET=edge-prod-1
 MARKET_DOMAIN=0xda-market.nilx.one
 NILX_WEB_DOMAIN=nilx.one
-MIND_WEB_DOMAIN=mind.aiaiaiai.org
 EDGE_NETWORK=nilx-edge
 ```
-
-Existing Caddy data/config volume names retain historical `zero-x-da-market` identifiers only as physical state identifiers so current TLS state is not discarded.
 
 ## GitHub Environment
 
@@ -119,6 +112,7 @@ Required secrets:
 - `SSH_HOST`
 - `SSH_USER`
 - `SSH_PRIVATE_KEY`
+- `CLOUDFLARE_API_TOKEN`
 
 Optional variable:
 
@@ -128,11 +122,11 @@ Optional variable:
 
 ### CI
 
-`.github/workflows/ci.yml` runs on pull requests and manual dispatch only. It validates YAML contracts, shell syntax, Compose, Caddy, and an isolated routing fixture containing all five upstream identities. It proves the market API fallback, both stripped Telegram prefixes, and the canonical 0x1 Web host resolve to the intended upstreams.
+`.github/workflows/ci.yml` runs on pull requests and manual dispatch only. It validates YAML contracts, shell syntax, Compose, Caddy, and an isolated routing fixture containing all active upstream identities. It proves the market API fallback, both stripped Telegram/Discord prefixes, and the canonical 0x1 Web host resolve to the intended upstreams.
 
 ### Live candidate validation
 
-`.github/workflows/edge-ready-validate.yml` runs for ready pull requests using trusted workflow code from `master`. It fetches only the candidate `deploy/edge/Caddyfile` from the PR head SHA and validates it inside the running Caddy container without reload or live mutation.
+`.github/workflows/edge-ready-validate.yml` runs for ready pull requests using trusted workflow code from `master`. It fetches only the candidate `deploy/edge/Caddyfile` from the PR head SHA and validates it inside the running Caddy container without reload or live mutation. On a target where the shared Caddy container doesn't exist yet (first-ever activation), the live-cutover-prerequisites check is skipped rather than failing.
 
 ### Deploy shared edge
 
@@ -142,27 +136,9 @@ Optional variable:
 | --- | --- |
 | `nilx-web` | `nilx.one` and `nilxone-web:1927`, `nilxone-telegram:1927`, `nilxone-discord:1927` |
 | `market` | `0xda-market.nilx.one` and the three production/test market upstreams |
-| `mind-web` | `mind.aiaiaiai.org` and `mind-web:8080` |
 | `all` | every active public edge surface |
 
-All scopes first verify `https://mind.aiaiaiai.org/health` as the existing rollback anchor. Scope-specific DNS is then checked before SSH or Caddy mutation. After SSH connectivity is established, only the selected surface's upstreams are checked directly through `nilx-edge` before the Caddyfile can be reloaded.
-
-After Caddy reload, the rollback anchor plus the selected public surface are verified. For example, `nilx-web` requires:
-
-```text
-https://mind.aiaiaiai.org/health
-https://nilx.one/health
-```
-
-while `market` additionally requires:
-
-```text
-https://0xda-market.nilx.one/health
-https://0xda-market.nilx.one/bot/health
-https://0xda-market.nilx.one/bot-test/health
-```
-
-`all` preserves the strict whole-edge gate and checks every active DNS name, upstream, and public health surface.
+Scope-specific DNS is checked before SSH or Caddy mutation. After SSH connectivity is established, only the selected surface's upstreams are checked directly through `nilx-edge` before the Caddyfile can be reloaded. After Caddy reload, the selected public surface is verified again. `all` checks every active DNS name, upstream, and public health surface at once.
 
 Missing required DNS or an unhealthy/missing upstream for the selected scope fails before live Caddy mutation. A failed reload or scoped post-activation verification restores the previous mounted Caddyfile.
 
@@ -171,7 +147,6 @@ Missing required DNS or an unhealthy/missing upstream for the selected scope fai
 The selected activation scope must have its corresponding workload aliases available on `nilx-edge`:
 
 ```text
-mind-web                     # mind-web
 market-api-production         # market
 market-bot-production         # market
 market-bot-development        # market
@@ -191,9 +166,9 @@ POST /repos/aiaiaiai-org/infra/dispatches
 {
   "event_type": "deploy-workload",
   "client_payload": {
-    "workload": "mind-web",
-    "image": "ghcr.io/aiaiaiai-org/mind-web:1.4.2",
-    "source_repository": "aiaiaiai-org/mind-web"
+    "workload": "nilxone-web",
+    "image": "ghcr.io/nilx-one/web:1.4.2",
+    "source_repository": "nilx-one/web"
   }
 }
 ```
@@ -216,14 +191,12 @@ The credential a product repository needs to hold is therefore narrowed to whate
 │       ├── market-api-production.yaml
 │       ├── market-bot-production.yaml
 │       ├── market-bot-test.yaml
-│       ├── mind-web.yaml
 │       ├── nilxone-discord.yaml
 │       ├── nilxone-telegram.yaml
 │       └── nilxone-web.yaml
 ├── deploy/
 │   ├── edge/
 │   └── workload/deploy.sh
-├── docs/
 ├── scripts/
 │   ├── validate-contracts.rb
 │   └── resolve-workload-target.rb
