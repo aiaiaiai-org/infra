@@ -29,8 +29,16 @@ esac
 
 redirects=()
 
+mind_web_anchor_exists() {
+  getent ahostsv4 mind.aiaiaiai.org >/dev/null 2>&1 || getent ahostsv6 mind.aiaiaiai.org >/dev/null 2>&1
+}
+
 case "$MODE" in
   preflight)
+    if ! mind_web_anchor_exists; then
+      echo "mind.aiaiaiai.org does not resolve yet; no existing rollback anchor to protect, treating as first-ever activation"
+      exit 0
+    fi
     hosts=(mind.aiaiaiai.org)
     urls=(https://mind.aiaiaiai.org/health)
     ;;
@@ -58,18 +66,20 @@ case "$MODE" in
         urls=(https://mind.aiaiaiai.org/health)
         ;;
       market)
-        hosts=(mind.aiaiaiai.org 0xda-market.nilx.one)
+        hosts=(0xda-market.nilx.one)
         urls=(
-          https://mind.aiaiaiai.org/health
           https://0xda-market.nilx.one/health
           https://0xda-market.nilx.one/bot/health
           https://0xda-market.nilx.one/bot-test/health
         )
+        if mind_web_anchor_exists; then
+          hosts=(mind.aiaiaiai.org "${hosts[@]}")
+          urls=(https://mind.aiaiaiai.org/health "${urls[@]}")
+        fi
         ;;
       nilx-web)
-        hosts=(mind.aiaiaiai.org nilx.one "$NILX_BOND_HEALTH_HOST")
+        hosts=(nilx.one "$NILX_BOND_HEALTH_HOST")
         urls=(
-          https://mind.aiaiaiai.org/health
           https://nilx.one/health
           https://nilx.one/telegram/health
           https://nilx.one/discord/health
@@ -79,6 +89,10 @@ case "$MODE" in
           'https://nilx.one/telegram|https://nilx.one/telegram/'
           'https://nilx.one/discord|https://nilx.one/discord/'
         )
+        if mind_web_anchor_exists; then
+          hosts=(mind.aiaiaiai.org "${hosts[@]}")
+          urls=(https://mind.aiaiaiai.org/health "${urls[@]}")
+        fi
         ;;
       all)
         hosts=(mind.aiaiaiai.org 0xda-market.nilx.one nilx.one "$NILX_BOND_HEALTH_HOST")
