@@ -31,11 +31,11 @@ jobs:
       - name: Validate workload placement resolver
         run: |
           set -Eeuo pipefail
-          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb mind-web)"
+          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb nilxone-web)"
           grep -Fxq 'target=edge-prod-1' <<< "$output"
           grep -Fxq 'network=nilx-edge' <<< "$output"
-          grep -Fxq 'alias=mind-web' <<< "$output"
-          grep -Fxq 'port=8080' <<< "$output"
+          grep -Fxq 'alias=nilxone-web' <<< "$output"
+          grep -Fxq 'port=1927' <<< "$output"
           grep -Fxq 'health=/health' <<< "$output"
           ! env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb does-not-exist 2>/dev/null
 
@@ -94,11 +94,9 @@ jobs:
             --env NILX_WEB_DOMAIN=nilx.one \
             --env NILX_BOND_DOMAIN=*.nilx.one \
             --env NILX_BOND_TRANSPORT=bond_transport_cloudflare \
-            --env MIND_WEB_DOMAIN=mind.aiaiaiai.org \
             --volume "$PWD/deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro" \
             infra-edge-caddy:ci \
             caddy validate --config /etc/caddy/Caddyfile
-          test "$(grep -Fc 'reverse_proxy mind-web:8080' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy market-api-production:10000' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy market-bot-production:10000' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy market-bot-development:10000' deploy/edge/Caddyfile)" -eq 1
@@ -144,7 +142,6 @@ jobs:
             docker logs infra-ci-caddy >&2 || true
             docker rm --force \
               infra-ci-caddy \
-              infra-ci-mind \
               infra-ci-market-api \
               infra-ci-market-bot \
               infra-ci-market-bot-test \
@@ -168,7 +165,6 @@ jobs:
               "mkdir -p /srv; printf '%s' '$body' > /srv/health; python3 -m http.server '$port' --bind 0.0.0.0 --directory /srv" >/dev/null
           }
 
-          start_fixture infra-ci-mind mind-web 8080 mind-web
           start_fixture infra-ci-market-api market-api-production 10000 market-api-production
           start_fixture infra-ci-market-bot market-bot-production 10000 market-bot-production
           start_fixture infra-ci-market-bot-test market-bot-development 10000 market-bot-development
@@ -189,7 +185,6 @@ jobs:
             docker exec "$name" wget -q -T 1 -O- "http://127.0.0.1:${port}/health" | grep -qx "$body"
           }
 
-          wait_fixture infra-ci-mind 8080 mind-web
           wait_fixture infra-ci-market-api 10000 market-api-production
           wait_fixture infra-ci-market-bot 10000 market-bot-production
           wait_fixture infra-ci-market-bot-test 10000 market-bot-development
@@ -205,7 +200,6 @@ jobs:
             --env NILX_WEB_DOMAIN=http://nilx.localhost \
             --env NILX_BOND_DOMAIN=http://bond.nilx.localhost \
             --env NILX_BOND_TRANSPORT=bond_transport \
-            --env MIND_WEB_DOMAIN=http://mind.localhost \
             --volume "$PWD/deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro" \
             infra-edge-caddy:ci \
             caddy run --config /etc/caddy/Caddyfile >/dev/null
@@ -227,7 +221,6 @@ jobs:
               "http://${host}:18080${path}" | grep -qx "$expected"
           }
 
-          check_route mind.localhost /health mind-web
           check_route market.localhost /health market-api-production
           check_route market.localhost /bot/health market-bot-production
           check_route market.localhost /bot-test/health market-bot-development

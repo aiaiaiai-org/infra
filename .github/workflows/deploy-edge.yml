@@ -21,7 +21,6 @@ on:
           - all
           - nilx-web
           - market
-          - mind-web
 
 permissions:
   contents: read
@@ -40,7 +39,7 @@ jobs:
       EDGE_TARGET: ${{ inputs.target }}
       EDGE_SCOPE: ${{ inputs.scope }}
       EDGE_NETWORK: nilx-edge
-      CADDY_CONTAINER: mind-web-prod-1-caddy
+      CADDY_CONTAINER: edge-prod-1-caddy
       REMOTE_EDGE_DIR: .local/share/aiaiaiai-infra/edge
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
 
@@ -54,7 +53,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           [[ "$EDGE_TARGET" =~ ^[a-z0-9][a-z0-9._-]*$ ]]
-          case "$EDGE_SCOPE" in mind-web|market|nilx-web|all) ;; *) exit 1 ;; esac
+          case "$EDGE_SCOPE" in market|nilx-web|all) ;; *) exit 1 ;; esac
           [[ "$EDGE_NETWORK" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
           [[ "$CADDY_CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
           [[ "$REMOTE_EDGE_DIR" =~ ^[A-Za-z0-9][A-Za-z0-9_./-]*$ ]]
@@ -67,17 +66,6 @@ jobs:
 
       - name: Checkout verified release source
         uses: actions/checkout@v4
-
-      - name: Preflight rollback anchor
-        env:
-          HEALTH_RETRY: 2
-          HEALTH_RETRY_DELAY: 2
-        run: |
-          set -Eeuo pipefail
-          if ! bash deploy/edge/check-public.sh preflight "$EDGE_SCOPE"; then
-            echo "::error::Canonical mind-web rollback anchor is unhealthy before deployment; refusing to mutate the edge."
-            exit 1
-          fi
 
       - name: Configure and verify SSH
         env:
@@ -116,7 +104,6 @@ jobs:
             printf 'NILX_WEB_DOMAIN=nilx.one\n'
             printf 'NILX_BOND_DOMAIN=*.nilx.one\n'
             printf 'NILX_BOND_TRANSPORT=bond_transport_cloudflare\n'
-            printf 'MIND_WEB_DOMAIN=mind.aiaiaiai.org\n'
             printf 'CADDY_IMAGE=zero-x-infra-caddy-cloudflare:%s\n' "$GITHUB_SHA"
             printf 'LEGACY_CADDY_CONTAINER=%s\n' "$CADDY_CONTAINER"
             printf 'RELEASE_SHA=%s\n' "$GITHUB_SHA"

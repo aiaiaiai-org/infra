@@ -20,34 +20,19 @@ if ! [[ "$HEALTH_RETRY_DELAY" =~ ^[0-9]+$ ]]; then
 fi
 
 case "$EDGE_SCOPE" in
-  mind-web|market|nilx-web|all) ;;
+  market|nilx-web|all) ;;
   *)
-    echo "EDGE_SCOPE must be mind-web, market, nilx-web, or all" >&2
+    echo "EDGE_SCOPE must be market, nilx-web, or all" >&2
     exit 2
     ;;
 esac
 
 redirects=()
 
-mind_web_anchor_exists() {
-  getent ahostsv4 mind.aiaiaiai.org >/dev/null 2>&1 || getent ahostsv6 mind.aiaiaiai.org >/dev/null 2>&1
-}
-
 case "$MODE" in
-  preflight)
-    if ! mind_web_anchor_exists; then
-      echo "mind.aiaiaiai.org does not resolve yet; no existing rollback anchor to protect, treating as first-ever activation"
-      exit 0
-    fi
-    hosts=(mind.aiaiaiai.org)
-    urls=(https://mind.aiaiaiai.org/health)
-    ;;
   candidate-dns)
     urls=()
     case "$EDGE_SCOPE" in
-      mind-web)
-        hosts=(mind.aiaiaiai.org)
-        ;;
       market)
         hosts=(0xda-market.nilx.one)
         ;;
@@ -55,16 +40,12 @@ case "$MODE" in
         hosts=(nilx.one "$NILX_BOND_HEALTH_HOST")
         ;;
       all)
-        hosts=(mind.aiaiaiai.org 0xda-market.nilx.one nilx.one "$NILX_BOND_HEALTH_HOST")
+        hosts=(0xda-market.nilx.one nilx.one "$NILX_BOND_HEALTH_HOST")
         ;;
     esac
     ;;
   post-activation)
     case "$EDGE_SCOPE" in
-      mind-web)
-        hosts=(mind.aiaiaiai.org)
-        urls=(https://mind.aiaiaiai.org/health)
-        ;;
       market)
         hosts=(0xda-market.nilx.one)
         urls=(
@@ -72,10 +53,6 @@ case "$MODE" in
           https://0xda-market.nilx.one/bot/health
           https://0xda-market.nilx.one/bot-test/health
         )
-        if mind_web_anchor_exists; then
-          hosts=(mind.aiaiaiai.org "${hosts[@]}")
-          urls=(https://mind.aiaiaiai.org/health "${urls[@]}")
-        fi
         ;;
       nilx-web)
         hosts=(nilx.one "$NILX_BOND_HEALTH_HOST")
@@ -89,15 +66,10 @@ case "$MODE" in
           'https://nilx.one/telegram|https://nilx.one/telegram/'
           'https://nilx.one/discord|https://nilx.one/discord/'
         )
-        if mind_web_anchor_exists; then
-          hosts=(mind.aiaiaiai.org "${hosts[@]}")
-          urls=(https://mind.aiaiaiai.org/health "${urls[@]}")
-        fi
         ;;
       all)
-        hosts=(mind.aiaiaiai.org 0xda-market.nilx.one nilx.one "$NILX_BOND_HEALTH_HOST")
+        hosts=(0xda-market.nilx.one nilx.one "$NILX_BOND_HEALTH_HOST")
         urls=(
-          https://mind.aiaiaiai.org/health
           https://0xda-market.nilx.one/health
           https://0xda-market.nilx.one/bot/health
           https://0xda-market.nilx.one/bot-test/health
@@ -114,7 +86,7 @@ case "$MODE" in
     esac
     ;;
   *)
-    echo "mode must be preflight, candidate-dns, or post-activation" >&2
+    echo "mode must be candidate-dns or post-activation" >&2
     exit 2
     ;;
 esac

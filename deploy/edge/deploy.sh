@@ -18,7 +18,7 @@ mode="${DEPLOY_MODE:-validate}"
 edge_target="${EDGE_TARGET:-}"
 edge_scope="${EDGE_SCOPE:-nilx-web}"
 edge_network="${EDGE_NETWORK:-nilx-edge}"
-legacy_caddy="${LEGACY_CADDY_CONTAINER:-mind-web-prod-1-caddy}"
+legacy_caddy="${LEGACY_CADDY_CONTAINER:-edge-prod-1-caddy}"
 release_sha="${RELEASE_SHA:-local}"
 caddy_image="${CADDY_IMAGE:-zero-x-infra-caddy-cloudflare:${release_sha}}"
 legacy_was_running=0
@@ -31,9 +31,9 @@ case "$mode" in
     ;;
 esac
 case "$edge_scope" in
-  mind-web|market|nilx-web|all) ;;
+  market|nilx-web|all) ;;
   *)
-    echo "EDGE_SCOPE must be mind-web, market, nilx-web, or all" >&2
+    echo "EDGE_SCOPE must be market, nilx-web, or all" >&2
     exit 1
     ;;
 esac
@@ -51,7 +51,7 @@ if [[ ! "$legacy_caddy" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
   exit 1
 fi
 
-for name in MARKET_DOMAIN NILX_WEB_DOMAIN NILX_BOND_DOMAIN NILX_BOND_TRANSPORT MIND_WEB_DOMAIN CF_API_TOKEN; do
+for name in MARKET_DOMAIN NILX_WEB_DOMAIN NILX_BOND_DOMAIN NILX_BOND_TRANSPORT CF_API_TOKEN; do
   [[ -n "${!name:-}" ]] || { echo "$name is required" >&2; exit 1; }
 done
 
@@ -113,7 +113,6 @@ docker run --rm \
   --env "NILX_WEB_DOMAIN=$NILX_WEB_DOMAIN" \
   --env "NILX_BOND_DOMAIN=$NILX_BOND_DOMAIN" \
   --env "NILX_BOND_TRANSPORT=$NILX_BOND_TRANSPORT" \
-  --env "MIND_WEB_DOMAIN=$MIND_WEB_DOMAIN" \
   --volume "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
   "$caddy_image" \
   caddy validate --config /etc/caddy/Caddyfile

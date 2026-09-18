@@ -27,7 +27,7 @@ jobs:
     environment:
       name: edge-prod-1
     env:
-      CADDY_CONTAINER: mind-web-prod-1-caddy
+      CADDY_CONTAINER: edge-prod-1-caddy
       EDGE_NETWORK: nilx-edge
       PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
       PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
@@ -84,7 +84,6 @@ jobs:
             --env NILX_WEB_DOMAIN=nilx.one \
             --env NILX_BOND_DOMAIN=*.nilx.one \
             --env NILX_BOND_TRANSPORT=bond_transport_cloudflare \
-            --env MIND_WEB_DOMAIN=mind.aiaiaiai.org \
             --volume "$PWD/candidate/Caddyfile:/etc/caddy/Caddyfile:ro" \
             infra-edge-caddy:candidate \
             caddy validate --config /etc/caddy/Caddyfile

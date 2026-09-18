@@ -61,10 +61,3 @@ spec:
       service: nilxone-web
       upstream: nilxone-web:1927
       health: /health
-    - id: mind-web
-      host: ${MIND_WEB_DOMAIN}
-      pathPrefix: /
-      stripPrefix: false
-      service: mind-web
-      upstream: mind-web:8080
-      health: /health
