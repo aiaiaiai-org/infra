@@ -94,9 +94,22 @@ esac
 resolve_host() {
   local host="$1"
   local ipv4 ipv6
+  local attempt=0
 
-  ipv4="$(getent ahostsv4 "$host" | awk '{print $1}' | sort -u || true)"
-  ipv6="$(getent ahostsv6 "$host" | awk '{print $1}' | sort -u || true)"
+  while :; do
+    ipv4="$(getent ahostsv4 "$host" | awk '{print $1}' | sort -u || true)"
+    ipv6="$(getent ahostsv6 "$host" | awk '{print $1}' | sort -u || true)"
+
+    if [[ -n "$ipv4" || -n "$ipv6" ]]; then
+      break
+    fi
+    if (( attempt >= HEALTH_RETRY )); then
+      break
+    fi
+
+    attempt=$((attempt + 1))
+    sleep "$HEALTH_RETRY_DELAY"
+  done
 
   echo "resolving $host"
   echo "  IPv4:"
