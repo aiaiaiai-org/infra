@@ -134,7 +134,10 @@ jobs:
             "CADDY_CONTAINER='$CADDY_CONTAINER' EDGE_NETWORK='$EDGE_NETWORK' bash -s" <<'REMOTE'
           set -Eeuo pipefail
 
-          docker inspect "$CADDY_CONTAINER" >/dev/null
+          if ! docker inspect "$CADDY_CONTAINER" >/dev/null 2>&1; then
+            echo "no live $CADDY_CONTAINER container yet; nothing to validate for cutover (first-ever activation)"
+            exit 0
+          fi
           test "$(docker inspect -f '{{.State.Running}}' "$CADDY_CONTAINER")" = true
           docker network inspect "$EDGE_NETWORK" >/dev/null
 
