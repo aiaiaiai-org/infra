@@ -56,7 +56,7 @@ jobs:
           case "$EDGE_SCOPE" in market|nilx-web|all) ;; *) exit 1 ;; esac
           [[ "$EDGE_NETWORK" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
           [[ "$CADDY_CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
-          [[ "$REMOTE_EDGE_DIR" =~ ^[A-Za-z0-9][A-Za-z0-9_./-]*$ ]]
+          [[ "$REMOTE_EDGE_DIR" =~ ^[A-Za-z0-9._/-]+$ ]]
           test -n "$SSH_HOST"
           test -n "$SSH_USER"
           test -n "$SSH_PRIVATE_KEY"
