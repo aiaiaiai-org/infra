@@ -72,9 +72,6 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
   abort("#{path}: duplicate service id #{name}") if services.key?(name)
 
   spec = fetch!(contract, "spec", path)
-  repository = fetch!(spec, "repository", path)
-  abort("#{path}: repository must be owner/name") unless repository.is_a?(String) && repository.match?(/\A[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\z/)
-
   runtime = fetch!(spec, "runtime", path)
   runtime_kind = runtime["kind"]
   abort("#{path}: runtime.kind must be container or systemd-release") unless %w[container systemd-release].include?(runtime_kind)
@@ -91,6 +88,9 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
     health = fetch!(spec, "health", path)
     abort("#{path}: health must start with /") unless health.is_a?(String) && health.start_with?("/")
   else
+    repository = fetch!(spec, "repository", path)
+    abort("#{path}: repository must be owner/name") unless repository.is_a?(String) && repository.match?(/\A[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\z/)
+
     deployment_path = fetch!(runtime, "deploymentPath", path)
     abort("#{path}: deploymentPath must be absolute") unless deployment_path.is_a?(String) && deployment_path.start_with?("/")
 
