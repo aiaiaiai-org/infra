@@ -8,7 +8,7 @@ spec:
   aliases:
     - market-api-production
   protocol: http
-  port: 10000
+  port: 1927
   health: /health
   public:
     host: 0xda-market.nilx.one
