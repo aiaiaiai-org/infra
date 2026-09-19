@@ -4,6 +4,7 @@ metadata:
   name: market-bot-production
   owner: 0xda-market/telegram-bot
 spec:
+  deployment: production
   network: nilx-edge
   aliases:
     - market-bot-production
