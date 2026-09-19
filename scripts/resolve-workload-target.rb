@@ -26,7 +26,7 @@ service = load_yaml(service_path)
 abort("#{service_path}: unsupported kind") unless service["kind"] == "WorkloadContract"
 spec = service["spec"] || abort("#{service_path}: missing spec")
 
-runtime = spec["runtime"] || abort("#{service_path}: missing runtime")
+runtime = spec["runtime"] || { "kind" => "container" }
 runtime_kind = runtime["kind"]
 abort("#{service_path}: unsupported runtime kind") unless %w[container systemd-release].include?(runtime_kind)
 
