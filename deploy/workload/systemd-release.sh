@@ -5,6 +5,7 @@ set -Eeuo pipefail
 mode="${DEPLOY_MODE:-validate}"
 deploy_path="${DEPLOY_PATH:-}"
 service="${SERVICE_NAME:-}"
+post_activate_command="${POST_ACTIVATE_COMMAND:-}"
 release_id="${RELEASE_ID:-}"
 keep_releases="${KEEP_RELEASES:-5}"
 archive="${RELEASE_ARCHIVE:-}"
@@ -19,6 +20,7 @@ esac
 
 [[ "$deploy_path" == /* ]] || { echo "DEPLOY_PATH must be absolute" >&2; exit 1; }
 [[ "$service" =~ ^[A-Za-z0-9@_.:-]+\.service$ ]] || { echo "SERVICE_NAME is invalid" >&2; exit 1; }
+test -n "$post_activate_command" || { echo "POST_ACTIVATE_COMMAND is required" >&2; exit 1; }
 [[ "$release_id" =~ ^[0-9a-f]{40}$ ]] || { echo "RELEASE_ID must be a 40-character commit SHA" >&2; exit 1; }
 [[ "$keep_releases" =~ ^[0-9]+$ ]] && (( keep_releases >= 1 && keep_releases <= 100 )) || {
   echo "KEEP_RELEASES must be between 1 and 100" >&2
@@ -102,6 +104,17 @@ activate_release() {
     echo "service $service failed after activation" >&2
     journalctl --no-pager -u "$service" -n 100 >&2 || true
 
+    if [[ -n "$previous_target" ]]; then
+      ln -sfn "$previous_target" "$deploy_path/current.tmp"
+      mv -Tf "$deploy_path/current.tmp" "$current_link"
+      sudo -n systemctl restart "$service" || true
+    fi
+    exit 1
+  fi
+
+  if ! (cd "$release_dir" && bash -lc "$post_activate_command"); then
+    echo "post-activation command failed: $post_activate_command" >&2
+    journalctl --no-pager -u "$service" -n 100 >&2 || true
     if [[ -n "$previous_target" ]]; then
       ln -sfn "$previous_target" "$deploy_path/current.tmp"
       mv -Tf "$deploy_path/current.tmp" "$current_link"
