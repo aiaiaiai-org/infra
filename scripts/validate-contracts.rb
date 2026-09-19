@@ -4,6 +4,8 @@
 require "yaml"
 
 ROOT = File.expand_path("..", __dir__)
+DEFAULT_TEST_PORT = 1703
+DEFAULT_PRODUCTION_PORT = 1927
 EDGE_PATH = File.join(ROOT, "contracts", "edge.yaml")
 SERVER_GLOB = File.join(ROOT, "contracts", "servers", "*.yaml")
 SERVICE_GLOB = File.join(ROOT, "contracts", "services", "*.yaml")
@@ -72,8 +74,13 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
   aliases = Array(fetch!(spec, "aliases", path))
   abort("#{path}: aliases must be non-empty strings") unless aliases.any? && aliases.all? { |value| value.is_a?(String) && !value.empty? }
 
+  deployment = fetch!(spec, "deployment", path)
+  abort("#{path}: deployment must be test or production") unless %w[test production].include?(deployment)
+
   port = fetch!(spec, "port", path)
   abort("#{path}: port must be between 1 and 65535") unless port.is_a?(Integer) && port.between?(1, 65_535)
+  expected_default_port = deployment == "test" ? DEFAULT_TEST_PORT : DEFAULT_PRODUCTION_PORT
+  abort("#{path}: #{deployment} workload must use default port #{expected_default_port}") unless port == expected_default_port
   abort("#{path}: duplicate service id #{name}") if services.key?(name)
 
   services[name] = contract
