@@ -177,6 +177,15 @@ jobs:
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=validate bash ./deploy.sh"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=activate bash ./deploy.sh"
 
+      - name: Checkout infra deployment tooling
+        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
+        uses: actions/checkout@v7
+        with:
+          path: infra
+          sparse-checkout: |
+            deploy/workload/systemd-release.sh
+          sparse-checkout-cone-mode: false
+
       - name: Upload systemd release
         if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
         env:
@@ -185,7 +194,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOYMENT_PATH/.deploy' && chmod 700 '$DEPLOYMENT_PATH/.deploy'"
-          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT"             deploy/workload/systemd-release.sh "$SSH_USER@$SSH_HOST:$DEPLOYMENT_PATH/.deploy/systemd-release.sh"
+          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT"             infra/deploy/workload/systemd-release.sh "$SSH_USER@$SSH_HOST:$DEPLOYMENT_PATH/.deploy/systemd-release.sh"
           scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "$RUNNER_TEMP/release/release.tar.gz" "$SSH_USER@$SSH_HOST:$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "chmod 700 '$DEPLOYMENT_PATH/.deploy/systemd-release.sh' && chmod 600 '$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz'"
 
