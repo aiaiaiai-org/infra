@@ -49,6 +49,7 @@ jobs:
           grep -Fxq 'deployment_path=/opt/prism-hubot' <<< "$output"
           grep -Fxq 'service=prism-hubot.service' <<< "$output"
           grep -Fxq 'release_retention=5' <<< "$output"
+          grep -Fxq 'post_activate_command=bundle exec rake telegram:commands' <<< "$output"
 
       - name: Validate scoped upstream isolation
         run: |
