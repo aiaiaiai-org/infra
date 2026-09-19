@@ -11,3 +11,4 @@ spec:
     deploymentPath: /opt/prism-hubot
     service: prism-hubot.service
     releaseRetention: 5
+    postActivateCommand: bundle exec rake telegram:commands
