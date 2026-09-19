@@ -208,3 +208,35 @@ The credential a product repository needs to hold is therefore narrowed to whate
 ```
 
 The core rule is: **infra owns public routing; product repositories own workloads; one product's deployment must not mutate or gate on another product's runtime.**
+
+### Release-based workloads
+
+Not every workload is a container. A `WorkloadContract` may declare
+`runtime.kind: systemd-release` when the product is a release-directory service
+managed by systemd.
+
+The `prism-hubot` contract is the first such workload:
+
+- repository: `aiaiaiai-org/prism-hubot`;
+- target: resolved from server placement, currently `edge-prod-1`;
+- deployment path: `/opt/prism-hubot`;
+- service: `prism-hubot.service`;
+- release retention: `5`.
+
+The product workflow supplies only the workload identity and requested release
+ref. Infra reads the repository, target, deployment path, service and retention
+from the merged contract, selects that target's GitHub Environment, and uses its
+existing `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY` and `SSH_PORT`. The
+product repository therefore holds no box credentials and no deployment path.
+
+For a systemd release, infra checks out the contracted public repository at the
+requested ref, archives the exact resolved commit, uploads the release to the
+contracted path, validates the existing `shared/.env` and service prerequisites,
+runs the repository's `bundle exec rake env:check`, then atomically switches
+`current` and restarts the contracted unit. A failed post-activation service
+check restores the previous release when one exists.
+
+The caller still needs a GitHub credential capable of creating
+`repository_dispatch` events in this repository. That credential is a GitHub
+API credential, not a machine credential; it never grants SSH access to the
+target.
