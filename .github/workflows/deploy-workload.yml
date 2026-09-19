@@ -162,10 +162,10 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           set -Eeuo pipefail
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "mkdir -p '$REMOTE_WORKLOAD_DIR' && chmod 700 '$REMOTE_WORKLOAD_DIR'"
-          tar -C deploy/workload -czf - deploy.sh | ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "tar -xzf - -C '$REMOTE_WORKLOAD_DIR'"
-          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT"             "$RUNNER_TEMP/workload.env" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/.env"
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "chmod 600 '$REMOTE_WORKLOAD_DIR/.env'; chmod 700 '$REMOTE_WORKLOAD_DIR/deploy.sh'"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$REMOTE_WORKLOAD_DIR' && chmod 700 '$REMOTE_WORKLOAD_DIR'"
+          tar -C deploy/workload -czf - deploy.sh | ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "tar -xzf - -C '$REMOTE_WORKLOAD_DIR'"
+          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "$RUNNER_TEMP/workload.env" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/.env"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "chmod 600 '$REMOTE_WORKLOAD_DIR/.env'; chmod 700 '$REMOTE_WORKLOAD_DIR/deploy.sh'"
 
       - name: Validate and activate container
         if: ${{ needs.resolve.outputs.runtime == 'container' }}
@@ -174,8 +174,8 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           set -Eeuo pipefail
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=validate bash ./deploy.sh"
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=activate bash ./deploy.sh"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=validate bash ./deploy.sh"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=activate bash ./deploy.sh"
 
       - name: Upload systemd release
         if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
@@ -184,10 +184,10 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           set -Eeuo pipefail
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "mkdir -p '$DEPLOYMENT_PATH/.deploy' && chmod 700 '$DEPLOYMENT_PATH/.deploy'"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$DEPLOYMENT_PATH/.deploy' && chmod 700 '$DEPLOYMENT_PATH/.deploy'"
           scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT"             deploy/workload/systemd-release.sh "$SSH_USER@$SSH_HOST:$DEPLOYMENT_PATH/.deploy/systemd-release.sh"
-          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT"             "$RUNNER_TEMP/release/release.tar.gz" "$SSH_USER@$SSH_HOST:$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz"
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "chmod 700 '$DEPLOYMENT_PATH/.deploy/systemd-release.sh' && chmod 600 '$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz'"
+          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "$RUNNER_TEMP/release/release.tar.gz" "$SSH_USER@$SSH_HOST:$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "chmod 700 '$DEPLOYMENT_PATH/.deploy/systemd-release.sh' && chmod 600 '$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz'"
 
       - name: Validate systemd release
         if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
@@ -196,7 +196,7 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           set -Eeuo pipefail
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "DEPLOY_MODE=validate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' POST_ACTIVATE_COMMAND='$POST_ACTIVATE_COMMAND' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "DEPLOY_MODE=validate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' POST_ACTIVATE_COMMAND='$POST_ACTIVATE_COMMAND' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
 
       - name: Activate systemd release
         if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
@@ -205,7 +205,7 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           set -Eeuo pipefail
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "DEPLOY_MODE=activate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "DEPLOY_MODE=activate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
 
       - name: Clean runner secret material
         if: always()
