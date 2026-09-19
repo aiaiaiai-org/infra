@@ -4,6 +4,7 @@ metadata:
   name: market-bot-test
   owner: 0xda-market/telegram-bot
 spec:
+  deployment: test
   network: nilx-edge
   aliases:
     - market-bot-development
