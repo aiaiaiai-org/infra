@@ -68,10 +68,14 @@ else
   retention = runtime["releaseRetention"]
   abort("#{service_path}: releaseRetention must be between 1 and 100") unless retention.is_a?(Integer) && retention.between?(1, 100)
 
+  post_activate = runtime["postActivateCommand"]
+  abort("#{service_path}: postActivateCommand must be a non-empty string") unless post_activate.is_a?(String) && !post_activate.strip.empty?
+
   result.merge!(
     "deployment_path" => deployment_path,
     "service" => service_name,
     "release_retention" => retention.to_s,
+    "post_activate_command" => post_activate,
   )
 end
 
