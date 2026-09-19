@@ -20,55 +20,77 @@ jobs:
     timeout-minutes: 5
     outputs:
       target: ${{ steps.resolve.outputs.target }}
+      runtime: ${{ steps.resolve.outputs.runtime }}
+      repository: ${{ steps.resolve.outputs.repository }}
       network: ${{ steps.resolve.outputs.network }}
       alias: ${{ steps.resolve.outputs.alias }}
       port: ${{ steps.resolve.outputs.port }}
       health: ${{ steps.resolve.outputs.health }}
+      deployment_path: ${{ steps.resolve.outputs.deployment_path }}
+      service: ${{ steps.resolve.outputs.service }}
+      release_retention: ${{ steps.resolve.outputs.release_retention }}
       image: ${{ steps.image.outputs.image }}
+      ref: ${{ steps.ref.outputs.ref }}
     steps:
-      - name: Validate dispatch payload shape
+      - name: Validate dispatch payload
         env:
           WORKLOAD: ${{ github.event.client_payload.workload }}
           IMAGE_REF: ${{ github.event.client_payload.image }}
+          RELEASE_REF: ${{ github.event.client_payload.ref || 'master' }}
         run: |
           set -Eeuo pipefail
           [[ "$WORKLOAD" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "::error::invalid workload identifier"; exit 1; }
-          [[ "$IMAGE_REF" =~ ^[a-z0-9.-]+(/[a-z0-9._-]+)*(:[A-Za-z0-9_.-]+|@sha256:[0-9a-f]{64})$ ]] || { echo "::error::invalid image reference"; exit 1; }
+          if [[ -n "$IMAGE_REF" ]]; then
+            [[ "$IMAGE_REF" =~ ^[a-z0-9.-]+(/[a-z0-9._-]+)*(:[A-Za-z0-9_.-]+|@sha256:[0-9a-f]{64})$ ]] || { echo "::error::invalid image reference"; exit 1; }
+          fi
+          [[ "$RELEASE_REF" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "::error::invalid release ref"; exit 1; }
 
-      - name: Checkout infra contracts
-        uses: actions/checkout@v4
+      - name: Checkout infra
+        uses: actions/checkout@v7
 
-      - name: Resolve workload placement, network, alias, port, and health from contracts
+      - name: Resolve workload
         id: resolve
         env:
           WORKLOAD: ${{ github.event.client_payload.workload }}
         run: ruby scripts/resolve-workload-target.rb "$WORKLOAD"
 
-      - name: Pass through the validated image reference
+      - name: Pass image
         id: image
         env:
           IMAGE_REF: ${{ github.event.client_payload.image }}
         run: echo "image=$IMAGE_REF" >> "$GITHUB_OUTPUT"
 
+      - name: Pass ref
+        id: ref
+        env:
+          RELEASE_REF: ${{ github.event.client_payload.ref || 'master' }}
+        run: echo "ref=$RELEASE_REF" >> "$GITHUB_OUTPUT"
+
   deploy:
     name: Deploy to resolved target
     needs: resolve
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     environment:
       name: ${{ needs.resolve.outputs.target }}
     env:
       WORKLOAD: ${{ github.event.client_payload.workload }}
+      RUNTIME: ${{ needs.resolve.outputs.runtime }}
+      SOURCE_REPOSITORY: ${{ needs.resolve.outputs.repository }}
       IMAGE_REF: ${{ needs.resolve.outputs.image }}
+      RELEASE_REF: ${{ needs.resolve.outputs.ref }}
       EDGE_NETWORK: ${{ needs.resolve.outputs.network }}
       WORKLOAD_ALIAS: ${{ needs.resolve.outputs.alias }}
       WORKLOAD_PORT: ${{ needs.resolve.outputs.port }}
       WORKLOAD_HEALTH: ${{ needs.resolve.outputs.health }}
+      DEPLOYMENT_PATH: ${{ needs.resolve.outputs.deployment_path }}
+      SERVICE_NAME: ${{ needs.resolve.outputs.service }}
+      KEEP_RELEASES: ${{ needs.resolve.outputs.release_retention }}
       REMOTE_WORKLOAD_DIR: .local/share/aiaiaiai-infra/workloads/${{ github.event.client_payload.workload }}
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
 
     steps:
-      - name: Validate deployment credentials
+      - name: Validate SSH credentials
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -81,10 +103,7 @@ jobs:
           [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
           (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
 
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure and verify SSH
+      - name: Configure SSH
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -92,25 +111,31 @@ jobs:
         run: |
           set -Eeuo pipefail
           install -m 0700 -d "$HOME/.ssh"
-          key_path="$HOME/.ssh/id_ed25519"
-          known_hosts="$HOME/.ssh/known_hosts"
-          printf '%s\n' "$SSH_PRIVATE_KEY" > "$key_path"
-          chmod 0600 "$key_path"
-          ssh-keyscan -T 10 -p "$SSH_PORT" -H "$SSH_HOST" > "$known_hosts"
-          test -s "$known_hosts"
-          chmod 0600 "$known_hosts"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 0600 "$HOME/.ssh/id_ed25519"
+          ssh-keyscan -T 10 -p "$SSH_PORT" -H "$SSH_HOST" > "$HOME/.ssh/known_hosts"
+          test -s "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" true
 
-          ssh \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
-            -i "$key_path" \
-            -p "$SSH_PORT" \
-            "$SSH_USER@$SSH_HOST" true
+      - name: Checkout source release
+        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ needs.resolve.outputs.repository }}
+          ref: ${{ needs.resolve.outputs.ref }}
+          path: source
+          persist-credentials: false
 
-      - name: Prepare workload environment
+      - name: Resolve source commit
+        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
+        id: source
+        working-directory: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare container environment
+        if: ${{ needs.resolve.outputs.runtime == 'container' }}
         run: |
           set -Eeuo pipefail
-          umask 077
           {
             printf 'WORKLOAD=%s\n' "$WORKLOAD"
             printf 'IMAGE_REF=%s\n' "$IMAGE_REF"
@@ -120,65 +145,65 @@ jobs:
             printf 'WORKLOAD_HEALTH=%s\n' "$WORKLOAD_HEALTH"
           } > "$RUNNER_TEMP/workload.env"
 
-      - name: Upload workload deploy script
+      - name: Prepare systemd release
+        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
+        run: |
+          set -Eeuo pipefail
+          install -m 0700 -d "$RUNNER_TEMP/release"
+          git -C source archive --format=tar.gz --output="$RUNNER_TEMP/release/release.tar.gz" HEAD
+          test -s "$RUNNER_TEMP/release/release.tar.gz"
+
+      - name: Upload container deploy script
+        if: ${{ needs.resolve.outputs.runtime == 'container' }}
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           set -Eeuo pipefail
-          ssh \
-            -o IdentitiesOnly=yes \
-            -i "$HOME/.ssh/id_ed25519" \
-            -p "$SSH_PORT" \
-            "$SSH_USER@$SSH_HOST" \
-            "mkdir -p '$REMOTE_WORKLOAD_DIR' && chmod 700 '$REMOTE_WORKLOAD_DIR'"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "mkdir -p '$REMOTE_WORKLOAD_DIR' && chmod 700 '$REMOTE_WORKLOAD_DIR'"
+          tar -C deploy/workload -czf - deploy.sh | ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "tar -xzf - -C '$REMOTE_WORKLOAD_DIR'"
+          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT"             "$RUNNER_TEMP/workload.env" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/.env"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "chmod 600 '$REMOTE_WORKLOAD_DIR/.env'; chmod 700 '$REMOTE_WORKLOAD_DIR/deploy.sh'"
 
-          tar -C deploy/workload -czf - deploy.sh \
-            | ssh \
-                -o IdentitiesOnly=yes \
-                -i "$HOME/.ssh/id_ed25519" \
-                -p "$SSH_PORT" \
-                "$SSH_USER@$SSH_HOST" \
-                "tar -xzf - -C '$REMOTE_WORKLOAD_DIR'"
-
-          scp \
-            -o IdentitiesOnly=yes \
-            -i "$HOME/.ssh/id_ed25519" \
-            -P "$SSH_PORT" \
-            "$RUNNER_TEMP/workload.env" \
-            "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/.env"
-
-          ssh \
-            -o IdentitiesOnly=yes \
-            -i "$HOME/.ssh/id_ed25519" \
-            -p "$SSH_PORT" \
-            "$SSH_USER@$SSH_HOST" \
-            "chmod 600 '$REMOTE_WORKLOAD_DIR/.env'; chmod 700 '$REMOTE_WORKLOAD_DIR/deploy.sh'"
-
-      - name: Validate image and network on target
+      - name: Validate and activate container
+        if: ${{ needs.resolve.outputs.runtime == 'container' }}
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
-          ssh \
-            -o IdentitiesOnly=yes \
-            -i "$HOME/.ssh/id_ed25519" \
-            -p "$SSH_PORT" \
-            "$SSH_USER@$SSH_HOST" \
-            "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=validate bash ./deploy.sh"
+          set -Eeuo pipefail
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=validate bash ./deploy.sh"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=activate bash ./deploy.sh"
 
-      - name: Activate workload
-        id: apply
+      - name: Upload systemd release
+        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
-          ssh \
-            -o IdentitiesOnly=yes \
-            -i "$HOME/.ssh/id_ed25519" \
-            -p "$SSH_PORT" \
-            "$SSH_USER@$SSH_HOST" \
-            "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=activate bash ./deploy.sh"
+          set -Eeuo pipefail
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "mkdir -p '$DEPLOYMENT_PATH/.deploy' && chmod 700 '$DEPLOYMENT_PATH/.deploy'"
+          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT"             deploy/workload/systemd-release.sh "$SSH_USER@$SSH_HOST:$DEPLOYMENT_PATH/.deploy/systemd-release.sh"
+          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT"             "$RUNNER_TEMP/release/release.tar.gz" "$SSH_USER@$SSH_HOST:$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "chmod 700 '$DEPLOYMENT_PATH/.deploy/systemd-release.sh' && chmod 600 '$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz'"
+
+      - name: Validate systemd release
+        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "DEPLOY_MODE=validate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
+
+      - name: Activate systemd release
+        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "DEPLOY_MODE=activate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
 
       - name: Clean runner secret material
         if: always()
@@ -189,10 +214,15 @@ jobs:
         run: |
           {
             echo "### Workload deployment"
-            echo
-            echo "- workload: \`$WORKLOAD\`"
-            echo "- target: \`${{ needs.resolve.outputs.target }}\`"
-            echo "- image: \`$IMAGE_REF\`"
-            echo "- source repository: \`${{ github.event.client_payload.source_repository || 'unknown' }}\`"
-            echo "- result: \`${{ job.status }}\`"
+            echo "- workload: `$WORKLOAD`"
+            echo "- runtime: `$RUNTIME`"
+            echo "- target: `${{ needs.resolve.outputs.target }}`"
+            if [[ "$RUNTIME" == "container" ]]; then
+              echo "- image: `$IMAGE_REF`"
+            else
+              echo "- repository: `$SOURCE_REPOSITORY`"
+              echo "- ref: `$RELEASE_REF`"
+              echo "- release: `${{ steps.source.outputs.sha }}`"
+            fi
+            echo "- result: `${{ job.status }}`"
           } >> "$GITHUB_STEP_SUMMARY"
