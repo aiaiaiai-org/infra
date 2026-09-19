@@ -1,0 +1,14 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: prism-hubot
+  owner: aiaiaiai-org/prism-hubot
+spec:
+  repository: aiaiaiai-org/prism-hubot
+  runtime:
+    kind: systemd-release
+    deploymentPath: /opt/prism-hubot
+    service: prism-hubot.service
+    releaseRetention: 5
+    postActivateCommand: bundle exec rake telegram:commands

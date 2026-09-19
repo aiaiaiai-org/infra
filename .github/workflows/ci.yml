@@ -26,7 +26,7 @@ jobs:
         run: ruby scripts/validate-contracts.rb
 
       - name: Validate shell syntax
-        run: bash -n deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh
+        run: bash -n deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh
 
       - name: Validate workload placement resolver
         run: |
@@ -38,6 +38,18 @@ jobs:
           grep -Fxq 'port=1927' <<< "$output"
           grep -Fxq 'health=/health' <<< "$output"
           ! env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb does-not-exist 2>/dev/null
+
+      - name: Validate systemd release workload contract
+        run: |
+          set -Eeuo pipefail
+          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb prism-hubot)"
+          grep -Fxq 'target=edge-prod-1' <<< "$output"
+          grep -Fxq 'runtime=systemd-release' <<< "$output"
+          grep -Fxq 'repository=aiaiaiai-org/prism-hubot' <<< "$output"
+          grep -Fxq 'deployment_path=/opt/prism-hubot' <<< "$output"
+          grep -Fxq 'service=prism-hubot.service' <<< "$output"
+          grep -Fxq 'release_retention=5' <<< "$output"
+          grep -Fxq 'post_activate_command=bundle exec rake telegram:commands' <<< "$output"
 
       - name: Validate scoped upstream isolation
         run: |
