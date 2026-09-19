@@ -29,6 +29,7 @@ jobs:
       deployment_path: ${{ steps.resolve.outputs.deployment_path }}
       service: ${{ steps.resolve.outputs.service }}
       release_retention: ${{ steps.resolve.outputs.release_retention }}
+      post_activate_command: ${{ steps.resolve.outputs.post_activate_command }}
       image: ${{ steps.image.outputs.image }}
       ref: ${{ steps.ref.outputs.ref }}
     steps:
@@ -86,6 +87,7 @@ jobs:
       DEPLOYMENT_PATH: ${{ needs.resolve.outputs.deployment_path }}
       SERVICE_NAME: ${{ needs.resolve.outputs.service }}
       KEEP_RELEASES: ${{ needs.resolve.outputs.release_retention }}
+      POST_ACTIVATE_COMMAND: ${{ needs.resolve.outputs.post_activate_command }}
       REMOTE_WORKLOAD_DIR: .local/share/aiaiaiai-infra/workloads/${{ github.event.client_payload.workload }}
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
 
@@ -194,7 +196,7 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           set -Eeuo pipefail
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "DEPLOY_MODE=validate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST"             "DEPLOY_MODE=validate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' POST_ACTIVATE_COMMAND='$POST_ACTIVATE_COMMAND' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
 
       - name: Activate systemd release
         if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
