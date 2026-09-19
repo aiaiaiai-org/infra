@@ -1,11 +1,10 @@
 #!/usr/bin/env ruby
+# © 2026 aiaiaiai · aiaiaiai.org
 # frozen_string_literal: true
 
 require "yaml"
 
 ROOT = File.expand_path("..", __dir__)
-DEFAULT_TEST_PORT = 1703
-DEFAULT_PRODUCTION_PORT = 1927
 EDGE_PATH = File.join(ROOT, "contracts", "edge.yaml")
 SERVER_GLOB = File.join(ROOT, "contracts", "servers", "*.yaml")
 SERVICE_GLOB = File.join(ROOT, "contracts", "services", "*.yaml")
@@ -67,21 +66,48 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
   abort("#{path}: unsupported apiVersion") unless contract["apiVersion"] == "infra.nilx.one/v1"
   abort("#{path}: unsupported kind") unless contract["kind"] == "WorkloadContract"
 
-  name = fetch!(fetch!(contract, "metadata", path), "name", path)
-  spec = fetch!(contract, "spec", path)
-  abort("#{path}: network must be #{network_name}") unless spec["network"] == network_name
-
-  aliases = Array(fetch!(spec, "aliases", path))
-  abort("#{path}: aliases must be non-empty strings") unless aliases.any? && aliases.all? { |value| value.is_a?(String) && !value.empty? }
-
-  deployment = fetch!(spec, "deployment", path)
-  abort("#{path}: deployment must be test or production") unless %w[test production].include?(deployment)
-
-  port = fetch!(spec, "port", path)
-  abort("#{path}: port must be between 1 and 65535") unless port.is_a?(Integer) && port.between?(1, 65_535)
-  expected_default_port = deployment == "test" ? DEFAULT_TEST_PORT : DEFAULT_PRODUCTION_PORT
-  abort("#{path}: #{deployment} workload must use default port #{expected_default_port}") unless port == expected_default_port
+  metadata = fetch!(contract, "metadata", path)
+  name = fetch!(metadata, "name", path)
+  owner = fetch!(metadata, "owner", path)
   abort("#{path}: duplicate service id #{name}") if services.key?(name)
+
+  spec = fetch!(contract, "spec", path)
+  runtime = spec["runtime"] || { "kind" => "container" }
+  runtime_kind = runtime["kind"]
+  abort("#{path}: runtime.kind must be container or systemd-release") unless %w[container systemd-release].include?(runtime_kind)
+
+  if runtime_kind == "container"
+    abort("#{path}: network must be #{network_name}") unless spec["network"] == network_name
+
+    aliases = Array(fetch!(spec, "aliases", path))
+    abort("#{path}: aliases must be non-empty strings") unless aliases.any? && aliases.all? { |value| value.is_a?(String) && !value.empty? }
+
+    deployment = fetch!(spec, "deployment", path)
+    abort("#{path}: deployment must be test or production") unless %w[test production].include?(deployment)
+
+    port = fetch!(spec, "port", path)
+    abort("#{path}: port must be between 1 and 65535") unless port.is_a?(Integer) && port.between?(1, 65_535)
+    expected_default_port = deployment == "test" ? 1703 : 1927
+    abort("#{path}: #{deployment} workload must use default port #{expected_default_port}") unless port == expected_default_port
+
+    health = fetch!(spec, "health", path)
+    abort("#{path}: health must start with /") unless health.is_a?(String) && health.start_with?("/")
+  else
+    repository = fetch!(spec, "repository", path)
+    abort("#{path}: repository must be owner/name") unless repository.is_a?(String) && repository.match?(/\A[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\z/)
+
+    deployment_path = fetch!(runtime, "deploymentPath", path)
+    abort("#{path}: deploymentPath must be absolute") unless deployment_path.is_a?(String) && deployment_path.start_with?("/")
+
+    service_name = fetch!(runtime, "service", path)
+    abort("#{path}: service must be a systemd unit name") unless service_name.is_a?(String) && service_name.match?(/\A[a-zA-Z0-9@_.:-]+\.service\z/)
+
+    retention = fetch!(runtime, "releaseRetention", path)
+    abort("#{path}: releaseRetention must be between 1 and 100") unless retention.is_a?(Integer) && retention.between?(1, 100)
+
+    post_activate = fetch!(runtime, "postActivateCommand", path)
+    abort("#{path}: postActivateCommand must be a non-empty string") unless post_activate.is_a?(String) && !post_activate.strip.empty?
+  end
 
   services[name] = contract
 end

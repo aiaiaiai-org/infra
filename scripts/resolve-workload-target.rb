@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+# © 2026 aiaiaiai · aiaiaiai.org
 # frozen_string_literal: true
 
 require "yaml"
@@ -25,19 +26,59 @@ service = load_yaml(service_path)
 abort("#{service_path}: unsupported kind") unless service["kind"] == "WorkloadContract"
 spec = service["spec"] || abort("#{service_path}: missing spec")
 
-aliases = Array(spec["aliases"])
-abort("#{service_path}: aliases must be non-empty") if aliases.empty?
+runtime = spec["runtime"] || { "kind" => "container" }
+runtime_kind = runtime["kind"]
+abort("#{service_path}: unsupported runtime kind") unless %w[container systemd-release].include?(runtime_kind)
 
-port = spec["port"]
-abort("#{service_path}: port must be between 1 and 65535") unless port.is_a?(Integer) && port.between?(1, 65_535)
+result = {
+  "target" => nil,
+  "runtime" => runtime_kind,
+}
 
-health = spec["health"]
-abort("#{service_path}: health must start with /") unless health.is_a?(String) && health.start_with?("/")
+if runtime_kind == "container"
+  aliases = Array(spec["aliases"])
+  abort("#{service_path}: aliases must be non-empty") if aliases.empty?
 
-network = spec["network"]
-abort("#{service_path}: network is required") unless network.is_a?(String) && !network.empty?
+  port = spec["port"]
+  abort("#{service_path}: port must be between 1 and 65535") unless port.is_a?(Integer) && port.between?(1, 65_535)
 
-target_name = nil
+  health = spec["health"]
+  abort("#{service_path}: health must start with /") unless health.is_a?(String) && health.start_with?("/")
+
+  network = spec["network"]
+  abort("#{service_path}: network is required") unless network.is_a?(String) && !network.empty?
+
+  result.merge!(
+    "network" => network,
+    "alias" => aliases.first,
+    "port" => port.to_s,
+    "health" => health,
+  )
+else
+  repository = spec["repository"]
+  abort("#{service_path}: repository must be owner/name") unless repository.is_a?(String) && repository.match?(/\A[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\z/)
+
+  deployment_path = runtime["deploymentPath"]
+  abort("#{service_path}: deploymentPath must be absolute") unless deployment_path.is_a?(String) && deployment_path.start_with?("/")
+
+  service_name = runtime["service"]
+  abort("#{service_path}: service must be a systemd unit name") unless service_name.is_a?(String) && service_name.match?(/\A[a-zA-Z0-9@_.:-]+\.service\z/)
+
+  retention = runtime["releaseRetention"]
+  abort("#{service_path}: releaseRetention must be between 1 and 100") unless retention.is_a?(Integer) && retention.between?(1, 100)
+
+  post_activate = runtime["postActivateCommand"]
+  abort("#{service_path}: postActivateCommand must be a non-empty string") unless post_activate.is_a?(String) && !post_activate.strip.empty?
+
+  result.merge!(
+    "repository" => repository,
+    "deployment_path" => deployment_path,
+    "service" => service_name,
+    "release_retention" => retention.to_s,
+    "post_activate_command" => post_activate,
+  )
+end
+
 Dir.glob(SERVER_GLOB).sort.each do |path|
   server = load_yaml(path)
   next unless server["kind"] == "ServerContract"
@@ -45,18 +86,10 @@ Dir.glob(SERVER_GLOB).sort.each do |path|
   workloads = Array(server.dig("spec", "workloads"))
   next unless workloads.include?(workload)
 
-  abort("workload #{workload} is placed on more than one server contract") if target_name
-  target_name = server.dig("metadata", "name")
+  abort("workload #{workload} is placed on more than one server contract") if result["target"]
+  result["target"] = server.dig("metadata", "name")
 end
-abort("workload #{workload} is not placed on any server contract") unless target_name
-
-result = {
-  "target" => target_name,
-  "network" => network,
-  "alias" => aliases.first,
-  "port" => port.to_s,
-  "health" => health,
-}
+abort("workload #{workload} is not placed on any server contract") unless result["target"]
 
 output_path = ENV["GITHUB_OUTPUT"]
 if output_path
