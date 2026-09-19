@@ -109,9 +109,9 @@ jobs:
             --volume "$PWD/deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro" \
             infra-edge-caddy:ci \
             caddy validate --config /etc/caddy/Caddyfile
-          test "$(grep -Fc 'reverse_proxy market-api-production:1927' deploy/edge/Caddyfile)" -eq 1
-          test "$(grep -Fc 'reverse_proxy market-bot-production:1927' deploy/edge/Caddyfile)" -eq 1
-          test "$(grep -Fc 'reverse_proxy market-bot-development:1703' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy market-api-production:10000' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy market-bot-production:10000' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy market-bot-development:10000' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy nilxone-web:1927' deploy/edge/Caddyfile)" -eq 2
           test "$(grep -Fc 'reverse_proxy nilxone-telegram:1927' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy nilxone-discord:1927' deploy/edge/Caddyfile)" -eq 1
@@ -197,9 +197,9 @@ jobs:
             docker exec "$name" wget -q -T 1 -O- "http://127.0.0.1:${port}/health" | grep -qx "$body"
           }
 
-          wait_fixture infra-ci-market-api 1927 market-api-production
-          wait_fixture infra-ci-market-bot 1927 market-bot-production
-          wait_fixture infra-ci-market-bot-test 1703 market-bot-development
+          wait_fixture infra-ci-market-api 10000 market-api-production
+          wait_fixture infra-ci-market-bot 10000 market-bot-production
+          wait_fixture infra-ci-market-bot-test 10000 market-bot-development
           wait_fixture infra-ci-nilxone-web 1927 nilxone-web
           wait_fixture infra-ci-nilxone-telegram 1927 nilxone-telegram
           wait_fixture infra-ci-nilxone-discord 1927 nilxone-discord
