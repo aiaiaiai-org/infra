@@ -99,6 +99,9 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
 
     retention = fetch!(runtime, "releaseRetention", path)
     abort("#{path}: releaseRetention must be between 1 and 100") unless retention.is_a?(Integer) && retention.between?(1, 100)
+
+    post_activate = fetch!(runtime, "postActivateCommand", path)
+    abort("#{path}: postActivateCommand must be a non-empty string") unless post_activate.is_a?(String) && !post_activate.strip.empty?
   end
 
   services[name] = contract
