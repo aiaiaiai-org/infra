@@ -72,7 +72,7 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
   abort("#{path}: duplicate service id #{name}") if services.key?(name)
 
   spec = fetch!(contract, "spec", path)
-  runtime = fetch!(spec, "runtime", path)
+  runtime = spec["runtime"] || { "kind" => "container" }
   runtime_kind = runtime["kind"]
   abort("#{path}: runtime.kind must be container or systemd-release") unless %w[container systemd-release].include?(runtime_kind)
 
