@@ -26,9 +26,6 @@ service = load_yaml(service_path)
 abort("#{service_path}: unsupported kind") unless service["kind"] == "WorkloadContract"
 spec = service["spec"] || abort("#{service_path}: missing spec")
 
-repository = spec["repository"]
-abort("#{service_path}: repository must be owner/name") unless repository.is_a?(String) && repository.match?(/\A[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\z/)
-
 runtime = spec["runtime"] || abort("#{service_path}: missing runtime")
 runtime_kind = runtime["kind"]
 abort("#{service_path}: unsupported runtime kind") unless %w[container systemd-release].include?(runtime_kind)
@@ -36,7 +33,6 @@ abort("#{service_path}: unsupported runtime kind") unless %w[container systemd-r
 result = {
   "target" => nil,
   "runtime" => runtime_kind,
-  "repository" => repository,
 }
 
 if runtime_kind == "container"
@@ -59,6 +55,9 @@ if runtime_kind == "container"
     "health" => health,
   )
 else
+  repository = spec["repository"]
+  abort("#{service_path}: repository must be owner/name") unless repository.is_a?(String) && repository.match?(/\A[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\z/)
+
   deployment_path = runtime["deploymentPath"]
   abort("#{service_path}: deploymentPath must be absolute") unless deployment_path.is_a?(String) && deployment_path.start_with?("/")
 
@@ -72,6 +71,7 @@ else
   abort("#{service_path}: postActivateCommand must be a non-empty string") unless post_activate.is_a?(String) && !post_activate.strip.empty?
 
   result.merge!(
+    "repository" => repository,
     "deployment_path" => deployment_path,
     "service" => service_name,
     "release_retention" => retention.to_s,
