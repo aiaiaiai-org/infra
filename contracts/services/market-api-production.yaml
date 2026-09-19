@@ -4,6 +4,7 @@ metadata:
   name: market-api-production
   owner: 0xda-market/core
 spec:
+  deployment: production
   network: nilx-edge
   aliases:
     - market-api-production

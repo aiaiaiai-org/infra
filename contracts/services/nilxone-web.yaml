@@ -4,6 +4,7 @@ metadata:
   name: nilxone-web
   owner: nilx-one/web
 spec:
+  deployment: production
   network: nilx-edge
   aliases:
     - nilxone-web

@@ -4,6 +4,19 @@ Canonical infrastructure contract for the `aiaiaiai-org` public edge.
 
 This repository owns the edge target, public ports, Caddy routing, deployment validation, activation, public verification, and rollback. Product repositories own their application runtime, data, secrets, images, and release lifecycle.
 
+## Standard workload ports
+
+See [`docs/workload-ports.md`](docs/workload-ports.md) for the normative workload-port policy and contract rules.
+
+`aiaiaiai-org/infra` reserves the workload ports by deployment class:
+
+| Deployment class | Container port | Rule |
+| --- | ---: | --- |
+| Test | `1703` | All test workloads use `*:1703` by default |
+| Production | `1927` | All production workloads use `*:1927` by default |
+
+The port is part of the workload contract. Product repositories must not invent a deployment-specific port unless the infra contract is intentionally changed. Edge upstreams and workload contracts must always agree. Test and production ports are deliberately distinct.
+
 ## Current production model
 
 ```text
@@ -23,9 +36,9 @@ Internet
 └── edge-prod-1
     └── Caddy: edge-prod-1-caddy
         ├── 0xda-market.nilx.one
-        │   ├── /bot-test/* → market-bot-development:10000
-        │   ├── /bot/*      → market-bot-production:10000
-        │   └── /*           → market-api-production:10000
+        │   ├── /bot-test/* → market-bot-development:1703
+        │   ├── /bot/*      → market-bot-production:1927
+        │   └── /*           → market-api-production:1927
         └── nilx.one
             ├── /telegram/* → nilxone-telegram:1927
             ├── /discord/*  → nilxone-discord:1927
@@ -68,9 +81,9 @@ Public routes:
 
 | Public route | Upstream | Prefix behavior |
 | --- | --- | --- |
-| `https://0xda-market.nilx.one/bot/*` | `market-bot-production:10000` | strip `/bot` |
-| `https://0xda-market.nilx.one/bot-test/*` | `market-bot-development:10000` | strip `/bot-test` |
-| `https://0xda-market.nilx.one/*` | `market-api-production:10000` | preserve |
+| `https://0xda-market.nilx.one/bot/*` | `market-bot-production:1927` | strip `/bot` |
+| `https://0xda-market.nilx.one/bot-test/*` | `market-bot-development:1703` | strip `/bot-test` |
+| `https://0xda-market.nilx.one/*` | `market-api-production:1927` | preserve |
 | `https://nilx.one/telegram/*` | `nilxone-telegram:1927` | strip `/telegram` |
 | `https://nilx.one/discord/*` | `nilxone-discord:1927` | strip `/discord` |
 | `https://nilx.one/*` | `nilxone-web:1927` | preserve |
