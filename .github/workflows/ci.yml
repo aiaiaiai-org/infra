@@ -26,7 +26,7 @@ jobs:
         run: ruby scripts/validate-contracts.rb
 
       - name: Validate shell syntax
-        run: bash -n deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh
+        run: bash -n deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh
 
       - name: Validate workload placement resolver
         run: |
@@ -38,6 +38,18 @@ jobs:
           grep -Fxq 'port=1927' <<< "$output"
           grep -Fxq 'health=/health' <<< "$output"
           ! env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb does-not-exist 2>/dev/null
+
+      - name: Validate systemd release workload contract
+        run: |
+          set -Eeuo pipefail
+          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb prism-hubot)"
+          grep -Fxq 'target=edge-prod-1' <<< "$output"
+          grep -Fxq 'runtime=systemd-release' <<< "$output"
+          grep -Fxq 'repository=aiaiaiai-org/prism-hubot' <<< "$output"
+          grep -Fxq 'deployment_path=/opt/prism-hubot' <<< "$output"
+          grep -Fxq 'service=prism-hubot.service' <<< "$output"
+          grep -Fxq 'release_retention=5' <<< "$output"
+          grep -Fxq 'post_activate_command=bundle exec rake telegram:commands' <<< "$output"
 
       - name: Validate scoped upstream isolation
         run: |
@@ -97,9 +109,9 @@ jobs:
             --volume "$PWD/deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro" \
             infra-edge-caddy:ci \
             caddy validate --config /etc/caddy/Caddyfile
-          test "$(grep -Fc 'reverse_proxy market-api-production:10000' deploy/edge/Caddyfile)" -eq 1
-          test "$(grep -Fc 'reverse_proxy market-bot-production:10000' deploy/edge/Caddyfile)" -eq 1
-          test "$(grep -Fc 'reverse_proxy market-bot-development:10000' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy market-api-production:1927' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy market-bot-production:1927' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy market-bot-development:1703' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy nilxone-web:1927' deploy/edge/Caddyfile)" -eq 2
           test "$(grep -Fc 'reverse_proxy nilxone-telegram:1927' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy nilxone-discord:1927' deploy/edge/Caddyfile)" -eq 1
@@ -185,9 +197,9 @@ jobs:
             docker exec "$name" wget -q -T 1 -O- "http://127.0.0.1:${port}/health" | grep -qx "$body"
           }
 
-          wait_fixture infra-ci-market-api 10000 market-api-production
-          wait_fixture infra-ci-market-bot 10000 market-bot-production
-          wait_fixture infra-ci-market-bot-test 10000 market-bot-development
+          wait_fixture infra-ci-market-api 1927 market-api-production
+          wait_fixture infra-ci-market-bot 1927 market-bot-production
+          wait_fixture infra-ci-market-bot-test 1703 market-bot-development
           wait_fixture infra-ci-nilxone-web 1927 nilxone-web
           wait_fixture infra-ci-nilxone-telegram 1927 nilxone-telegram
           wait_fixture infra-ci-nilxone-discord 1927 nilxone-discord
