@@ -6,6 +6,8 @@ This repository owns the edge target, public ports, Caddy routing, deployment va
 
 ## Standard workload ports
 
+See [`docs/workload-ports.md`](docs/workload-ports.md) for the normative workload-port policy and contract rules.
+
 `aiaiaiai-org/infra` reserves the workload ports by deployment class:
 
 | Deployment class | Container port | Rule |
