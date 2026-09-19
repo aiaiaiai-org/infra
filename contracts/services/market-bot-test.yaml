@@ -4,11 +4,12 @@ metadata:
   name: market-bot-test
   owner: 0xda-market/telegram-bot
 spec:
+  deployment: test
   network: nilx-edge
   aliases:
     - market-bot-development
   protocol: http
-  port: 10000
+  port: 1703
   health: /health
   public:
     host: 0xda-market.nilx.one
