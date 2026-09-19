@@ -31,14 +31,14 @@ spec:
       pathPrefix: /bot/
       stripPrefix: true
       service: market-bot-production
-      upstream: market-bot-production:10000
+      upstream: market-bot-production:1927
       health: /health
     - id: market-api-production
       host: ${MARKET_DOMAIN}
       pathPrefix: /
       stripPrefix: false
       service: market-api-production
-      upstream: market-api-production:10000
+      upstream: market-api-production:1927
       health: /health
     - id: nilxone-telegram
       host: ${NILX_WEB_DOMAIN}
