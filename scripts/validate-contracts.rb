@@ -74,11 +74,13 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
   aliases = Array(fetch!(spec, "aliases", path))
   abort("#{path}: aliases must be non-empty strings") unless aliases.any? && aliases.all? { |value| value.is_a?(String) && !value.empty? }
 
+  deployment = fetch!(spec, "deployment", path)
+  abort("#{path}: deployment must be test or production") unless %w[test production].include?(deployment)
+
   port = fetch!(spec, "port", path)
   abort("#{path}: port must be between 1 and 65535") unless port.is_a?(Integer) && port.between?(1, 65_535)
-  deployment_class = name.end_with?("-test") || name.end_with?("-development") ? :test : :production
-  expected_default_port = deployment_class == :test ? DEFAULT_TEST_PORT : DEFAULT_PRODUCTION_PORT
-  abort("#{path}: #{deployment_class} workload must use default port #{expected_default_port}") unless port == expected_default_port
+  expected_default_port = deployment == "test" ? DEFAULT_TEST_PORT : DEFAULT_PRODUCTION_PORT
+  abort("#{path}: #{deployment} workload must use default port #{expected_default_port}") unless port == expected_default_port
   abort("#{path}: duplicate service id #{name}") if services.key?(name)
 
   services[name] = contract
