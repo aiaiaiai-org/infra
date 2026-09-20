@@ -28,6 +28,7 @@ jobs:
       health: ${{ steps.resolve.outputs.health }}
       environment: ${{ steps.resolve.outputs.environment }}
       labels: ${{ steps.resolve.outputs.labels }}
+      volumes: ${{ steps.resolve.outputs.volumes }}
       deployment_path: ${{ steps.resolve.outputs.deployment_path }}
       service: ${{ steps.resolve.outputs.service }}
       release_retention: ${{ steps.resolve.outputs.release_retention }}
@@ -88,6 +89,7 @@ jobs:
       WORKLOAD_HEALTH: ${{ needs.resolve.outputs.health }}
       WORKLOAD_ENVIRONMENT: ${{ needs.resolve.outputs.environment }}
       WORKLOAD_LABELS: ${{ needs.resolve.outputs.labels }}
+      WORKLOAD_VOLUMES: ${{ needs.resolve.outputs.volumes }}
       DEPLOYMENT_PATH: ${{ needs.resolve.outputs.deployment_path }}
       SERVICE_NAME: ${{ needs.resolve.outputs.service }}
       KEEP_RELEASES: ${{ needs.resolve.outputs.release_retention }}
@@ -152,6 +154,7 @@ jobs:
             printf 'WORKLOAD_HEALTH=%s\n' "$WORKLOAD_HEALTH"
             printf 'WORKLOAD_ENVIRONMENT=%s\n' "$WORKLOAD_ENVIRONMENT"
             printf 'WORKLOAD_LABELS=%s\n' "$WORKLOAD_LABELS"
+            printf 'WORKLOAD_VOLUMES=%s\n' "$WORKLOAD_VOLUMES"
           } > "$RUNNER_TEMP/workload.env"
           if [[ "$WORKLOAD" == "nilxone-identity" ]]; then
             test -n "$NILXONE_IDENTITY_RUNTIME_ENV"
