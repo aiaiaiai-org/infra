@@ -185,8 +185,7 @@ jobs:
           scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "$RUNNER_TEMP/identity-provider.env" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/provider.env"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "chmod 700 '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' && chmod 600 '$REMOTE_WORKLOAD_DIR/provider.env' && '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' '$REMOTE_WORKLOAD_DIR/runtime.env' '$REMOTE_WORKLOAD_DIR/provider.env' && rm -f '$REMOTE_WORKLOAD_DIR/provider.env' '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' && test -s '$REMOTE_WORKLOAD_DIR/runtime.env'"
           rm -f "$RUNNER_TEMP/identity-provider.env"
-          runtime_b64="$(ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "base64 -w 0 '$REMOTE_WORKLOAD_DIR/runtime.env'")"
-          printf 'WORKLOAD_SECRET_ENV=%s\n' "$runtime_b64" >> "$RUNNER_TEMP/workload.env"
+          printf 'WORKLOAD_SECRET_ENV_FILE=%s/runtime.env\n' "$REMOTE_WORKLOAD_DIR" >> "$RUNNER_TEMP/workload.env"
       - name: Upload container deploy script
         if: ${{ needs.resolve.outputs.runtime == 'container' }}
         env:
