@@ -91,10 +91,10 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
     abort("#{path}: #{deployment} workload must use default port #{expected_default_port}") unless port == expected_default_port
 
     health = fetch!(spec, "health", path)
-    abort("${path}: health must start with /") unless health.is_a?(String) && health.start_with?("/")
+    abort("#{path}: health must start with /") unless health.is_a?(String) && health.start_with?("/")
 
     environment = runtime["environment"] || []
-    abort("${path}: runtime.environment must be an array") unless environment.is_a?(Array)
+    abort("#{path}: runtime.environment must be an array") unless environment.is_a?(Array)
     environment.each do |entry|
       abort("#{path}: runtime.environment entries must be KEY=VALUE strings") unless entry.is_a?(String) && entry.match?(/\A[A-Z][A-Z0-9_]*=[A-Za-z0-9_./:@+\-]*\z/)
     end
