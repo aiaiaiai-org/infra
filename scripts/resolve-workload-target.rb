@@ -59,7 +59,7 @@ if runtime_kind == "container"
   prepare_env = runtime["prepareEnv"].to_s
   if !prepare_env.empty?
     owner = service.dig("metadata", "owner")
-    abort("#{service_path}: metadata.owner must be owner/name when prepareEnv is set") unless owner.is_a?(String) && owner.match?(/\\A[a-zA-Z0-9_.-]+\\/[a-zA-Z0-9_.-]+\\z/)
+    abort("#{service_path}: metadata.owner must be owner/name when prepareEnv is set") unless owner.is_a?(String) && owner.match?(/\A[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\z/)
     result["repository"] = owner
   end
 
