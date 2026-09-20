@@ -26,6 +26,7 @@ jobs:
       alias: ${{ steps.resolve.outputs.alias }}
       port: ${{ steps.resolve.outputs.port }}
       health: ${{ steps.resolve.outputs.health }}
+      environment: ${{ steps.resolve.outputs.environment }}
       deployment_path: ${{ steps.resolve.outputs.deployment_path }}
       service: ${{ steps.resolve.outputs.service }}
       release_retention: ${{ steps.resolve.outputs.release_retention }}
@@ -84,6 +85,7 @@ jobs:
       WORKLOAD_ALIAS: ${{ needs.resolve.outputs.alias }}
       WORKLOAD_PORT: ${{ needs.resolve.outputs.port }}
       WORKLOAD_HEALTH: ${{ needs.resolve.outputs.health }}
+      WORKLOAD_ENVIRONMENT: ${{ needs.resolve.outputs.environment }}
       DEPLOYMENT_PATH: ${{ needs.resolve.outputs.deployment_path }}
       SERVICE_NAME: ${{ needs.resolve.outputs.service }}
       KEEP_RELEASES: ${{ needs.resolve.outputs.release_retention }}
