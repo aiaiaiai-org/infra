@@ -30,7 +30,7 @@ jobs:
       EDGE_NETWORK: nilx-edge
       CADDY_CONTAINER: edge-prod-1-caddy
       REMOTE_EDGE_DIR: .local/share/aiaiaiai-infra/edge
-      SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
+      SSH_PORT: ${{ vars.SSH_PORT || '1927' }}
     steps:
       - name: Validate credentials
         env:
@@ -61,7 +61,6 @@ jobs:
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           set -Eeuo pipefail
           install -m 0700 -d "$HOME/.ssh"
