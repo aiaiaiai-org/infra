@@ -50,6 +50,7 @@ jobs:
           grep -Fxq 'health=/health' <<< "$output"
           grep -Fxq 'labels=b25lLm5pbHgucHJvZHVjdD0weDEKb25lLm5pbHguc2VydmljZT1pZGVudGl0eQpvbmUubmlseC5pZGVudGl0eS5jb250cmFjdD05Cg==' <<< "$output"
           grep -Fxq 'volumes=bmlseG9uZS1pZGVudGl0eS1kYXRhOi9kYXRhCg==' <<< "$output"
+          grep -Fxq 'prepare_env=services/identity/deploy/prepare-runtime-env.sh' <<< "$output"
 
       - name: Validate systemd release workload contract
         run: |

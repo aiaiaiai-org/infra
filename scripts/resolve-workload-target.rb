@@ -64,6 +64,7 @@ if runtime_kind == "container"
     "environment" => Base64.strict_encode64(environment.join("\n") + "\n"),
     "labels" => Base64.strict_encode64(labels.join("\n") + "\n"),
     "volumes" => Base64.strict_encode64(volumes.join("\n") + "\n"),
+    "prepare_env" => runtime["prepareEnv"].to_s,
   )
 else
   repository = spec["repository"]

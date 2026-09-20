@@ -18,6 +18,7 @@ spec:
       - HTTP_BIND=0.0.0.0:1927
       - DATABASE_URL=sqlite:///data/identity.db
       - TELEGRAM_INIT_DATA_MAX_AGE_SECONDS=300
+    prepareEnv: services/identity/deploy/prepare-runtime-env.sh
     labels:
       - one.nilx.product=0x1
       - one.nilx.service=identity
