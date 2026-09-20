@@ -37,13 +37,30 @@ release_dir="$releases_dir/$release_id"
 current_link="$deploy_path/current"
 archive_path="$staging_dir/$release_id.tar.gz"
 
+require_command() {
+  local command_name="$1"
+
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    echo "required command not found: $command_name" >&2
+    return 1
+  fi
+}
+
 require_runtime() {
-  command -v ruby >/dev/null
-  command -v bundle >/dev/null
-  command -v git >/dev/null
-  command -v systemctl >/dev/null
-  test -f "$shared_dir/.env"
-  systemctl cat "$service" >/dev/null
+  require_command ruby
+  require_command bundle
+  require_command git
+  require_command systemctl
+
+  if [[ ! -f "$shared_dir/.env" ]]; then
+    echo "shared environment file missing: $shared_dir/.env" >&2
+    return 1
+  fi
+
+  if ! systemctl cat "$service" >/dev/null 2>&1; then
+    echo "systemd service not found or unreadable: $service" >&2
+    return 1
+  fi
 }
 
 prepare_layout() {
