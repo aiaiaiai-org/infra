@@ -129,7 +129,9 @@ Required secrets:
 
 Optional variable:
 
-- `SSH_PORT=22022`
+- `SSH_PORT=1927`
+
+The deployment workflow uses `1927` when `SSH_PORT` is not set. A dedicated test environment may override the same variable with `1703`; the workload ports described above remain a separate application-level contract.
 
 ## Delivery gates
 

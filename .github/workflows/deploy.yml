@@ -30,7 +30,7 @@ jobs:
       EDGE_NETWORK: nilx-edge
       CADDY_CONTAINER: edge-prod-1-caddy
       REMOTE_EDGE_DIR: .local/share/aiaiaiai-infra/edge
-      SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
+      SSH_PORT: ${{ vars.SSH_PORT || '1927' }}
     steps:
       - name: Validate credentials
         env:
