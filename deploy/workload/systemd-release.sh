@@ -37,6 +37,35 @@ release_dir="$releases_dir/$release_id"
 current_link="$deploy_path/current"
 archive_path="$staging_dir/$release_id.tar.gz"
 
+prepare_runtime_path() {
+  local home="${HOME:-}"
+  local candidate
+
+  if [[ -z "$home" || ! -d "$home" ]]; then
+    home="$(getent passwd "$(id -un)" | cut -d: -f6)"
+  fi
+
+  local -a runtime_paths=(
+    "$home/.rbenv/shims"
+    "$home/.rbenv/bin"
+    "$home/.asdf/shims"
+    "$home/.asdf/bin"
+    "$home/.local/share/mise/shims"
+    "$home/.local/bin"
+  )
+
+  for candidate in "${runtime_paths[@]}"; do
+    if [[ -d "$candidate" ]]; then
+      case ":$PATH:" in
+        *":$candidate:"*) ;;
+        *) PATH="$candidate:$PATH" ;;
+      esac
+    fi
+  done
+
+  export PATH
+}
+
 require_command() {
   local command_name="$1"
 
@@ -47,6 +76,7 @@ require_command() {
 }
 
 require_runtime() {
+  prepare_runtime_path
   require_command ruby
   require_command bundle
   require_command git
@@ -79,6 +109,14 @@ install_release() {
   ln -sfn "$delivery_state_dir" "$release_dir/var/delivery-idempotency"
 
   cd "$release_dir"
+  expected_ruby_version="$(sed -n '1p' .ruby-version 2>/dev/null || true)"
+  if [[ -n "$expected_ruby_version" ]]; then
+    actual_ruby_version="$(ruby -e 'print RUBY_VERSION')"
+    if [[ "$actual_ruby_version" != "$expected_ruby_version" ]]; then
+      echo "Ruby version mismatch: release requires $expected_ruby_version, runtime provides $actual_ruby_version" >&2
+      exit 1
+    fi
+  fi
   bundle config set --local deployment true
   bundle config set --local path "$bundle_dir"
   bundle install --jobs 4 --retry 3
@@ -96,6 +134,14 @@ validate_release() {
   ln -sfn "$state_dir" "$release_dir/var/interaction-state"
   ln -sfn "$delivery_state_dir" "$release_dir/var/delivery-idempotency"
   cd "$release_dir"
+  expected_ruby_version="$(sed -n '1p' .ruby-version 2>/dev/null || true)"
+  if [[ -n "$expected_ruby_version" ]]; then
+    actual_ruby_version="$(ruby -e 'print RUBY_VERSION')"
+    if [[ "$actual_ruby_version" != "$expected_ruby_version" ]]; then
+      echo "Ruby version mismatch: release requires $expected_ruby_version, runtime provides $actual_ruby_version" >&2
+      exit 1
+    fi
+  fi
   bundle config set --local deployment true
   bundle config set --local path "$bundle_dir"
   bundle install --jobs 4 --retry 3
