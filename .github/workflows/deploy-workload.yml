@@ -27,6 +27,7 @@ jobs:
       port: ${{ steps.resolve.outputs.port }}
       health: ${{ steps.resolve.outputs.health }}
       environment: ${{ steps.resolve.outputs.environment }}
+      labels: ${{ steps.resolve.outputs.labels }}
       deployment_path: ${{ steps.resolve.outputs.deployment_path }}
       service: ${{ steps.resolve.outputs.service }}
       release_retention: ${{ steps.resolve.outputs.release_retention }}
@@ -86,12 +87,14 @@ jobs:
       WORKLOAD_PORT: ${{ needs.resolve.outputs.port }}
       WORKLOAD_HEALTH: ${{ needs.resolve.outputs.health }}
       WORKLOAD_ENVIRONMENT: ${{ needs.resolve.outputs.environment }}
+      WORKLOAD_LABELS: ${{ needs.resolve.outputs.labels }}
       DEPLOYMENT_PATH: ${{ needs.resolve.outputs.deployment_path }}
       SERVICE_NAME: ${{ needs.resolve.outputs.service }}
       KEEP_RELEASES: ${{ needs.resolve.outputs.release_retention }}
       POST_ACTIVATE_COMMAND: ${{ needs.resolve.outputs.post_activate_command }}
       REMOTE_WORKLOAD_DIR: .local/share/aiaiaiai-infra/workloads/${{ github.event.client_payload.workload }}
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
+      NILXONE_IDENTITY_RUNTIME_ENV: ${{ secrets.NILXONE_IDENTITY_RUNTIME_ENV }}
 
     steps:
       - name: Validate SSH credentials
@@ -147,7 +150,13 @@ jobs:
             printf 'WORKLOAD_ALIAS=%s\n' "$WORKLOAD_ALIAS"
             printf 'WORKLOAD_PORT=%s\n' "$WORKLOAD_PORT"
             printf 'WORKLOAD_HEALTH=%s\n' "$WORKLOAD_HEALTH"
+            printf 'WORKLOAD_ENVIRONMENT=%s\n' "$WORKLOAD_ENVIRONMENT"
+            printf 'WORKLOAD_LABELS=%s\n' "$WORKLOAD_LABELS"
           } > "$RUNNER_TEMP/workload.env"
+          if [[ "$WORKLOAD" == "nilxone-identity" ]]; then
+            test -n "$NILXONE_IDENTITY_RUNTIME_ENV"
+            printf 'WORKLOAD_SECRET_ENV=%s\n' "$(printf '%s' "$NILXONE_IDENTITY_RUNTIME_ENV" | base64 -w 0)" >> "$RUNNER_TEMP/workload.env"
+          fi
 
       - name: Prepare systemd release
         if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
