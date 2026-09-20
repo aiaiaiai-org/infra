@@ -23,6 +23,7 @@ port="${WORKLOAD_PORT:-}"
 health_path="${WORKLOAD_HEALTH:-}"
 environment_b64="${WORKLOAD_ENVIRONMENT:-}"
 labels_b64="${WORKLOAD_LABELS:-}"
+volumes_b64="${WORKLOAD_VOLUMES:-}"
 secret_environment_b64="${WORKLOAD_SECRET_ENV:-}"
 previous_marker=".previous-image"
 
@@ -66,6 +67,10 @@ if [[ ! "$labels_b64" =~ ^[A-Za-z0-9+/]*={0,2}$ ]]; then
   echo "WORKLOAD_LABELS is invalid" >&2
   exit 1
 fi
+if [[ ! "$volumes_b64" =~ ^[A-Za-z0-9+/]*={0,2}$ ]]; then
+  echo "WORKLOAD_VOLUMES is invalid" >&2
+  exit 1
+fi
 if [[ ! "$secret_environment_b64" =~ ^[A-Za-z0-9+/]*={0,2}$ ]]; then
   echo "WORKLOAD_SECRET_ENV is invalid" >&2
   exit 1
@@ -95,6 +100,10 @@ write_labels() {
 }
 
 mapfile -t workload_labels < <(write_labels "$labels_b64")
+mapfile -t workload_volumes < <(write_labels "$volumes_b64")
+for volume in "${workload_volumes[@]}"; do
+  [[ "$volume" =~ ^[a-z0-9][a-z0-9_.-]*:/[A-Za-z0-9_./-]+(:ro|:rw)?$ ]] || { echo "WORKLOAD_VOLUMES contains an invalid volume" >&2; exit 1; }
+done
 for label in "${workload_labels[@]}"; do
   [[ "$label" =~ ^[a-z0-9][a-z0-9_.-]*=[A-Za-z0-9_./:@+-]+$ ]] || { echo "WORKLOAD_LABELS contains an invalid label" >&2; exit 1; }
 done
@@ -106,8 +115,10 @@ if [[ "$mode" == "rollback" ]]; then
   previous_image="$(cat "$previous_marker")"
   label_args=()
   for label in "${workload_labels[@]}"; do label_args+=(--label "$label"); done
+  volume_args=()
+  for volume in "${workload_volumes[@]}"; do volume_args+=(--volume "$volume"); done
   docker run --detach \
-    "${label_args[@]}" \
+    "${label_args[@]}" "${volume_args[@]}" \
     --name "$workload" \
     --network "$network" \
     --network-alias "$alias_name" \
@@ -134,9 +145,11 @@ fi
 
 label_args=()
 for label in "${workload_labels[@]}"; do label_args+=(--label "$label"); done
+volume_args=()
+for volume in "${workload_volumes[@]}"; do volume_args+=(--volume "$volume"); done
 
 docker run --detach \
-  "${label_args[@]}" \
+  "${label_args[@]}" "${volume_args[@]}" \
   --name "$workload" \
   --network "$network" \
   --network-alias "$alias_name" \
@@ -169,7 +182,7 @@ if [[ "$healthy" != "1" ]]; then
   echo "workload $workload did not become healthy on $alias_name:$port$health_path" >&2
   if [[ -n "$current_image" ]]; then
     docker run --detach \
-      "${label_args[@]}" \
+      "${label_args[@]}" "${volume_args[@]}" \
       --name "$workload" \
       --network "$network" \
       --network-alias "$alias_name" \
