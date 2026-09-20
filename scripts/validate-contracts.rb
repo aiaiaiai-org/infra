@@ -8,6 +8,7 @@ ROOT = File.expand_path("..", __dir__)
 EDGE_PATH = File.join(ROOT, "contracts", "edge.yaml")
 SERVER_GLOB = File.join(ROOT, "contracts", "servers", "*.yaml")
 SERVICE_GLOB = File.join(ROOT, "contracts", "services", "*.yaml")
+EXTERNAL_GLOB = File.join(ROOT, "contracts", "external", "*.yaml")
 
 
 def load_yaml(path)
@@ -110,6 +111,30 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
   end
 
   services[name] = contract
+end
+
+externals = {}
+Dir.glob(EXTERNAL_GLOB).sort.each do |path|
+  contract = load_yaml(path)
+  abort("#{path}: unsupported apiVersion") unless contract["apiVersion"] == "infra.nilx.one/v1"
+  abort("#{path}: unsupported kind") unless contract["kind"] == "ExternalServiceContract"
+
+  metadata = fetch!(contract, "metadata", path)
+  name = fetch!(metadata, "name", path)
+  owner = fetch!(metadata, "owner", path)
+  abort("#{path}: duplicate external service id #{name}") if externals.key?(name)
+  abort("#{path}: owner must be an owner/name repository") unless owner.is_a?(String) && owner.match?(/\A[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\z/)
+
+  spec = fetch!(contract, "spec", path)
+  provider = fetch!(spec, "provider", path)
+  abort("#{path}: provider must be a non-empty string") unless provider.is_a?(String) && !provider.empty?
+  management = fetch!(spec, "management", path)
+  abort("#{path}: management must be product-managed or infra-managed") unless %w[product-managed infra-managed].include?(management)
+
+  origin = fetch!(spec, "origin", path)
+  abort("#{path}: origin must be an HTTPS origin") unless origin.is_a?(String) && origin.match?(/\Ahttps:\/\/[^\/]+\/?\z/)
+
+  externals[name] = contract
 end
 
 placement = fetch!(edge_spec, "placement", EDGE_PATH)
