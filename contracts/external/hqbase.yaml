@@ -1,0 +1,20 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: ExternalServiceContract
+metadata:
+  name: hqbase
+  owner: aiaiaiai-org/hqbase
+spec:
+  provider: cloudflare
+  management: product-managed
+  origin: https://mail.aiaiaiai.org
+  runtime:
+    kind: cloudflare-worker
+  resources:
+    - d1
+    - r2
+    - queues
+    - email-sending
+  edge:
+    managedBy: cloudflare
+    caddy: false
