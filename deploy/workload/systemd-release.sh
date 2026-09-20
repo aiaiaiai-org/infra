@@ -118,7 +118,7 @@ ensure_ruby_runtime() {
 
     sudo -n rm -rf "$source_dir"
     sudo -n tar -xzf "$archive" -C /opt/ruby
-    sudo -n bash -c "cd '$source_dir' && ./configure --prefix='$ruby_prefix' --disable-install-doc --disable-zjit && make -j\$(nproc) && make install"
+    sudo -n bash -c "cd '$source_dir' && ./configure --prefix='$ruby_prefix' --disable-install-doc && make -j\$(nproc) && make install"
   fi
 
   sudo -n ln -sfn "$ruby_prefix" "$ruby_current"
