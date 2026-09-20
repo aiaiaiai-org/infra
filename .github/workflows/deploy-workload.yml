@@ -5,12 +5,41 @@ name: Deploy workload
 on:
   repository_dispatch:
     types: [deploy-workload]
+  workflow_call:
+    inputs:
+      workload:
+        description: Workload identifier
+        required: true
+        type: string
+      image:
+        description: Immutable image reference
+        required: false
+        type: string
+      source_repository:
+        description: Source repository for release-backed workloads
+        required: false
+        type: string
+      ref:
+        description: Source release ref
+        required: false
+        type: string
+    secrets:
+      TELOXIDE_TOKEN:
+        required: false
+      TELEGRAM_OIDC_CLIENT_ID:
+        required: false
+      TELEGRAM_OIDC_CLIENT_SECRET:
+        required: false
+      DISCORD_CLIENT_ID:
+        required: false
+      DISCORD_CLIENT_SECRET:
+        required: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-workload-${{ github.event.client_payload.workload }}
+  group: deploy-workload-${{ inputs.workload || github.event.client_payload.workload }}
   cancel-in-progress: false
 
 jobs:
@@ -39,9 +68,9 @@ jobs:
     steps:
       - name: Validate dispatch payload
         env:
-          WORKLOAD: ${{ github.event.client_payload.workload }}
-          IMAGE_REF: ${{ github.event.client_payload.image }}
-          RELEASE_REF: ${{ github.event.client_payload.ref || 'master' }}
+          WORKLOAD: ${{ inputs.workload || github.event.client_payload.workload }}
+          IMAGE_REF: ${{ inputs.image || github.event.client_payload.image }}
+          RELEASE_REF: ${{ inputs.ref || github.event.client_payload.ref || 'master' }}
         run: |
           set -Eeuo pipefail
           [[ "$WORKLOAD" =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "::error::invalid workload identifier"; exit 1; }
@@ -81,7 +110,7 @@ jobs:
     env:
       WORKLOAD: ${{ github.event.client_payload.workload }}
       RUNTIME: ${{ needs.resolve.outputs.runtime }}
-      SOURCE_REPOSITORY: ${{ needs.resolve.outputs.repository }}
+      SOURCE_REPOSITORY: ${{ inputs.source_repository || needs.resolve.outputs.repository }}
       IMAGE_REF: ${{ needs.resolve.outputs.image }}
       RELEASE_REF: ${{ needs.resolve.outputs.ref }}
       EDGE_NETWORK: ${{ needs.resolve.outputs.network }}
@@ -96,9 +125,13 @@ jobs:
       KEEP_RELEASES: ${{ needs.resolve.outputs.release_retention }}
       POST_ACTIVATE_COMMAND: ${{ needs.resolve.outputs.post_activate_command }}
       PREPARE_ENV: ${{ needs.resolve.outputs.prepare_env }}
-      REMOTE_WORKLOAD_DIR: .local/share/aiaiaiai-infra/workloads/${{ github.event.client_payload.workload }}
+      REMOTE_WORKLOAD_DIR: .local/share/aiaiaiai-infra/workloads/${{ inputs.workload || github.event.client_payload.workload }}
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
-      NILXONE_IDENTITY_PROVIDER_ENV_B64: ${{ secrets.NILXONE_IDENTITY_PROVIDER_ENV_B64 }}
+      PROVIDER_TELOXIDE_TOKEN: ${{ secrets.TELOXIDE_TOKEN }}
+      PROVIDER_TELEGRAM_OIDC_CLIENT_ID: ${{ secrets.TELEGRAM_OIDC_CLIENT_ID }}
+      PROVIDER_TELEGRAM_OIDC_CLIENT_SECRET: ${{ secrets.TELEGRAM_OIDC_CLIENT_SECRET }}
+      PROVIDER_DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
+      PROVIDER_DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
 
     steps:
       - name: Validate SSH credentials
@@ -158,8 +191,12 @@ jobs:
             printf 'WORKLOAD_LABELS=%s\n' "$WORKLOAD_LABELS"
             printf 'WORKLOAD_VOLUMES=%s\n' "$WORKLOAD_VOLUMES"
           } > "$RUNNER_TEMP/workload.env"
-          if [[ -n "$PREPARE_ENV" ]]; then
-            test -n "$NILXONE_IDENTITY_PROVIDER_ENV_B64"
+          if [[ -n "$PREPARE_ENV" && "$WORKLOAD" == "nilxone-identity" ]]; then
+            test -n "$PROVIDER_TELOXIDE_TOKEN"
+            test -n "$PROVIDER_TELEGRAM_OIDC_CLIENT_ID"
+            test -n "$PROVIDER_TELEGRAM_OIDC_CLIENT_SECRET"
+            test -n "$PROVIDER_DISCORD_CLIENT_ID"
+            test -n "$PROVIDER_DISCORD_CLIENT_SECRET"
           fi
 
       - name: Prepare systemd release
@@ -178,7 +215,18 @@ jobs:
         run: |
           set -Eeuo pipefail
           test -f "source/${PREPARE_ENV}"
-          printf '%s' "$NILXONE_IDENTITY_PROVIDER_ENV_B64" | base64 --decode > "$RUNNER_TEMP/identity-provider.env"
+          if [[ "$WORKLOAD" == "nilxone-identity" ]]; then
+            provider_env="$(printf '%s\n' \
+              "PUBLIC_ORIGIN=https://nilx.one" \
+              "TELOXIDE_TOKEN=$PROVIDER_TELOXIDE_TOKEN" \
+              "TELEGRAM_OIDC_CLIENT_ID=$PROVIDER_TELEGRAM_OIDC_CLIENT_ID" \
+              "TELEGRAM_OIDC_CLIENT_SECRET=$PROVIDER_TELEGRAM_OIDC_CLIENT_SECRET" \
+              "DISCORD_CLIENT_ID=$PROVIDER_DISCORD_CLIENT_ID" \
+              "DISCORD_CLIENT_SECRET=$PROVIDER_DISCORD_CLIENT_SECRET")"
+            printf '%s' "$provider_env" > "$RUNNER_TEMP/identity-provider.env"
+          else
+            : > "$RUNNER_TEMP/identity-provider.env"
+          fi
           test -s "$RUNNER_TEMP/identity-provider.env"
           chmod 600 "$RUNNER_TEMP/identity-provider.env"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$REMOTE_WORKLOAD_DIR' && chmod 700 '$REMOTE_WORKLOAD_DIR'"
@@ -186,7 +234,9 @@ jobs:
           scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "$RUNNER_TEMP/identity-provider.env" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/provider.env"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "chmod 700 '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' && chmod 600 '$REMOTE_WORKLOAD_DIR/provider.env' && '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' '$REMOTE_WORKLOAD_DIR/runtime.env' '$REMOTE_WORKLOAD_DIR/provider.env' && rm -f '$REMOTE_WORKLOAD_DIR/provider.env' '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' && test -s '$REMOTE_WORKLOAD_DIR/runtime.env'"
           rm -f "$RUNNER_TEMP/identity-provider.env"
-          printf 'WORKLOAD_SECRET_ENV_FILE=%s/runtime.env\n' "$REMOTE_WORKLOAD_DIR" >> "$RUNNER_TEMP/workload.env"
+          if [[ "$WORKLOAD" == "nilxone-identity" ]]; then
+            printf 'WORKLOAD_SECRET_ENV_FILE=%s/runtime.env\n' "$REMOTE_WORKLOAD_DIR" >> "$RUNNER_TEMP/workload.env"
+          fi
       - name: Checkout infra deployment tooling
         if: ${{ needs.resolve.outputs.runtime == 'container' || needs.resolve.outputs.runtime == 'systemd-release' }}
         uses: actions/checkout@v7
