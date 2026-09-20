@@ -23,14 +23,18 @@ on:
         description: Source release ref
         required: false
         type: string
+      telegram_oidc_client_id:
+        description: Telegram OIDC client ID
+        required: false
+        type: string
+      discord_client_id:
+        description: Discord client ID
+        required: false
+        type: string
     secrets:
       TELOXIDE_TOKEN:
         required: false
-      TELEGRAM_OIDC_CLIENT_ID:
-        required: false
       TELEGRAM_OIDC_CLIENT_SECRET:
-        required: false
-      DISCORD_CLIENT_ID:
         required: false
       DISCORD_CLIENT_SECRET:
         required: false
@@ -128,9 +132,9 @@ jobs:
       REMOTE_WORKLOAD_DIR: .local/share/aiaiaiai-infra/workloads/${{ inputs.workload || github.event.client_payload.workload }}
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
       PROVIDER_TELOXIDE_TOKEN: ${{ secrets.TELOXIDE_TOKEN }}
-      PROVIDER_TELEGRAM_OIDC_CLIENT_ID: ${{ secrets.TELEGRAM_OIDC_CLIENT_ID }}
+      PROVIDER_TELEGRAM_OIDC_CLIENT_ID: ${{ inputs.telegram_oidc_client_id }}
       PROVIDER_TELEGRAM_OIDC_CLIENT_SECRET: ${{ secrets.TELEGRAM_OIDC_CLIENT_SECRET }}
-      PROVIDER_DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
+      PROVIDER_DISCORD_CLIENT_ID: ${{ inputs.discord_client_id }}
       PROVIDER_DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
 
     steps:
