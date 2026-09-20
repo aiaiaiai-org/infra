@@ -22,6 +22,8 @@ alias_name="${WORKLOAD_ALIAS:-}"
 port="${WORKLOAD_PORT:-}"
 health_path="${WORKLOAD_HEALTH:-}"
 environment_b64="${WORKLOAD_ENVIRONMENT:-}"
+labels_b64="${WORKLOAD_LABELS:-}"
+secret_environment_b64="${WORKLOAD_SECRET_ENV:-}"
 previous_marker=".previous-image"
 
 case "$mode" in
@@ -60,12 +62,23 @@ if [[ ! "$environment_b64" =~ ^[A-Za-z0-9+/]*={0,2}$ ]]; then
   echo "WORKLOAD_ENVIRONMENT is invalid" >&2
   exit 1
 fi
+if [[ ! "$labels_b64" =~ ^[A-Za-z0-9+/]*={0,2}$ ]]; then
+  echo "WORKLOAD_LABELS is invalid" >&2
+  exit 1
+fi
+if [[ ! "$secret_environment_b64" =~ ^[A-Za-z0-9+/]*={0,2}$ ]]; then
+  echo "WORKLOAD_SECRET_ENV is invalid" >&2
+  exit 1
+fi
 
 write_environment_file() {
   local path="$1"
   : > "$path"
   if [[ -n "$environment_b64" ]]; then
     printf '%s' "$environment_b64" | base64 --decode > "$path"
+  fi
+  if [[ -n "$secret_environment_b64" ]]; then
+    printf '%s' "$secret_environment_b64" | base64 --decode >> "$path"
   fi
   chmod 600 "$path"
 }
@@ -74,12 +87,27 @@ environment_file="$PWD/.environment"
 write_environment_file "$environment_file"
 trap 'rm -f "$environment_file"' EXIT
 
+write_labels() {
+  local encoded="$1"
+  if [[ -n "$encoded" ]]; then
+    printf "%s" "$encoded" | base64 --decode
+  fi
+}
+
+mapfile -t workload_labels < <(write_labels "$labels_b64")
+for label in "${workload_labels[@]}"; do
+  [[ "$label" =~ ^[a-z0-9][a-z0-9_.-]*=[A-Za-z0-9_./:@+-]+$ ]] || { echo "WORKLOAD_LABELS contains an invalid label" >&2; exit 1; }
+done
+
 docker network inspect "$network" >/dev/null
 
 if [[ "$mode" == "rollback" ]]; then
   [[ -f "$previous_marker" ]] || { echo "no previous image recorded for $workload" >&2; exit 1; }
   previous_image="$(cat "$previous_marker")"
+  label_args=()
+  for label in "${workload_labels[@]}"; do label_args+=(--label "$label"); done
   docker run --detach \
+    "${label_args[@]}" \
     --name "$workload" \
     --network "$network" \
     --network-alias "$alias_name" \
@@ -104,7 +132,11 @@ if docker inspect "$workload" >/dev/null 2>&1; then
   current_image="$(docker inspect --format '{{.Config.Image}}' "$workload")"
 fi
 
+label_args=()
+for label in "${workload_labels[@]}"; do label_args+=(--label "$label"); done
+
 docker run --detach \
+  "${label_args[@]}" \
   --name "$workload" \
   --network "$network" \
   --network-alias "$alias_name" \
@@ -137,6 +169,7 @@ if [[ "$healthy" != "1" ]]; then
   echo "workload $workload did not become healthy on $alias_name:$port$health_path" >&2
   if [[ -n "$current_image" ]]; then
     docker run --detach \
+      "${label_args[@]}" \
       --name "$workload" \
       --network "$network" \
       --network-alias "$alias_name" \
