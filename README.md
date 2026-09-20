@@ -71,6 +71,24 @@ Current workload owners:
 - `market-bot-test` → `0xda-market/telegram-bot` (`0xda-market-test`);
 - `nilxone-web`, `nilxone-telegram`, `nilxone-discord` → `nilx-one/web` (`0x1`).
 
+## External managed services
+
+Not every product is an edge workload. Cloudflare-native products keep their runtime and
+resource lifecycle in the product repository and its provider account; infra records the
+public origin and management boundary without inventing a VPS deployment contract.
+
+HQBase is registered as an external Cloudflare service:
+
+- repository: `aiaiaiai-org/hqbase`;
+- origin: `https://mail.aiaiaiai.org`;
+- runtime: Cloudflare Worker;
+- resources: D1, R2, Queues, and Cloudflare Email Sending;
+- public edge: Cloudflare-managed, not Caddy-managed.
+
+The HQBase product repository remains responsible for installation, resource provisioning,
+release verification, migrations, secrets, and Worker deployment. This repository does not
+store Cloudflare credentials and does not route HQBase through `edge-prod-1`.
+
 ## Contracts
 
 The server contract is [`contracts/servers/edge-prod-1.yaml`](contracts/servers/edge-prod-1.yaml). It exposes `80/tcp`, `443/tcp`, and `443/udp`.
