@@ -98,7 +98,7 @@ jobs:
       PREPARE_ENV: ${{ needs.resolve.outputs.prepare_env }}
       REMOTE_WORKLOAD_DIR: .local/share/aiaiaiai-infra/workloads/${{ github.event.client_payload.workload }}
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
-      NILXONE_IDENTITY_PROVIDER_ENV: ${{ secrets.NILXONE_IDENTITY_PROVIDER_ENV }}
+      NILXONE_IDENTITY_PROVIDER_ENV_B64: ${{ github.event.client_payload.provider_env_b64 }}
 
     steps:
       - name: Validate SSH credentials
@@ -159,7 +159,7 @@ jobs:
             printf 'WORKLOAD_VOLUMES=%s\n' "$WORKLOAD_VOLUMES"
           } > "$RUNNER_TEMP/workload.env"
           if [[ -n "$PREPARE_ENV" ]]; then
-            test -n "$NILXONE_IDENTITY_PROVIDER_ENV"
+            test -n "$NILXONE_IDENTITY_PROVIDER_ENV_B64"
           fi
 
       - name: Prepare systemd release
@@ -178,7 +178,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           test -f "source/${PREPARE_ENV}"
-          printf '%s' "$NILXONE_IDENTITY_PROVIDER_ENV" > "$RUNNER_TEMP/identity-provider.env"
+          printf '%s' "$NILXONE_IDENTITY_PROVIDER_ENV_B64" | base64 --decode > "$RUNNER_TEMP/identity-provider.env"
+          test -s "$RUNNER_TEMP/identity-provider.env"
           chmod 600 "$RUNNER_TEMP/identity-provider.env"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$REMOTE_WORKLOAD_DIR' && chmod 700 '$REMOTE_WORKLOAD_DIR'"
           scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "source/${PREPARE_ENV}" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh"
