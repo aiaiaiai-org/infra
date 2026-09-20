@@ -141,19 +141,17 @@ Optional variable:
 
 `.github/workflows/edge-ready-validate.yml` runs for ready pull requests using trusted workflow code from `master`. It fetches only the candidate `deploy/edge/Caddyfile` from the PR head SHA and validates it inside the running Caddy container without reload or live mutation. On a target where the shared Caddy container doesn't exist yet (first-ever activation), the live-cutover-prerequisites check is skipped rather than failing.
 
-### Deploy shared edge
+### Edge deployment workflows
 
-`.github/workflows/deploy-edge.yml` is manual. The selected GitHub ref is the deployment source. Every run explicitly selects an activation scope:
+Edge deployment is intentionally split at the workflow boundary. There is no shared `all` deployment path that can make an unrelated product runtime a prerequisite for another product.
 
-| Scope | DNS/upstream/public verification owned by the run |
-| --- | --- |
-| `nilx-web` | `nilx.one` and `nilxone-web:1927`, `nilxone-telegram:1927`, `nilxone-discord:1927` |
-| `market` | `0xda-market.nilx.one` and the three production/test market upstreams |
-| `all` | every active public edge surface |
+- `.github/workflows/deploy-nilx-web.yml` deploys and verifies only the `nilx-web` surface: `nilx.one`, `nilxone-web:1927`, `nilxone-telegram:1927`, and `nilxone-discord:1927`. It also owns the nilx wildcard DNS lifecycle.
+- `.github/workflows/deploy-market.yml` deploys and verifies only the `market` surface: `0xda-market.nilx.one` and the three market upstreams.
+- `.github/workflows/deploy-prism.yml` deploys only the contracted `prism-hubot` systemd release from `aiaiaiai-org/prism-hubot` to `edge-prod-1`. It does not depend on market or nilx.web upstreams.
 
-Scope-specific DNS is checked before SSH or Caddy mutation. After SSH connectivity is established, only the selected surface's upstreams are checked directly through `nilx-edge` before the Caddyfile can be reloaded. After Caddy reload, the selected public surface is verified again. `all` checks every active DNS name, upstream, and public health surface at once.
+Each workflow is manual. Edge workflows use their selected surface's Git ref as the deployment source; Prism uses its requested `prism-hubot` ref. Edge upstreams are checked directly through `nilx-edge` before Caddy activation, while Prism validates and activates its release through the contracted systemd runtime.
 
-Missing required DNS or an unhealthy/missing upstream for the selected scope fails before live Caddy mutation. A failed reload or scoped post-activation verification restores the previous mounted Caddyfile.
+The workflows have separate concurrency groups, so nilx.web, market, and Prism deployments do not gate one another. An unhealthy or missing runtime for one product therefore cannot block another product's deployment.
 
 ## Rollout dependency
 
@@ -215,7 +213,9 @@ The credential a product repository needs to hold is therefore narrowed to whate
 │   └── resolve-workload-target.rb
 └── .github/workflows/
     ├── ci.yml
-    ├── deploy-edge.yml
+    ├── deploy-market.yml
+    ├── deploy-nilx-web.yml
+    ├── deploy-prism.yml
     ├── deploy-workload.yml
     └── edge-ready-validate.yml
 ```

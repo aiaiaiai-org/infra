@@ -1,6 +1,6 @@
 # © 2026 aiaiaiai · aiaiaiai.org
 
-name: Deploy shared edge
+name: Deploy market edge
 
 on:
   workflow_dispatch:
@@ -12,21 +12,11 @@ on:
         type: choice
         options:
           - edge-prod-1
-      scope:
-        description: Public surface to activate and verify
-        required: true
-        default: all
-        type: choice
-        options:
-          - all
-          - nilx-web
-          - market
-
 permissions:
   contents: read
 
 concurrency:
-  group: shared-edge-${{ inputs.target }}
+  group: market-edge-${{ inputs.target }}
   cancel-in-progress: false
 
 jobs:
@@ -37,7 +27,7 @@ jobs:
       name: ${{ inputs.target }}
     env:
       EDGE_TARGET: ${{ inputs.target }}
-      EDGE_SCOPE: ${{ inputs.scope }}
+      EDGE_SCOPE: market
       EDGE_NETWORK: nilx-edge
       CADDY_CONTAINER: edge-prod-1-caddy
       REMOTE_EDGE_DIR: .local/share/aiaiaiai-infra/edge
@@ -53,7 +43,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           [[ "$EDGE_TARGET" =~ ^[a-z0-9][a-z0-9._-]*$ ]]
-          case "$EDGE_SCOPE" in market|nilx-web|all) ;; *) exit 1 ;; esac
+          [[ "$EDGE_SCOPE" == "market" ]]
           [[ "$EDGE_NETWORK" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
           [[ "$CADDY_CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
           [[ "$REMOTE_EDGE_DIR" =~ ^[A-Za-z0-9._/-]+$ ]]
@@ -168,21 +158,6 @@ jobs:
             "$SSH_USER@$SSH_HOST" \
             "cd '$REMOTE_EDGE_DIR' && DEPLOY_MODE=activate bash ./deploy.sh"
 
-      - name: Ensure wildcard DNS only after edge activation
-        id: wildcard_dns
-        if: ${{ inputs.scope == 'nilx-web' || inputs.scope == 'all' }}
-        env:
-          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CF_WILDCARD_STATE_FILE: ${{ runner.temp }}/nilx-wildcard-state.json
-        run: bash deploy/edge/cloudflare-wildcard.sh ensure "$CF_WILDCARD_STATE_FILE"
-
-      - name: Verify candidate public DNS
-        if: ${{ inputs.scope == 'nilx-web' || inputs.scope == 'all' }}
-        env:
-          HEALTH_RETRY: 12
-          HEALTH_RETRY_DELAY: 5
-        run: bash deploy/edge/check-public.sh candidate-dns "$EDGE_SCOPE"
-
       - name: Verify public edge from runner
         id: public_verify
         env:
@@ -204,13 +179,6 @@ jobs:
             "cd '$REMOTE_EDGE_DIR' && docker compose --file compose.yaml logs --tail 200 caddy 2>&1 || true" \
             || true
 
-      - name: Roll back wildcard DNS created by a failed deployment
-        if: ${{ failure() && steps.wildcard_dns.outcome == 'success' }}
-        env:
-          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CF_WILDCARD_STATE_FILE: ${{ runner.temp }}/nilx-wildcard-state.json
-        run: bash deploy/edge/cloudflare-wildcard.sh rollback "$CF_WILDCARD_STATE_FILE"
-
       - name: Roll back failed edge activation
         if: ${{ failure() && steps.apply.outcome == 'success' }}
         env:
@@ -227,19 +195,18 @@ jobs:
 
       - name: Clean runner secret material
         if: always()
-        run: rm -f "$RUNNER_TEMP/edge.env" "$RUNNER_TEMP/nilx-wildcard-state.json"
+        run: rm -f "$RUNNER_TEMP/edge.env"
 
       - name: Publish summary
         if: always()
         run: |
           {
-            echo "### Shared public edge deployment"
+            echo "### market edge deployment"
             echo
             echo "- target: \`$EDGE_TARGET\`"
             echo "- scope: \`$EDGE_SCOPE\`"
             echo "- source: \`$GITHUB_REF_NAME\`"
             echo "- commit: \`$GITHUB_SHA\`"
             echo "- previous live Caddy: \`$CADDY_CONTAINER\`"
-            echo "- wildcard DNS: \`${{ steps.wildcard_dns.outcome || 'not-requested' }}\`"
             echo "- result: \`${{ job.status }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
