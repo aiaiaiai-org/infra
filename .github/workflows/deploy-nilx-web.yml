@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: shared-edge-${{ inputs.target }}
+  group: nilx-web-edge-${{ inputs.target }}
   cancel-in-progress: false
 
 jobs:
@@ -43,7 +43,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           [[ "$EDGE_TARGET" =~ ^[a-z0-9][a-z0-9._-]*$ ]]
-          case "$EDGE_SCOPE" in market|nilx-web|all) ;; *) exit 1 ;; esac
+          [[ "$EDGE_SCOPE" == "nilx-web" ]]
           [[ "$EDGE_NETWORK" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
           [[ "$CADDY_CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
           [[ "$REMOTE_EDGE_DIR" =~ ^[A-Za-z0-9._/-]+$ ]]
