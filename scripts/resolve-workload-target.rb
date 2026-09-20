@@ -3,6 +3,8 @@
 # frozen_string_literal: true
 
 require "yaml"
+require "json"
+require "base64"
 
 ROOT = File.expand_path("..", __dir__)
 SERVER_GLOB = File.join(ROOT, "contracts", "servers", "*.yaml")
@@ -48,11 +50,15 @@ if runtime_kind == "container"
   network = spec["network"]
   abort("#{service_path}: network is required") unless network.is_a?(String) && !network.empty?
 
+  environment = Array(runtime["environment"])
+  abort("${service_path}: runtime.environment entries must be KEY=VALUE strings") unless environment.all? { |entry| entry.is_a?(String) && entry.match?(/\A[A-Z][A-Z0-9_]*=[A-Za-z0-9_./:@+-]*\z/) }
+
   result.merge!(
     "network" => network,
     "alias" => aliases.first,
     "port" => port.to_s,
     "health" => health,
+    "environment" => Base64.strict_encode64(JSON.generate(environment)),
   )
 else
   repository = spec["repository"]
