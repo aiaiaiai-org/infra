@@ -121,7 +121,7 @@ The runtime implementation is responsible for:
 
 
 
-For host-native Ruby releases, the deploy command runs through a non-interactive SSH shell. The runtime implementation therefore normalizes common per-user Ruby manager paths (`rbenv`, `asdf`, and `mise`) before resolving `ruby` and `bundle`; it must not depend on interactive shell startup files. If Ruby is genuinely absent, validation still fails explicitly rather than silently falling back to the OS Ruby.
+For host-native Ruby releases, the deploy command runs through a non-interactive SSH shell. The runtime implementation therefore normalizes common per-user Ruby manager paths (`rbenv`, `asdf`, and `mise`) before resolving `ruby` and `bundle`; it must not depend on interactive shell startup files. If the declared Ruby runtime is absent, infra may provision the exact runtime declared by the release into the host's managed `/opt/ruby` prefix using a pinned, checksum-verified official Ruby source archive. Runtime provisioning is idempotent and requires non-interactive sudo; it never falls back silently to a different Ruby version.
 
 The release directory is immutable after activation. Persistent state must not be stored inside a release directory.
 
