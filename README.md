@@ -216,6 +216,8 @@ The credential a product repository needs to hold is therefore narrowed to whate
 .
 ├── contracts/
 │   ├── edge.yaml
+│   ├── external/
+│   │   └── hqbase.yaml
 │   ├── servers/edge-prod-1.yaml
 │   └── services/
 │       ├── market-api-production.yaml
