@@ -141,19 +141,16 @@ Optional variable:
 
 `.github/workflows/edge-ready-validate.yml` runs for ready pull requests using trusted workflow code from `master`. It fetches only the candidate `deploy/edge/Caddyfile` from the PR head SHA and validates it inside the running Caddy container without reload or live mutation. On a target where the shared Caddy container doesn't exist yet (first-ever activation), the live-cutover-prerequisites check is skipped rather than failing.
 
-### Deploy shared edge
+### Edge deployment workflows
 
-`.github/workflows/deploy-edge.yml` is manual. The selected GitHub ref is the deployment source. Every run explicitly selects an activation scope:
+Edge deployment is intentionally split at the workflow boundary. There is no shared `all` deployment path that can make an unrelated product runtime a prerequisite for another product.
 
-| Scope | DNS/upstream/public verification owned by the run |
-| --- | --- |
-| `nilx-web` | `nilx.one` and `nilxone-web:1927`, `nilxone-telegram:1927`, `nilxone-discord:1927` |
-| `market` | `0xda-market.nilx.one` and the three production/test market upstreams |
-| `all` | every active public edge surface |
+- `.github/workflows/deploy-nilx-web.yml` deploys and verifies only the `nilx-web` surface: `nilx.one`, `nilxone-web:1927`, `nilxone-telegram:1927`, and `nilxone-discord:1927`. It also owns the nilx wildcard DNS lifecycle.
+- `.github/workflows/deploy-market.yml` deploys and verifies only the `market` surface: `0xda-market.nilx.one` and the three market upstreams.
 
-Scope-specific DNS is checked before SSH or Caddy mutation. After SSH connectivity is established, only the selected surface's upstreams are checked directly through `nilx-edge` before the Caddyfile can be reloaded. After Caddy reload, the selected public surface is verified again. `all` checks every active DNS name, upstream, and public health surface at once.
+Each workflow is manual and uses the selected GitHub ref as its deployment source. The selected surface's upstreams are checked directly through `nilx-edge` before Caddy activation, and the same surface is verified publicly after activation. A failed activation or scoped post-activation verification restores the previous mounted Caddyfile.
 
-Missing required DNS or an unhealthy/missing upstream for the selected scope fails before live Caddy mutation. A failed reload or scoped post-activation verification restores the previous mounted Caddyfile.
+The workflows have separate concurrency groups, so a nilx.web deployment does not block a market deployment and vice versa. An unhealthy or missing upstream for one surface therefore cannot gate deployment of the other surface.
 
 ## Rollout dependency
 
