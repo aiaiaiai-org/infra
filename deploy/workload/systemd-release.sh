@@ -135,6 +135,7 @@ validate_release() {
   ln -sfn "$delivery_state_dir" "$release_dir/var/delivery-idempotency"
   cd "$release_dir"
   expected_ruby_version="$(sed -n '1p' .ruby-version 2>/dev/null || true)"
+  require_runtime
   if [[ -n "$expected_ruby_version" ]]; then
     actual_ruby_version="$(ruby -e 'print RUBY_VERSION')"
     if [[ "$actual_ruby_version" != "$expected_ruby_version" ]]; then
