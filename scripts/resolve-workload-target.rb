@@ -3,7 +3,6 @@
 # frozen_string_literal: true
 
 require "yaml"
-require "json"
 require "base64"
 
 ROOT = File.expand_path("..", __dir__)
@@ -58,7 +57,7 @@ if runtime_kind == "container"
     "alias" => aliases.first,
     "port" => port.to_s,
     "health" => health,
-    "environment" => Base64.strict_encode64(JSON.generate(environment)),
+    "environment" => Base64.strict_encode64(environment.join("\n") + "\n"),
   )
 else
   repository = spec["repository"]
