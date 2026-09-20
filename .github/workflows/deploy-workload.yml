@@ -98,7 +98,7 @@ jobs:
       PREPARE_ENV: ${{ needs.resolve.outputs.prepare_env }}
       REMOTE_WORKLOAD_DIR: .local/share/aiaiaiai-infra/workloads/${{ github.event.client_payload.workload }}
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
-      NILXONE_IDENTITY_PROVIDER_ENV_B64: ${{ github.event.client_payload.provider_env_b64 }}
+      NILXONE_IDENTITY_PROVIDER_ENV_B64: ${{ secrets.NILXONE_IDENTITY_PROVIDER_ENV_B64 }}
 
     steps:
       - name: Validate SSH credentials
@@ -187,6 +187,17 @@ jobs:
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "chmod 700 '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' && chmod 600 '$REMOTE_WORKLOAD_DIR/provider.env' && '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' '$REMOTE_WORKLOAD_DIR/runtime.env' '$REMOTE_WORKLOAD_DIR/provider.env' && rm -f '$REMOTE_WORKLOAD_DIR/provider.env' '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' && test -s '$REMOTE_WORKLOAD_DIR/runtime.env'"
           rm -f "$RUNNER_TEMP/identity-provider.env"
           printf 'WORKLOAD_SECRET_ENV_FILE=%s/runtime.env\n' "$REMOTE_WORKLOAD_DIR" >> "$RUNNER_TEMP/workload.env"
+      - name: Checkout infra deployment tooling
+        if: ${{ needs.resolve.outputs.runtime == 'container' || needs.resolve.outputs.runtime == 'systemd-release' }}
+        uses: actions/checkout@v7
+        with:
+          path: infra
+          sparse-checkout: |
+            deploy/workload/deploy.sh
+            deploy/workload/systemd-release.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Upload container deploy script
         if: ${{ needs.resolve.outputs.runtime == 'container' }}
         env:
@@ -195,7 +206,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$REMOTE_WORKLOAD_DIR' && chmod 700 '$REMOTE_WORKLOAD_DIR'"
-          tar -C deploy/workload -czf - deploy.sh | ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "tar -xzf - -C '$REMOTE_WORKLOAD_DIR'"
+          tar -C infra/deploy/workload -czf - deploy.sh | ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "tar -xzf - -C '$REMOTE_WORKLOAD_DIR'"
           scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "$RUNNER_TEMP/workload.env" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/.env"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "chmod 600 '$REMOTE_WORKLOAD_DIR/.env'; chmod 700 '$REMOTE_WORKLOAD_DIR/deploy.sh'"
 
@@ -208,15 +219,6 @@ jobs:
           set -Eeuo pipefail
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=validate bash ./deploy.sh"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=activate bash ./deploy.sh"
-
-      - name: Checkout infra deployment tooling
-        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
-        uses: actions/checkout@v7
-        with:
-          path: infra
-          sparse-checkout: |
-            deploy/workload/systemd-release.sh
-          sparse-checkout-cone-mode: false
 
       - name: Upload systemd release
         if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
@@ -257,15 +259,15 @@ jobs:
         run: |
           {
             echo "### Workload deployment"
-            echo "- workload: `$WORKLOAD`"
-            echo "- runtime: `$RUNTIME`"
-            echo "- target: `${{ needs.resolve.outputs.target }}`"
+            printf '%s\n' "- workload: %s" "$WORKLOAD"
+            printf '%s\n' "- runtime: %s" "$RUNTIME"
+            printf '%s\n' "- target: %s" "${{ needs.resolve.outputs.target }}"
             if [[ "$RUNTIME" == "container" ]]; then
-              echo "- image: `$IMAGE_REF`"
+              printf '%s\n' "- image: %s" "$IMAGE_REF"
             else
-              echo "- repository: `$SOURCE_REPOSITORY`"
-              echo "- ref: `$RELEASE_REF`"
-              echo "- release: `${{ steps.source.outputs.sha }}`"
+              printf '%s\n' "- repository: %s" "$SOURCE_REPOSITORY"
+              printf '%s\n' "- ref: %s" "$RELEASE_REF"
+              printf '%s\n' "- release: %s" "${{ steps.source.outputs.sha }}"
             fi
-            echo "- result: `${{ job.status }}`"
+            printf '%s\n' "- result: %s" "${{ job.status }}"
           } >> "$GITHUB_STEP_SUMMARY"
