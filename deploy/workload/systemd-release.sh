@@ -66,6 +66,71 @@ prepare_runtime_path() {
   export PATH
 }
 
+
+ensure_ruby_runtime() {
+  local expected_version="$1"
+  local ruby_prefix="/opt/ruby/$expected_version"
+  local ruby_current="/opt/ruby/current"
+  local ruby_bin="$ruby_prefix/bin/ruby"
+  local archive="/opt/ruby/ruby-$expected_version.tar.gz"
+  local source_dir="/opt/ruby/ruby-$expected_version"
+  local url
+  local checksum
+  local bundler_version
+  local actual_checksum
+
+  if command -v ruby >/dev/null 2>&1 &&
+     [[ "$(ruby -e 'print RUBY_VERSION')" == "$expected_version" ]] &&
+     command -v bundle >/dev/null 2>&1; then
+    return 0
+  fi
+
+  case "$expected_version" in
+    4.0.6)
+      url="https://cache.ruby-lang.org/pub/ruby/4.0/ruby-4.0.6.tar.gz"
+      checksum="837d299e8f7ddf2d14347dd56dfd8fe5c3130abf5117bfaacb3b32b1a9be262a"
+      ;;
+    *)
+      echo "Ruby $expected_version is not provisionable by the host runtime bootstrap" >&2
+      return 1
+      ;;
+  esac
+
+  command -v sudo >/dev/null 2>&1 || { echo "sudo is required to provision Ruby $expected_version" >&2; return 1; }
+  sudo -n true || { echo "passwordless sudo is required to provision Ruby $expected_version" >&2; return 1; }
+
+  if [[ ! -x "$ruby_bin" ]]; then
+    sudo -n apt-get update
+    sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      build-essential autoconf bison libssl-dev libyaml-dev zlib1g-dev \
+      libffi-dev libreadline-dev libgmp-dev curl ca-certificates
+
+    sudo -n install -d -m 0755 /opt/ruby
+    if [[ ! -f "$archive" ]]; then
+      sudo -n curl -fL --retry 3 --retry-all-errors -o "$archive" "$url"
+    fi
+
+    actual_checksum="$(sudo -n sha256sum "$archive" | awk '{print $1}')"
+    [[ "$actual_checksum" == "$checksum" ]] || {
+      echo "Ruby source checksum mismatch for $expected_version" >&2
+      return 1
+    }
+
+    sudo -n rm -rf "$source_dir"
+    sudo -n tar -xzf "$archive" -C /opt/ruby
+    sudo -n bash -c "cd '$source_dir' && ./configure --prefix='$ruby_prefix' --disable-install-doc --disable-zjit && make -j\$(nproc) && make install"
+  fi
+
+  sudo -n ln -sfn "$ruby_prefix" "$ruby_current"
+  PATH="$ruby_current/bin:$PATH"
+  export PATH
+
+  bundler_version="$(awk '/^BUNDLED WITH$/ { getline; gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit }' Gemfile.lock 2>/dev/null || true)"
+  if [[ -n "$bundler_version" ]] && ! "$ruby_bin" -S bundle _"$bundler_version"_ --version >/dev/null 2>&1; then
+    sudo -n "$ruby_bin" -S gem install --no-document bundler -v "$bundler_version"
+  fi
+}
+
 require_command() {
   local command_name="$1"
 
@@ -77,6 +142,10 @@ require_command() {
 
 require_runtime() {
   prepare_runtime_path
+  if [[ -n "${expected_ruby_version:-}" ]]; then
+    ensure_ruby_runtime "$expected_ruby_version"
+    prepare_runtime_path
+  fi
   require_command ruby
   require_command bundle
   require_command git
@@ -123,7 +192,6 @@ install_release() {
 }
 
 validate_release() {
-  require_runtime
   prepare_layout
   test -f "$archive_path" || { echo "release archive is missing: $archive_path" >&2; exit 1; }
   rm -rf "$release_dir"
@@ -151,7 +219,6 @@ validate_release() {
 }
 
 activate_release() {
-  require_runtime
   prepare_layout
   test -f "$archive_path" || { echo "release archive is missing: $archive_path" >&2; exit 1; }
 
