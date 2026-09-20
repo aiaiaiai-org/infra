@@ -98,6 +98,12 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
     environment.each do |entry|
       abort("#{path}: runtime.environment entries must be KEY=VALUE strings") unless entry.is_a?(String) && entry.match?(%r{\A[A-Z][A-Z0-9_]*=[A-Za-z0-9_./:@+-]*\z})
     end
+
+    labels = runtime["labels"] || []
+    abort("#{path}: runtime.labels must be an array") unless labels.is_a?(Array)
+    labels.each do |entry|
+      abort("#{path}: runtime.labels entries must be KEY=VALUE strings") unless entry.is_a?(String) && entry.match?(%r{\A[a-z0-9][a-z0-9_.-]*=[A-Za-z0-9_./:@+-]+\z})
+    end
   else
     repository = fetch!(spec, "repository", path)
     abort("#{path}: repository must be owner/name") unless repository.is_a?(String) && repository.match?(/\A[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\z/)
