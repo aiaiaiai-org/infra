@@ -119,6 +119,10 @@ The runtime implementation is responsible for:
 10. restoring the previous release when activation fails;
 11. retaining only the contracted number of releases.
 
+
+
+For host-native Ruby releases, the deploy command runs through a non-interactive SSH shell. The runtime implementation therefore normalizes common per-user Ruby manager paths (`rbenv`, `asdf`, and `mise`) before resolving `ruby` and `bundle`; it must not depend on interactive shell startup files. If Ruby is genuinely absent, validation still fails explicitly rather than silently falling back to the OS Ruby.
+
 The release directory is immutable after activation. Persistent state must not be stored inside a release directory.
 
 ### container
