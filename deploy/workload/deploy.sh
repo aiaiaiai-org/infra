@@ -25,6 +25,7 @@ environment_b64="${WORKLOAD_ENVIRONMENT:-}"
 labels_b64="${WORKLOAD_LABELS:-}"
 volumes_b64="${WORKLOAD_VOLUMES:-}"
 secret_environment_b64="${WORKLOAD_SECRET_ENV:-}"
+secret_environment_file="${WORKLOAD_SECRET_ENV_FILE:-}"
 previous_marker=".previous-image"
 
 case "$mode" in
@@ -75,6 +76,14 @@ if [[ ! "$secret_environment_b64" =~ ^[A-Za-z0-9+/]*={0,2}$ ]]; then
   echo "WORKLOAD_SECRET_ENV is invalid" >&2
   exit 1
 fi
+if [[ -n "$secret_environment_file" && ! -r "$secret_environment_file" ]]; then
+  echo "WORKLOAD_SECRET_ENV_FILE is not readable" >&2
+  exit 1
+fi
+if [[ -n "$secret_environment_b64" && -n "$secret_environment_file" ]]; then
+  echo "WORKLOAD_SECRET_ENV and WORKLOAD_SECRET_ENV_FILE are mutually exclusive" >&2
+  exit 1
+fi
 
 write_environment_file() {
   local path="$1"
@@ -84,6 +93,8 @@ write_environment_file() {
   fi
   if [[ -n "$secret_environment_b64" ]]; then
     printf '%s' "$secret_environment_b64" | base64 --decode >> "$path"
+  elif [[ -n "$secret_environment_file" ]]; then
+    cat "$secret_environment_file" >> "$path"
   fi
   chmod 600 "$path"
 }
