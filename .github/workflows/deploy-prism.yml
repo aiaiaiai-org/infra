@@ -65,7 +65,6 @@ jobs:
           ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" true
 
       - name: Checkout source release
-        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
         uses: actions/checkout@v7
         with:
           repository: aiaiaiai-org/prism-hubot
@@ -74,56 +73,12 @@ jobs:
           persist-credentials: false
 
       - name: Resolve source commit
-        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
         id: source
         working-directory: source
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Prepare container environment
-        if: ${{ needs.resolve.outputs.runtime == 'container' }}
-        run: |
-          set -Eeuo pipefail
-          {
-            printf 'WORKLOAD=%s\n' "$WORKLOAD"
-            printf 'IMAGE_REF=%s\n' "$IMAGE_REF"
-            printf 'EDGE_NETWORK=%s\n' "$EDGE_NETWORK"
-            printf 'WORKLOAD_ALIAS=%s\n' "$WORKLOAD_ALIAS"
-            printf 'WORKLOAD_PORT=%s\n' "$WORKLOAD_PORT"
-            printf 'WORKLOAD_HEALTH=%s\n' "$WORKLOAD_HEALTH"
-          } > "$RUNNER_TEMP/workload.env"
-
-      - name: Prepare systemd release
-        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
-        run: |
-          set -Eeuo pipefail
-          install -m 0700 -d "$RUNNER_TEMP/release"
-          git -C source archive --format=tar.gz --output="$RUNNER_TEMP/release/release.tar.gz" HEAD
-          test -s "$RUNNER_TEMP/release/release.tar.gz"
-
-      - name: Upload container deploy script
-        if: ${{ needs.resolve.outputs.runtime == 'container' }}
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-        run: |
-          set -Eeuo pipefail
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$REMOTE_WORKLOAD_DIR' && chmod 700 '$REMOTE_WORKLOAD_DIR'"
-          tar -C deploy/workload -czf - deploy.sh | ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "tar -xzf - -C '$REMOTE_WORKLOAD_DIR'"
-          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "$RUNNER_TEMP/workload.env" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/.env"
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "chmod 600 '$REMOTE_WORKLOAD_DIR/.env'; chmod 700 '$REMOTE_WORKLOAD_DIR/deploy.sh'"
-
-      - name: Validate and activate container
-        if: ${{ needs.resolve.outputs.runtime == 'container' }}
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-        run: |
-          set -Eeuo pipefail
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=validate bash ./deploy.sh"
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cd '$REMOTE_WORKLOAD_DIR' && DEPLOY_MODE=activate bash ./deploy.sh"
-
       - name: Checkout infra deployment tooling
-        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
+
         uses: actions/checkout@v7
         with:
           path: infra
@@ -132,7 +87,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Upload systemd release
-        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
+
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -144,7 +99,7 @@ jobs:
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "chmod 700 '$DEPLOYMENT_PATH/.deploy/systemd-release.sh' && chmod 600 '$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz'"
 
       - name: Validate systemd release
-        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
+
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -153,7 +108,7 @@ jobs:
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "DEPLOY_MODE=validate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' POST_ACTIVATE_COMMAND='$POST_ACTIVATE_COMMAND' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
 
       - name: Activate systemd release
-        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
+
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
