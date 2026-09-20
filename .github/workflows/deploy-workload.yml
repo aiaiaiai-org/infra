@@ -56,19 +56,19 @@ jobs:
       - name: Resolve workload
         id: resolve
         env:
-          WORKLOAD: ${{ github.event.client_payload.workload }}
+          WORKLOAD: ${{ inputs.workload || github.event.client_payload.workload }}
         run: ruby scripts/resolve-workload-target.rb "$WORKLOAD"
 
       - name: Pass image
         id: image
         env:
-          IMAGE_REF: ${{ github.event.client_payload.image }}
+          IMAGE_REF: ${{ inputs.image || github.event.client_payload.image }}
         run: echo "image=$IMAGE_REF" >> "$GITHUB_OUTPUT"
 
       - name: Pass ref
         id: ref
         env:
-          RELEASE_REF: ${{ github.event.client_payload.ref || 'master' }}
+          RELEASE_REF: ${{ inputs.ref || github.event.client_payload.ref || 'master' }}
         run: echo "ref=$RELEASE_REF" >> "$GITHUB_OUTPUT"
 
   deploy:
