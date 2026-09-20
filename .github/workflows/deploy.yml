@@ -139,7 +139,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: aiaiaiai-org/prism-hubot
-          ref: ${{ inputs.ref || 'master' }}
+          ref: ${{ github.ref_name }}
           path: source
           persist-credentials: false
 
