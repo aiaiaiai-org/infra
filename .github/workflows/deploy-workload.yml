@@ -33,6 +33,7 @@ jobs:
       service: ${{ steps.resolve.outputs.service }}
       release_retention: ${{ steps.resolve.outputs.release_retention }}
       post_activate_command: ${{ steps.resolve.outputs.post_activate_command }}
+      prepare_env: ${{ steps.resolve.outputs.prepare_env }}
       image: ${{ steps.image.outputs.image }}
       ref: ${{ steps.ref.outputs.ref }}
     steps:
@@ -94,9 +95,10 @@ jobs:
       SERVICE_NAME: ${{ needs.resolve.outputs.service }}
       KEEP_RELEASES: ${{ needs.resolve.outputs.release_retention }}
       POST_ACTIVATE_COMMAND: ${{ needs.resolve.outputs.post_activate_command }}
+      PREPARE_ENV: ${{ needs.resolve.outputs.prepare_env }}
       REMOTE_WORKLOAD_DIR: .local/share/aiaiaiai-infra/workloads/${{ github.event.client_payload.workload }}
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
-      NILXONE_IDENTITY_RUNTIME_ENV: ${{ secrets.NILXONE_IDENTITY_RUNTIME_ENV }}
+      NILXONE_IDENTITY_PROVIDER_ENV: ${{ secrets.NILXONE_IDENTITY_PROVIDER_ENV }}
 
     steps:
       - name: Validate SSH credentials
@@ -127,7 +129,7 @@ jobs:
           ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" true
 
       - name: Checkout source release
-        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
+        if: ${{ needs.resolve.outputs.runtime == 'systemd-release' || needs.resolve.outputs.prepare_env != '' }}
         uses: actions/checkout@v7
         with:
           repository: ${{ needs.resolve.outputs.repository }}
@@ -156,9 +158,8 @@ jobs:
             printf 'WORKLOAD_LABELS=%s\n' "$WORKLOAD_LABELS"
             printf 'WORKLOAD_VOLUMES=%s\n' "$WORKLOAD_VOLUMES"
           } > "$RUNNER_TEMP/workload.env"
-          if [[ "$WORKLOAD" == "nilxone-identity" ]]; then
-            test -n "$NILXONE_IDENTITY_RUNTIME_ENV"
-            printf 'WORKLOAD_SECRET_ENV=%s\n' "$(printf '%s' "$NILXONE_IDENTITY_RUNTIME_ENV" | base64 -w 0)" >> "$RUNNER_TEMP/workload.env"
+          if [[ -n "$PREPARE_ENV" ]]; then
+            test -n "$NILXONE_IDENTITY_PROVIDER_ENV"
           fi
 
       - name: Prepare systemd release
@@ -169,6 +170,23 @@ jobs:
           git -C source archive --format=tar.gz --output="$RUNNER_TEMP/release/release.tar.gz" HEAD
           test -s "$RUNNER_TEMP/release/release.tar.gz"
 
+      - name: Prepare target runtime environment
+        if: ${{ needs.resolve.outputs.prepare_env != '' }}
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          test -f "source/${PREPARE_ENV}"
+          printf '%s' "$NILXONE_IDENTITY_PROVIDER_ENV" > "$RUNNER_TEMP/identity-provider.env"
+          chmod 600 "$RUNNER_TEMP/identity-provider.env"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$REMOTE_WORKLOAD_DIR' && chmod 700 '$REMOTE_WORKLOAD_DIR'"
+          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "source/${PREPARE_ENV}" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh"
+          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "$RUNNER_TEMP/identity-provider.env" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/provider.env"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "chmod 700 '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' && chmod 600 '$REMOTE_WORKLOAD_DIR/provider.env' && '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' '$REMOTE_WORKLOAD_DIR/runtime.env' '$REMOTE_WORKLOAD_DIR/provider.env' && rm -f '$REMOTE_WORKLOAD_DIR/provider.env' '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' && test -s '$REMOTE_WORKLOAD_DIR/runtime.env'"
+          rm -f "$RUNNER_TEMP/identity-provider.env"
+          runtime_b64="$(ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "base64 -w 0 '$REMOTE_WORKLOAD_DIR/runtime.env'")"
+          printf 'WORKLOAD_SECRET_ENV=%s\n' "$runtime_b64" >> "$RUNNER_TEMP/workload.env"
       - name: Upload container deploy script
         if: ${{ needs.resolve.outputs.runtime == 'container' }}
         env:
