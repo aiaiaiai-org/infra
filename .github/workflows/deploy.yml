@@ -1,5 +1,6 @@
 # © 2026 aiaiaiai · aiaiaiai.org
 name: Deploy
+run-name: Deploy ${{ inputs.target }}
 on:
   workflow_dispatch:
     inputs:
@@ -12,10 +13,6 @@ on:
           - nilx-web
           - market
           - prism
-      ref:
-        description: Git ref to deploy
-        required: false
-        default: master
 permissions:
   contents: read
 concurrency:
@@ -25,7 +22,6 @@ jobs:
   deploy:
     name: Deploy \${{ inputs.target }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     timeout-minutes: 30
     environment:
       name: edge-prod-1
@@ -214,5 +210,5 @@ jobs:
         if: always()
         run: |
           echo "target=$TARGET" >> "$GITHUB_STEP_SUMMARY"
-          echo "ref=$RELEASE_REF" >> "$GITHUB_STEP_SUMMARY"
+          echo "branch=${GITHUB_REF_NAME}" >> "$GITHUB_STEP_SUMMARY"
           echo "result=\${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
