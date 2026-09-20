@@ -147,10 +147,11 @@ Edge deployment is intentionally split at the workflow boundary. There is no sha
 
 - `.github/workflows/deploy-nilx-web.yml` deploys and verifies only the `nilx-web` surface: `nilx.one`, `nilxone-web:1927`, `nilxone-telegram:1927`, and `nilxone-discord:1927`. It also owns the nilx wildcard DNS lifecycle.
 - `.github/workflows/deploy-market.yml` deploys and verifies only the `market` surface: `0xda-market.nilx.one` and the three market upstreams.
+- `.github/workflows/deploy-prism.yml` deploys only the contracted `prism-hubot` systemd release from `aiaiaiai-org/prism-hubot` to `edge-prod-1`. It does not depend on market or nilx.web upstreams.
 
-Each workflow is manual and uses the selected GitHub ref as its deployment source. The selected surface's upstreams are checked directly through `nilx-edge` before Caddy activation, and the same surface is verified publicly after activation. A failed activation or scoped post-activation verification restores the previous mounted Caddyfile.
+Each workflow is manual. Edge workflows use their selected surface's Git ref as the deployment source; Prism uses its requested `prism-hubot` ref. Edge upstreams are checked directly through `nilx-edge` before Caddy activation, while Prism validates and activates its release through the contracted systemd runtime.
 
-The workflows have separate concurrency groups, so a nilx.web deployment does not block a market deployment and vice versa. An unhealthy or missing upstream for one surface therefore cannot gate deployment of the other surface.
+The workflows have separate concurrency groups, so nilx.web, market, and Prism deployments do not gate one another. An unhealthy or missing runtime for one product therefore cannot block another product's deployment.
 
 ## Rollout dependency
 
@@ -212,7 +213,9 @@ The credential a product repository needs to hold is therefore narrowed to whate
 │   └── resolve-workload-target.rb
 └── .github/workflows/
     ├── ci.yml
-    ├── deploy-edge.yml
+    ├── deploy-market.yml
+    ├── deploy-nilx-web.yml
+    ├── deploy-prism.yml
     ├── deploy-workload.yml
     └── edge-ready-validate.yml
 ```
