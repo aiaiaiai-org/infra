@@ -40,6 +40,13 @@ spec:
       service: market-api-production
       upstream: market-api-production:1927
       health: /health
+    - id: nilxone-identity
+      host: ${NILX_WEB_DOMAIN}
+      pathPrefix: /api/v1/
+      stripPrefix: false
+      service: nilxone-identity
+      upstream: nilxone-identity:1927
+      health: /health
     - id: nilxone-telegram
       host: ${NILX_WEB_DOMAIN}
       pathPrefix: /telegram/
