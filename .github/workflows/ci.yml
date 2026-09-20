@@ -39,6 +39,18 @@ jobs:
           grep -Fxq 'health=/health' <<< "$output"
           ! env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb does-not-exist 2>/dev/null
 
+      - name: Validate identity workload contract
+        run: |
+          set -Eeuo pipefail
+          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb nilxone-identity)"
+          grep -Fxq 'target=edge-prod-1' <<< "$output"
+          grep -Fxq 'network=nilx-edge' <<< "$output"
+          grep -Fxq 'alias=nilxone-identity' <<< "$output"
+          grep -Fxq 'port=1927' <<< "$output"
+          grep -Fxq 'health=/health' <<< "$output"
+          grep -Fxq 'labels=b25lLm5peC5wcm9kdWN0PTB4MQpub25lLm5peC5zZXJ2aWNlPWlkZW50aXR5Cm9uZS5uaWx4LmlkZW50aXR5LmNvbnRyYWN0PTkK' <<< "$output"
+          grep -Fxq 'volumes=bmlseG9uZS1pZGVudGl0eS1kYXRhOi9kYXRhCg==' <<< "$output"
+
       - name: Validate systemd release workload contract
         run: |
           set -Eeuo pipefail
