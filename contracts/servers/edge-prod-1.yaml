@@ -19,4 +19,5 @@ spec:
     - nilxone-web
     - nilxone-telegram
     - nilxone-discord
+    - nilxone-identity
     - prism-hubot

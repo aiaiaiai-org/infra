@@ -1,0 +1,29 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: nilxone-identity
+  owner: nilx-one/web
+spec:
+  deployment: production
+  network: nilx-edge
+  aliases:
+    - nilxone-identity
+  protocol: http
+  port: 1927
+  health: /health
+  runtime:
+    kind: container
+    environment:
+      - HTTP_BIND=0.0.0.0:1927
+      - DATABASE_URL=sqlite:///data/identity.db
+      - TELEGRAM_INIT_DATA_MAX_AGE_SECONDS=300
+    labels:
+      - one.nilx.product=0x1
+      - one.nilx.service=identity
+      - one.nilx.identity.contract=9
+    volumes:
+      - nilxone-identity-data:/data
+  public:
+    host: nilx.one
+    pathPrefix: /api/v1/

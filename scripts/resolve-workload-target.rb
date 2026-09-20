@@ -51,6 +51,10 @@ if runtime_kind == "container"
 
   environment = Array(runtime["environment"])
   abort("#{service_path}: runtime.environment entries must be KEY=VALUE strings") unless environment.all? { |entry| entry.is_a?(String) && entry.match?(%r{\A[A-Z][A-Z0-9_]*=[A-Za-z0-9_./:@+-]*\z}) }
+  labels = Array(runtime["labels"])
+  abort("#{service_path}: runtime.labels entries must be KEY=VALUE strings") unless labels.all? { |entry| entry.is_a?(String) && entry.match?(%r{\A[a-z0-9][a-z0-9_.-]*=[A-Za-z0-9_./:@+-]+\z}) }
+  volumes = Array(runtime["volumes"])
+  abort("#{service_path}: runtime.volumes entries must be SOURCE:TARGET strings") unless volumes.all? { |entry| entry.is_a?(String) && entry.match?(%r{\A[a-z0-9][a-z0-9_.-]*:/[A-Za-z0-9_./-]+(?::ro|:rw)?\z}) }
 
   result.merge!(
     "network" => network,
@@ -58,6 +62,8 @@ if runtime_kind == "container"
     "port" => port.to_s,
     "health" => health,
     "environment" => Base64.strict_encode64(environment.join("\n") + "\n"),
+    "labels" => Base64.strict_encode64(labels.join("\n") + "\n"),
+    "volumes" => Base64.strict_encode64(volumes.join("\n") + "\n"),
   )
 else
   repository = spec["repository"]
