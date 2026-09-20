@@ -11,6 +11,10 @@ spec:
   protocol: http
   port: 1927
   health: /health
+  runtime:
+    kind: container
+    environment:
+      - CLIENT_ROOT=/srv/discord-activity
   public:
     host: nilx.one
     pathPrefix: /discord/

@@ -11,6 +11,10 @@ spec:
   protocol: http
   port: 1927
   health: /health
+  runtime:
+    kind: container
+    environment:
+      - CLIENT_ROOT=/srv/site
   public:
     host: nilx.one
     pathPrefix: /

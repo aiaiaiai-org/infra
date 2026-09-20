@@ -21,6 +21,7 @@ network="${EDGE_NETWORK:-nilx-edge}"
 alias_name="${WORKLOAD_ALIAS:-}"
 port="${WORKLOAD_PORT:-}"
 health_path="${WORKLOAD_HEALTH:-}"
+environment_b64="${WORKLOAD_ENVIRONMENT:-}"
 previous_marker=".previous-image"
 
 case "$mode" in
@@ -55,6 +56,23 @@ if [[ ! "$health_path" =~ ^/ ]]; then
   echo "WORKLOAD_HEALTH must start with /" >&2
   exit 1
 fi
+if [[ ! "$environment_b64" =~ ^[A-Za-z0-9+/]*={0,2}$ ]]; then
+  echo "WORKLOAD_ENVIRONMENT is invalid" >&2
+  exit 1
+fi
+
+write_environment_file() {
+  local path="$1"
+  : > "$path"
+  if [[ -n "$environment_b64" ]]; then
+    printf '%s' "$environment_b64" | base64 --decode > "$path"
+  fi
+  chmod 600 "$path"
+}
+
+environment_file="$PWD/.environment"
+write_environment_file "$environment_file"
+trap 'rm -f "$environment_file"' EXIT
 
 docker network inspect "$network" >/dev/null
 
@@ -67,6 +85,7 @@ if [[ "$mode" == "rollback" ]]; then
     --network-alias "$alias_name" \
     --restart unless-stopped \
     --security-opt no-new-privileges:true \
+    --env-file "$environment_file" \
     --replace \
     "$previous_image" >/dev/null
   echo "workload $workload rolled back to $previous_image"
@@ -94,6 +113,7 @@ docker run --detach \
   --log-driver json-file \
   --log-opt max-size=10m \
   --log-opt max-file=3 \
+  --env-file "$environment_file" \
   --replace \
   "$image_ref" >/dev/null
 
