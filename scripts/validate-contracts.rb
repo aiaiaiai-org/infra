@@ -96,7 +96,7 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
     environment = runtime["environment"] || []
     abort("#{path}: runtime.environment must be an array") unless environment.is_a?(Array)
     environment.each do |entry|
-      abort("#{path}: runtime.environment entries must be KEY=VALUE strings") unless entry.is_a?(String) && entry.match?(/\A[A-Z][A-Z0-9_]*=[A-Za-z0-9_./:@+\-]*\z/)
+      abort("#{path}: runtime.environment entries must be KEY=VALUE strings") unless entry.is_a?(String) && entry.match?(/\A[A-Z][A-Z0-9_]*=[-A-Za-z0-9_./:@+]*\z/)
     end
   else
     repository = fetch!(spec, "repository", path)
