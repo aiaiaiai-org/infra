@@ -77,8 +77,14 @@ jobs:
         working-directory: source
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout infra deployment tooling
+      - name: Prepare systemd release
+        run: |
+          set -Eeuo pipefail
+          install -m 0700 -d "$RUNNER_TEMP/release"
+          git -C source archive --format=tar.gz --output="$RUNNER_TEMP/release/release.tar.gz" HEAD
+          test -s "$RUNNER_TEMP/release/release.tar.gz"
 
+      - name: Checkout infra deployment tooling
         uses: actions/checkout@v7
         with:
           path: infra
