@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   inspect:
-    name: Inspect nilxone-identity container (read-only)
+    name: Inspect nilxone-identity/nilxone-web + public boundary (read-only)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment:
@@ -51,7 +51,7 @@ jobs:
           test -s "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" true
 
-      - name: Inspect container, volume, and recent logs
+      - name: Inspect containers, public boundary, and recent logs
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -63,22 +63,35 @@ jobs:
           {
             echo '```'
             echo '## live public endpoint check (through Cloudflare/Caddy, like a browser)'
-            ssh_run "curl -sS -o /dev/null -w 'HTTP %{http_code} in %{time_total}s\n' https://nilx.one/api/v1/auth/native/context" || true
+            ssh_run "curl -sS -o /dev/null -w 'auth/native/context -> HTTP %{http_code} in %{time_total}s\n' https://nilx.one/api/v1/auth/native/context" || true
+            ssh_run "curl -sS -o /dev/null -w 'map/0.1.0/style.json -> HTTP %{http_code} in %{time_total}s\n' https://nilx.one/map/0.1.0/style.json" || true
+            ssh_run "curl -sS -o /dev/null -w 'map/0.1.0/style-dark.json -> HTTP %{http_code} in %{time_total}s\n' https://nilx.one/map/0.1.0/style-dark.json" || true
+            ssh_run "curl -sS -o /dev/null -w 'map/0.1.0/basemap.pmtiles (Range 0-16383) -> HTTP %{http_code} in %{time_total}s\n' -H 'Range: bytes=0-16383' https://nilx.one/map/0.1.0/basemap.pmtiles" || true
             echo
-            echo '## docker ps'
-            ssh_run "docker ps -a --filter name=nilxone-identity --format '{{.Names}}\t{{.Status}}\t{{.Image}}\t{{.RunningFor}}'" || true
+            echo '## style.json body (first 40 lines) — checks it names the pmtiles source at all'
+            ssh_run "curl -sS https://nilx.one/map/0.1.0/style.json | head -c 2000" || true
             echo
-            echo '## docker inspect: mounts + restart count'
+            echo
+            echo '## docker ps (identity + web)'
+            ssh_run "docker ps -a --filter name=nilxone-identity --filter name=nilxone-web --format '{{.Names}}\t{{.Status}}\t{{.Image}}\t{{.RunningFor}}'" || true
+            echo
+            echo '## docker inspect nilxone-identity: mounts + restart count'
             ssh_run "docker inspect nilxone-identity --format 'RestartCount={{.RestartCount}} Mounts={{json .Mounts}}'" || true
+            echo
+            echo '## docker inspect nilxone-web: mounts + restart count'
+            ssh_run "docker inspect nilxone-web --format 'RestartCount={{.RestartCount}} Mounts={{json .Mounts}}'" || true
             echo
             echo '## docker volume inspect nilxone-identity-data'
             ssh_run "docker volume inspect nilxone-identity-data" || true
             echo
-            echo '## /data listing inside the container'
+            echo '## /data listing inside the identity container'
             ssh_run "docker exec nilxone-identity ls -la /data" || true
             echo
-            echo '## recent container logs (tail '"$TAIL_LINES"')'
+            echo '## recent nilxone-identity logs (tail '"$TAIL_LINES"')'
             ssh_run "docker logs --tail '$TAIL_LINES' nilxone-identity 2>&1" || true
+            echo
+            echo '## recent nilxone-web logs (tail '"$TAIL_LINES"')'
+            ssh_run "docker logs --tail '$TAIL_LINES' nilxone-web 2>&1" || true
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
