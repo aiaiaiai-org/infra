@@ -132,9 +132,9 @@ jobs:
       REMOTE_WORKLOAD_DIR: .local/share/aiaiaiai-infra/workloads/${{ inputs.workload || github.event.client_payload.workload }}
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
       PROVIDER_TELOXIDE_TOKEN: ${{ secrets.TELOXIDE_TOKEN }}
-      PROVIDER_TELEGRAM_OIDC_CLIENT_ID: ${{ inputs.telegram_oidc_client_id }}
+      PROVIDER_TELEGRAM_OIDC_CLIENT_ID: ${{ inputs.telegram_oidc_client_id || github.event.client_payload.telegram_oidc_client_id }}
       PROVIDER_TELEGRAM_OIDC_CLIENT_SECRET: ${{ secrets.TELEGRAM_OIDC_CLIENT_SECRET }}
-      PROVIDER_DISCORD_CLIENT_ID: ${{ inputs.discord_client_id }}
+      PROVIDER_DISCORD_CLIENT_ID: ${{ inputs.discord_client_id || github.event.client_payload.discord_client_id }}
       PROVIDER_DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
 
     steps:
