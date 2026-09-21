@@ -110,8 +110,8 @@ write_labels() {
   fi
 }
 
-mapfile -t workload_labels < <(write_labels "$labels_b64")
-mapfile -t workload_volumes < <(write_labels "$volumes_b64")
+mapfile -t workload_labels < <(write_labels "$labels_b64" | sed '/^$/d')
+mapfile -t workload_volumes < <(write_labels "$volumes_b64" | sed '/^$/d')
 for volume in "${workload_volumes[@]}"; do
   [[ "$volume" =~ ^[a-z0-9][a-z0-9_.-]*:/[A-Za-z0-9_./-]+(:ro|:rw)?$ ]] || { echo "WORKLOAD_VOLUMES contains an invalid volume" >&2; exit 1; }
 done
