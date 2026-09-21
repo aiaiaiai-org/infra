@@ -128,6 +128,7 @@ if [[ "$mode" == "rollback" ]]; then
   for label in "${workload_labels[@]}"; do label_args+=(--label "$label"); done
   volume_args=()
   for volume in "${workload_volumes[@]}"; do volume_args+=(--volume "$volume"); done
+  docker rm -f "$workload" >/dev/null 2>&1 || true
   docker run --detach \
     "${label_args[@]}" "${volume_args[@]}" \
     --name "$workload" \
@@ -136,7 +137,6 @@ if [[ "$mode" == "rollback" ]]; then
     --restart unless-stopped \
     --security-opt no-new-privileges:true \
     --env-file "$environment_file" \
-    --replace \
     "$previous_image" >/dev/null
   echo "workload $workload rolled back to $previous_image"
   exit 0
@@ -159,6 +159,7 @@ for label in "${workload_labels[@]}"; do label_args+=(--label "$label"); done
 volume_args=()
 for volume in "${workload_volumes[@]}"; do volume_args+=(--volume "$volume"); done
 
+docker rm -f "$workload" >/dev/null 2>&1 || true
 docker run --detach \
   "${label_args[@]}" "${volume_args[@]}" \
   --name "$workload" \
@@ -170,7 +171,6 @@ docker run --detach \
   --log-opt max-size=10m \
   --log-opt max-file=3 \
   --env-file "$environment_file" \
-  --replace \
   "$image_ref" >/dev/null
 
 healthy=0
@@ -192,6 +192,7 @@ done
 if [[ "$healthy" != "1" ]]; then
   echo "workload $workload did not become healthy on $alias_name:$port$health_path" >&2
   if [[ -n "$current_image" ]]; then
+    docker rm -f "$workload" >/dev/null 2>&1 || true
     docker run --detach \
       "${label_args[@]}" "${volume_args[@]}" \
       --name "$workload" \
@@ -199,7 +200,6 @@ if [[ "$healthy" != "1" ]]; then
       --network-alias "$alias_name" \
       --restart unless-stopped \
       --security-opt no-new-privileges:true \
-      --replace \
       "$current_image" >/dev/null
     echo "rolled back $workload to $current_image" >&2
   fi
