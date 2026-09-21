@@ -264,6 +264,19 @@ jobs:
           scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "$RUNNER_TEMP/workload.env" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/.env"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "chmod 600 '$REMOTE_WORKLOAD_DIR/.env'; chmod 700 '$REMOTE_WORKLOAD_DIR/deploy.sh'"
 
+      - name: Authenticate container registry
+        if: ${{ needs.resolve.outputs.runtime == 'container' }}
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          GHCR_PULL_USER: ${{ vars.GHCR_PULL_USER }}
+          INFRA_DEPLOY_TOKEN: ${{ secrets.INFRA_DEPLOY_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$GHCR_PULL_USER" || { echo "::error::Missing repository variable GHCR_PULL_USER." >&2; exit 1; }
+          test -n "$INFRA_DEPLOY_TOKEN" || { echo "::error::Missing repository secret INFRA_DEPLOY_TOKEN." >&2; exit 1; }
+          printf '%s' "$INFRA_DEPLOY_TOKEN" | ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "docker login ghcr.io -u '$GHCR_PULL_USER' --password-stdin"
+
       - name: Validate and activate container
         if: ${{ needs.resolve.outputs.runtime == 'container' }}
         env:
