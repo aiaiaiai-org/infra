@@ -77,7 +77,7 @@ jobs:
             echo '## recent container logs (tail '"$TAIL_LINES"')'
             ssh_run "docker logs --tail '$TAIL_LINES' nilxone-identity 2>&1" || true
             echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Clean SSH key
         if: always()
