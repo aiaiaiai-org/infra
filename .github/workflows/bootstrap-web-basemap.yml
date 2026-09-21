@@ -1,0 +1,119 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Bootstrap web basemap volume
+
+on:
+  workflow_dispatch:
+    inputs:
+      map_bbox:
+        description: Regional bootstrap bbox (minLon,minLat,maxLon,maxLat)
+        required: false
+        default: "29.75,49.95,31.35,51.15"
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    name: Bootstrap nilxone-web-map-data volume on edge-prod-1
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: edge-prod-1
+    env:
+      SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
+      MAP_BBOX: ${{ inputs.map_bbox }}
+      PMTILES_IMAGE: ghcr.io/protomaps/go-pmtiles:v1.31.2
+    steps:
+      - name: Validate SSH credentials
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$SSH_HOST"
+          test -n "$SSH_USER"
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+
+      - name: Configure SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          install -m 0700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 0600 "$HOME/.ssh/id_ed25519"
+          ssh-keyscan -T 10 -p "$SSH_PORT" -H "$SSH_HOST" > "$HOME/.ssh/known_hosts"
+          test -s "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" true
+
+      # Every write here goes through `docker run -v nilxone-web-map-data:/data`,
+      # never a direct host path: the named volume's backing directory under
+      # /var/lib/docker/volumes is root-owned, and the deploy SSH user is only
+      # known to have docker-group access (every other workload script in this
+      # repo only ever runs plain `docker ...`, never sudo). Routing writes
+      # through a container sidesteps that instead of assuming a permission this
+      # host was never confirmed to grant.
+      - name: Bootstrap the PMTiles archive into the volume
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "
+            set -Eeuo pipefail
+            docker volume create nilxone-web-map-data >/dev/null
+
+            if docker run --rm -v nilxone-web-map-data:/data alpine:3.22 test -s /data/basemap.pmtiles; then
+              echo 'Basemap already present in nilxone-web-map-data'
+              exit 0
+            fi
+
+            build_url=''
+            for offset in 0 1 2 3 4 5 6 7; do
+              candidate_date=\$(date -u -d \"-\$offset day\" +%Y%m%d)
+              candidate=\"https://build.protomaps.com/\${candidate_date}.pmtiles\"
+              if docker run --rm '$PMTILES_IMAGE' show \"\$candidate\" >/dev/null 2>&1; then
+                build_url=\"\$candidate\"
+                break
+              fi
+            done
+            test -n \"\$build_url\" || { echo 'No usable Protomaps daily build found in the last 8 UTC days' >&2; exit 1; }
+            echo \"Bootstrapping regional basemap from \$build_url\"
+            echo \"Coverage bbox: $MAP_BBOX\"
+
+            docker run --rm -v nilxone-web-map-data:/data '$PMTILES_IMAGE' \
+              extract \"\$build_url\" /data/basemap.pmtiles.tmp --bbox='$MAP_BBOX'
+            docker run --rm -v nilxone-web-map-data:/data '$PMTILES_IMAGE' \
+              verify /data/basemap.pmtiles.tmp
+            docker run --rm -v nilxone-web-map-data:/data alpine:3.22 sh -c '
+              test -s /data/basemap.pmtiles.tmp
+              mv /data/basemap.pmtiles.tmp /data/basemap.pmtiles
+              chmod 0644 /data/basemap.pmtiles
+            '
+            echo 'Basemap ready in nilxone-web-map-data'
+          "
+
+      - name: Inspect the bootstrapped archive
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          {
+            echo '```'
+            ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "
+              docker run --rm -v nilxone-web-map-data:/data alpine:3.22 ls -la /data
+              docker run --rm -v nilxone-web-map-data:/data '$PMTILES_IMAGE' show /data/basemap.pmtiles
+            "
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean SSH key
+        if: always()
+        run: rm -f "$HOME/.ssh/id_ed25519"
