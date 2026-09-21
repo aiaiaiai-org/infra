@@ -62,6 +62,9 @@ jobs:
           }
           {
             echo '```'
+            echo '## live public endpoint check (through Cloudflare/Caddy, like a browser)'
+            ssh_run "curl -sS -o /dev/null -w 'HTTP %{http_code} in %{time_total}s\n' https://nilx.one/api/v1/auth/native/context" || true
+            echo
             echo '## docker ps'
             ssh_run "docker ps -a --filter name=nilxone-identity --format '{{.Names}}\t{{.Status}}\t{{.Image}}\t{{.RunningFor}}'" || true
             echo
