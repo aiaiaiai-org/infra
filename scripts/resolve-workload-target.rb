@@ -43,8 +43,10 @@ if runtime_kind == "container"
   port = spec["port"]
   abort("#{service_path}: port must be between 1 and 65535") unless port.is_a?(Integer) && port.between?(1, 65_535)
 
-  health = spec["health"]
-  abort("#{service_path}: health must start with /") unless health.is_a?(String) && health.start_with?("/")
+  health_kind = spec["healthKind"] || "http"
+  abort("#{service_path}: healthKind must be http or tcp") unless %w[http tcp].include?(health_kind)
+  health = spec["health"].to_s
+  abort("#{service_path}: health must start with /") if health_kind == "http" && !health.start_with?("/")
 
   network = spec["network"]
   abort("#{service_path}: network is required") unless network.is_a?(String) && !network.empty?
@@ -55,6 +57,9 @@ if runtime_kind == "container"
   abort("#{service_path}: runtime.labels entries must be KEY=VALUE strings") unless labels.all? { |entry| entry.is_a?(String) && entry.match?(%r{\A[a-z0-9][a-z0-9_.-]*=[A-Za-z0-9_./:@+-]+\z}) }
   volumes = Array(runtime["volumes"])
   abort("#{service_path}: runtime.volumes entries must be SOURCE:TARGET strings") unless volumes.all? { |entry| entry.is_a?(String) && entry.match?(%r{\A[a-z0-9][a-z0-9_.-]*:/[A-Za-z0-9_./-]+(?::ro|:rw)?\z}) }
+
+  secret_mappings = Array(runtime["secrets"])
+  abort("#{service_path}: runtime.secrets entries must be ENV_NAME=SECRET_NAME") unless secret_mappings.all? { |entry| entry.is_a?(String) && entry.match?(/\A[A-Z][A-Z0-9_]*=[A-Z][A-Z0-9_]*\z/) }
 
   prepare_env = runtime["prepareEnv"].to_s
   if !prepare_env.empty?
@@ -68,6 +73,9 @@ if runtime_kind == "container"
     "alias" => aliases.first,
     "port" => port.to_s,
     "health" => health,
+    "health_kind" => health_kind,
+    "contract_image" => runtime["image"].to_s,
+    "secrets" => secret_mappings.empty? ? "" : Base64.strict_encode64(secret_mappings.join("\n") + "\n"),
     "environment" => Base64.strict_encode64(environment.join("\n") + "\n"),
     "labels" => Base64.strict_encode64(labels.join("\n") + "\n"),
     "volumes" => Base64.strict_encode64(volumes.join("\n") + "\n"),

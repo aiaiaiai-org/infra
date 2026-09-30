@@ -28,6 +28,22 @@ jobs:
       - name: Validate shell syntax
         run: bash -n deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh
 
+      - name: Validate workload secret environment
+        run: |
+          set -Eeuo pipefail
+          ruby -c scripts/workload-secret-env.rb
+          mapping="$(printf 'POSTGRES_PASSWORD=PRISM_POSTGRES_PASSWORD\nPGPASSWORD=PRISM_POSTGRES_PASSWORD\n' | base64 -w0)"
+          built="$(WORKLOAD_SECRETS="$mapping" ALL_SECRETS='{"PRISM_POSTGRES_PASSWORD":"pw=1","SSH_HOST":"x"}' ruby scripts/workload-secret-env.rb | base64 --decode)"
+          test "$built" = "$(printf 'POSTGRES_PASSWORD=pw=1\nPGPASSWORD=pw=1')"
+          # A named secret the Environment lacks, or leaves empty, stops the deployment.
+          ! WORKLOAD_SECRETS="$mapping" ALL_SECRETS='{}' ruby scripts/workload-secret-env.rb 2>/dev/null
+          ! WORKLOAD_SECRETS="$mapping" ALL_SECRETS='{"PRISM_POSTGRES_PASSWORD":""}' ruby scripts/workload-secret-env.rb 2>/dev/null
+          ! WORKLOAD_SECRETS="$mapping" ALL_SECRETS='{"PRISM_POSTGRES_PASSWORD":"a\nb"}' ruby scripts/workload-secret-env.rb 2>/dev/null
+          # An error names the secret, never its value.
+          message="$(WORKLOAD_SECRETS="$mapping" ALL_SECRETS='{"PRISM_POSTGRES_PASSWORD":"leak-4a1f\nleak-9c2e"}' ruby scripts/workload-secret-env.rb 2>&1 || true)"
+          grep -Fq 'PRISM_POSTGRES_PASSWORD' <<< "$message"
+          ! grep -Fq 'leak-' <<< "$message"
+
       - name: Validate workload placement resolver
         run: |
           set -Eeuo pipefail

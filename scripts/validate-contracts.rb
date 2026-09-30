@@ -8,6 +8,9 @@ ROOT = File.expand_path("..", __dir__)
 EDGE_PATH = File.join(ROOT, "contracts", "edge.yaml")
 SERVER_GLOB = File.join(ROOT, "contracts", "servers", "*.yaml")
 SERVICE_GLOB = File.join(ROOT, "contracts", "services", "*.yaml")
+# The image references deploy/workload/deploy.sh accepts.
+IMAGE_PATTERN = %r{\A[a-z0-9.-]+(/[a-z0-9._-]+)*(:[A-Za-z0-9_.-]+|@sha256:[0-9a-f]{64})\z}
+SECRET_MAPPING_PATTERN = /\A([A-Z][A-Z0-9_]*)=([A-Z][A-Z0-9_]*)\z/
 
 
 def load_yaml(path)
@@ -90,8 +93,19 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
     expected_default_port = deployment == "test" ? 1703 : 1927
     abort("#{path}: #{deployment} workload must use default port #{expected_default_port}") unless port == expected_default_port
 
-    health = fetch!(spec, "health", path)
-    abort("#{path}: health must start with /") unless health.is_a?(String) && health.start_with?("/")
+    health_kind = spec["healthKind"] || "http"
+    abort("#{path}: healthKind must be http or tcp") unless %w[http tcp].include?(health_kind)
+    if health_kind == "http"
+      health = fetch!(spec, "health", path)
+      abort("#{path}: health must start with /") unless health.is_a?(String) && health.start_with?("/")
+    elsif spec.key?("health")
+      abort("#{path}: a tcp health check takes no health path")
+    end
+
+    image = runtime["image"]
+    unless image.nil?
+      abort("#{path}: runtime.image must be an image reference with a tag or a digest") unless image.is_a?(String) && image.match?(IMAGE_PATTERN)
+    end
 
     environment = runtime["environment"] || []
     abort("#{path}: runtime.environment must be an array") unless environment.is_a?(Array)
@@ -109,6 +123,23 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
     abort("#{path}: runtime.volumes must be an array") unless volumes.is_a?(Array)
     volumes.each do |entry|
       abort("#{path}: runtime.volumes entries must be SOURCE:TARGET strings") unless entry.is_a?(String) && entry.match?(%r{\A[a-z0-9][a-z0-9_.-]*:/[A-Za-z0-9_./-]+(?::ro|:rw)?\z})
+    end
+
+    # Secrets are named, never written: ENV_NAME=SECRET_NAME, the value coming from the target
+    # server's GitHub Environment at deployment.
+    secrets = runtime["secrets"] || []
+    abort("#{path}: runtime.secrets must be an array") unless secrets.is_a?(Array)
+    plain_names = environment.map { |entry| entry.split("=", 2).first }
+    secret_names = secrets.map do |entry|
+      match = entry.is_a?(String) && SECRET_MAPPING_PATTERN.match(entry)
+      abort("#{path}: runtime.secrets entries must be ENV_NAME=SECRET_NAME") unless match
+      match[1]
+    end
+    abort("#{path}: runtime.secrets sets a variable twice") unless secret_names.uniq.length == secret_names.length
+    overlap = secret_names & plain_names
+    abort("#{path}: #{overlap.join(', ')} is both a plain and a secret variable") unless overlap.empty?
+    if secrets.any? && runtime["prepareEnv"]
+      abort("#{path}: runtime.secrets and runtime.prepareEnv are mutually exclusive")
     end
   else
     repository = fetch!(spec, "repository", path)

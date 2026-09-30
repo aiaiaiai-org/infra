@@ -5,6 +5,22 @@ name: Deploy workload
 on:
   repository_dispatch:
     types: [deploy-workload]
+  # For workloads no product repository dispatches, such as a database whose image is pinned in
+  # its contract.
+  workflow_dispatch:
+    inputs:
+      workload:
+        description: Workload identifier
+        required: true
+        type: string
+      image:
+        description: Immutable image reference (omit when the contract pins one)
+        required: false
+        type: string
+      ref:
+        description: Source release ref
+        required: false
+        type: string
   workflow_call:
     inputs:
       workload:
@@ -59,6 +75,8 @@ jobs:
       alias: ${{ steps.resolve.outputs.alias }}
       port: ${{ steps.resolve.outputs.port }}
       health: ${{ steps.resolve.outputs.health }}
+      health_kind: ${{ steps.resolve.outputs.health_kind }}
+      secrets: ${{ steps.resolve.outputs.secrets }}
       environment: ${{ steps.resolve.outputs.environment }}
       labels: ${{ steps.resolve.outputs.labels }}
       volumes: ${{ steps.resolve.outputs.volumes }}
@@ -96,7 +114,18 @@ jobs:
         id: image
         env:
           IMAGE_REF: ${{ inputs.image || github.event.client_payload.image }}
-        run: echo "image=$IMAGE_REF" >> "$GITHUB_OUTPUT"
+          CONTRACT_IMAGE: ${{ steps.resolve.outputs.contract_image }}
+        run: |
+          set -Eeuo pipefail
+          # A contract that pins its image is the release identity; a caller cannot replace it.
+          if [[ -n "$CONTRACT_IMAGE" ]]; then
+            if [[ -n "$IMAGE_REF" && "$IMAGE_REF" != "$CONTRACT_IMAGE" ]]; then
+              echo "::error::this workload's image is pinned by its contract"
+              exit 1
+            fi
+            IMAGE_REF="$CONTRACT_IMAGE"
+          fi
+          echo "image=$IMAGE_REF" >> "$GITHUB_OUTPUT"
 
       - name: Pass ref
         id: ref
@@ -112,7 +141,7 @@ jobs:
     environment:
       name: ${{ needs.resolve.outputs.target }}
     env:
-      WORKLOAD: ${{ github.event.client_payload.workload }}
+      WORKLOAD: ${{ inputs.workload || github.event.client_payload.workload }}
       RUNTIME: ${{ needs.resolve.outputs.runtime }}
       SOURCE_REPOSITORY: ${{ inputs.source_repository || needs.resolve.outputs.repository }}
       IMAGE_REF: ${{ needs.resolve.outputs.image }}
@@ -121,6 +150,8 @@ jobs:
       WORKLOAD_ALIAS: ${{ needs.resolve.outputs.alias }}
       WORKLOAD_PORT: ${{ needs.resolve.outputs.port }}
       WORKLOAD_HEALTH: ${{ needs.resolve.outputs.health }}
+      WORKLOAD_HEALTH_KIND: ${{ needs.resolve.outputs.health_kind }}
+      WORKLOAD_SECRETS: ${{ needs.resolve.outputs.secrets }}
       WORKLOAD_ENVIRONMENT: ${{ needs.resolve.outputs.environment }}
       WORKLOAD_LABELS: ${{ needs.resolve.outputs.labels }}
       WORKLOAD_VOLUMES: ${{ needs.resolve.outputs.volumes }}
@@ -191,6 +222,7 @@ jobs:
             printf 'WORKLOAD_ALIAS=%s\n' "$WORKLOAD_ALIAS"
             printf 'WORKLOAD_PORT=%s\n' "$WORKLOAD_PORT"
             printf 'WORKLOAD_HEALTH=%s\n' "$WORKLOAD_HEALTH"
+            printf 'WORKLOAD_HEALTH_KIND=%s\n' "$WORKLOAD_HEALTH_KIND"
             printf 'WORKLOAD_ENVIRONMENT=%s\n' "$WORKLOAD_ENVIRONMENT"
             printf 'WORKLOAD_LABELS=%s\n' "$WORKLOAD_LABELS"
             printf 'WORKLOAD_VOLUMES=%s\n' "$WORKLOAD_VOLUMES"
@@ -249,8 +281,19 @@ jobs:
           sparse-checkout: |
             deploy/workload/deploy.sh
             deploy/workload/systemd-release.sh
+            scripts/workload-secret-env.rb
           sparse-checkout-cone-mode: false
           persist-credentials: false
+
+      - name: Prepare workload secrets
+        if: ${{ needs.resolve.outputs.runtime == 'container' && needs.resolve.outputs.secrets != '' }}
+        env:
+          # Only this step sees the Environment's secrets; it keeps the ones the contract names.
+          ALL_SECRETS: ${{ toJSON(secrets) }}
+        run: |
+          set -Eeuo pipefail
+          secret_env="$(ruby infra/scripts/workload-secret-env.rb)"
+          printf 'WORKLOAD_SECRET_ENV=%s\n' "$secret_env" >> "$RUNNER_TEMP/workload.env"
 
       - name: Upload container deploy script
         if: ${{ needs.resolve.outputs.runtime == 'container' }}
