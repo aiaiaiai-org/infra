@@ -26,7 +26,12 @@ jobs:
         run: ruby scripts/validate-contracts.rb
 
       - name: Validate shell syntax
-        run: bash -n deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh deploy/edge-aiaiaiai/deploy.sh deploy/edge-aiaiaiai/verify.sh
+        # bash -n checks only its first file; the others would be arguments to it.
+        run: |
+          set -Eeuo pipefail
+          for script in deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh deploy/edge-aiaiaiai/deploy.sh deploy/edge-aiaiaiai/verify.sh deploy/edge-aiaiaiai/bootstrap-server.sh; do
+            bash -n "$script"
+          done
 
       - name: Validate workload secret environment
         run: |

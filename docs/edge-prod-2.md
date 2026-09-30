@@ -28,10 +28,30 @@ Docker network: aiaiaiai-edge
 
 These are done once, by hand, outside this repository.
 
-1. **A server.** A VPS with Docker Engine and the Compose plugin, SSH by key, ports 80/tcp,
-   443/tcp, and 443/udp open.
-2. **DNS.** `api.aiaiaiai.org` → the server's address. Caddy obtains its certificate over HTTP-01,
-   so the record must resolve before the edge is activated.
+1. **A server.** A VPS with Ubuntu 24.04 or Debian 12. If the provider has its own firewall (a
+   Hetzner Cloud Firewall, for one), open 22022/tcp, 80/tcp, 443/tcp and 443/udp there too.
+
+   Make a deploy key on your own machine; it never goes to the server, only its public half:
+
+   ```sh
+   ssh-keygen -t ed25519 -N '' -C 'infra deploy edge-prod-2' -f ~/.ssh/edge-prod-2-deploy
+   ```
+
+   Then prepare the server as root with `deploy/edge-aiaiaiai/bootstrap-server.sh`: Docker Engine
+   and the Compose plugin, a `deploy` user in the `docker` group with that key, SSH on 22022 by
+   key only, and a firewall with only SSH and the edge's ports.
+
+   ```sh
+   scp deploy/edge-aiaiaiai/bootstrap-server.sh root@<server>:
+   ssh root@<server> "DEPLOY_PUBKEY='$(cat ~/.ssh/edge-prod-2-deploy.pub)' bash bootstrap-server.sh"
+   ssh -i ~/.ssh/edge-prod-2-deploy -p 22022 deploy@<server> docker ps   # must work
+   ssh -p 22022 root@<server> bash bootstrap-server.sh --finalize         # closes port 22
+   ```
+
+2. **DNS.** An `A` record `api.aiaiaiai.org` → the server's IPv4 address, and an `AAAA` record only
+   if the server has IPv6. Caddy obtains its certificate over HTTP-01, so the record must resolve
+   before the edge is activated. On Cloudflare, keep the record **DNS only** (grey cloud) for the
+   first activation.
 3. **GitHub Environment `edge-prod-2`** in this repository, with:
 
    | Kind | Name | Value |
@@ -45,6 +65,21 @@ These are done once, by hand, outside this repository.
 
    The container registry login the workload deployment uses (`GHCR_PULL_USER`,
    `INFRA_DEPLOY_TOKEN`) must also reach this Environment, as it does `edge-prod-1`'s.
+
+   With the GitHub CLI, the generated values go straight into the Environment and are never shown:
+
+   ```sh
+   repo=aiaiaiai-org/infra
+   gh api -X PUT "repos/$repo/environments/edge-prod-2" >/dev/null
+   gh secret set SSH_HOST        -R "$repo" --env edge-prod-2 --body '<server>'
+   gh secret set SSH_USER        -R "$repo" --env edge-prod-2 --body deploy
+   gh secret set SSH_PRIVATE_KEY -R "$repo" --env edge-prod-2 < ~/.ssh/edge-prod-2-deploy
+   openssl rand -hex 32 | gh secret set PRISM_POSTGRES_PASSWORD   -R "$repo" --env edge-prod-2
+   openssl rand -hex 64 | gh secret set PRISM_HUB_SECRET_KEY_BASE -R "$repo" --env edge-prod-2
+   ```
+
+   `PRISM_POSTGRES_PASSWORD` is read once, when the database volume is first created. Changing the
+   secret later does not change the database's password.
 
 A secret a contract names but the Environment lacks stops the deployment before anything changes.
 
