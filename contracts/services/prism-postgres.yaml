@@ -1,0 +1,29 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: prism-postgres
+  owner: aiaiaiai-org/infra
+spec:
+  deployment: production
+  network: aiaiaiai-edge
+  aliases:
+    - prism-postgres
+  protocol: tcp
+  port: 1927
+  healthKind: tcp
+  runtime:
+    kind: container
+    # postgres:18.6-alpine3.24, pinned by digest: a database changes only in a reviewed contract.
+    image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    environment:
+      - PGPORT=1927
+      - POSTGRES_USER=prism_hub
+      - POSTGRES_DB=prism_hub
+    secrets:
+      - POSTGRES_PASSWORD=PRISM_POSTGRES_PASSWORD
+    labels:
+      - org.aiaiaiai.product=prism
+      - org.aiaiaiai.service=postgres
+    volumes:
+      - prism-postgres-data:/var/lib/postgresql

@@ -52,7 +52,7 @@ if runtime_kind == "container"
   abort("#{service_path}: network is required") unless network.is_a?(String) && !network.empty?
 
   environment = Array(runtime["environment"])
-  abort("#{service_path}: runtime.environment entries must be KEY=VALUE strings") unless environment.all? { |entry| entry.is_a?(String) && entry.match?(%r{\A[A-Z][A-Z0-9_]*=[A-Za-z0-9_./:@+-]*\z}) }
+  abort("#{service_path}: runtime.environment entries must be KEY=VALUE strings") unless environment.all? { |entry| entry.is_a?(String) && entry.match?(%r{\A[A-Z][A-Z0-9_]*=[A-Za-z0-9_./:@+,-]*\z}) }
   labels = Array(runtime["labels"])
   abort("#{service_path}: runtime.labels entries must be KEY=VALUE strings") unless labels.all? { |entry| entry.is_a?(String) && entry.match?(%r{\A[a-z0-9][a-z0-9_.-]*=[A-Za-z0-9_./:@+-]+\z}) }
   volumes = Array(runtime["volumes"])

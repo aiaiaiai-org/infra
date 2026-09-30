@@ -1,0 +1,29 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: EdgeContract
+metadata:
+  name: aiaiaiai-edge
+  owner: aiaiaiai-org/infra
+spec:
+  placement:
+    target: edge-prod-2
+  network:
+    name: aiaiaiai-edge
+    external: true
+    driver: bridge
+  entrypoint:
+    service: caddy
+    image: caddy:2-alpine
+    ports:
+      - 80/tcp
+      - 443/tcp
+      - 443/udp
+    tls: automatic
+  routes:
+    - id: prism-hub
+      host: ${PRISM_API_DOMAIN}
+      pathPrefix: /prism-hub/
+      stripPrefix: true
+      service: prism-hub
+      upstream: prism-hub:1927
+      health: /healthz

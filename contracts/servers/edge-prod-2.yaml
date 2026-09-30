@@ -1,0 +1,17 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: ServerContract
+metadata:
+  name: edge-prod-2
+  owner: aiaiaiai-org/infra
+spec:
+  role: public-edge
+  edgeNetwork: aiaiaiai-edge
+  publicPorts:
+    - 80/tcp
+    - 443/tcp
+    - 443/udp
+  runtimeRoot: /opt/infra/targets/edge-prod-2
+  workloads:
+    - prism-postgres
+    - prism-hub

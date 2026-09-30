@@ -1,0 +1,139 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Deploy aiaiaiai edge
+
+# The aiaiaiai.org edge on edge-prod-2: its network and Caddy. The 0x1 edge on edge-prod-1 is
+# deploy.yml and is not touched here.
+on:
+  workflow_dispatch:
+    inputs:
+      verify_upstreams:
+        description: Require the routed workloads to answer (off only for the first activation, before any runs)
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-aiaiaiai-edge-prod-2
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy aiaiaiai edge
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: edge-prod-2
+    env:
+      EDGE_TARGET: edge-prod-2
+      EDGE_NETWORK: aiaiaiai-edge
+      PRISM_API_DOMAIN: api.aiaiaiai.org
+      REMOTE_EDGE_DIR: .local/share/aiaiaiai-infra/edge-aiaiaiai
+      SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
+
+    steps:
+      - name: Validate credentials
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$SSH_HOST"
+          test -n "$SSH_USER"
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+
+      - name: Checkout infra
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate contracts
+        run: ruby scripts/validate-contracts.rb
+
+      - name: Configure SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          install -m 0700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 0600 "$HOME/.ssh/id_ed25519"
+          ssh-keyscan -T 10 -p "$SSH_PORT" -H "$SSH_HOST" > "$HOME/.ssh/known_hosts"
+          test -s "$HOME/.ssh/known_hosts"
+          chmod 0600 "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" true
+
+      - name: Upload edge release
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          {
+            printf 'EDGE_TARGET=%s\n' "$EDGE_TARGET"
+            printf 'EDGE_NETWORK=%s\n' "$EDGE_NETWORK"
+            printf 'PRISM_API_DOMAIN=%s\n' "$PRISM_API_DOMAIN"
+            printf 'CADDY_IMAGE=caddy:2-alpine\n'
+          } > "$RUNNER_TEMP/edge.env"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$REMOTE_EDGE_DIR' && chmod 700 '$REMOTE_EDGE_DIR'"
+          tar -C deploy/edge-aiaiaiai -czf - Caddyfile compose.yaml deploy.sh verify.sh |
+            ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "tar -xzf - -C '$REMOTE_EDGE_DIR'"
+          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "$RUNNER_TEMP/edge.env" "$SSH_USER@$SSH_HOST:$REMOTE_EDGE_DIR/.env"
+
+      - name: Validate edge on the target
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cd '$REMOTE_EDGE_DIR' && DEPLOY_MODE=validate bash ./deploy.sh"
+
+      - name: Activate edge
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cd '$REMOTE_EDGE_DIR' && DEPLOY_MODE=activate bash ./deploy.sh"
+
+      - name: Verify upstreams
+        if: ${{ inputs.verify_upstreams }}
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "cd '$REMOTE_EDGE_DIR' && EDGE_NETWORK='$EDGE_NETWORK' bash ./verify.sh"
+
+      - name: Verify public HTTPS
+        if: ${{ inputs.verify_upstreams }}
+        run: |
+          set -Eeuo pipefail
+          url="https://${PRISM_API_DOMAIN}/prism-hub/healthz"
+          for _ in $(seq 1 18); do
+            if curl --fail --silent --show-error --connect-timeout 10 --max-time 30 "$url" >/dev/null; then
+              echo "public route answers: $url"
+              exit 0
+            fi
+            sleep 5
+          done
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 "$url" >/dev/null
+
+      - name: Clean secret material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/edge.env" "$HOME/.ssh/id_ed25519"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo "### aiaiaiai edge"
+            echo "- target: \`$EDGE_TARGET\`"
+            echo "- network: \`$EDGE_NETWORK\`"
+            echo "- host: \`$PRISM_API_DOMAIN\`"
+            echo "- upstreams verified: \`${{ inputs.verify_upstreams }}\`"
+            echo "- result: \`${{ job.status }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

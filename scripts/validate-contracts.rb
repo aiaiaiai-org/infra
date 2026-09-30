@@ -5,7 +5,7 @@
 require "yaml"
 
 ROOT = File.expand_path("..", __dir__)
-EDGE_PATH = File.join(ROOT, "contracts", "edge.yaml")
+EDGE_GLOB = File.join(ROOT, "contracts", "edges", "*.yaml")
 SERVER_GLOB = File.join(ROOT, "contracts", "servers", "*.yaml")
 SERVICE_GLOB = File.join(ROOT, "contracts", "services", "*.yaml")
 # The image references deploy/workload/deploy.sh accepts.
@@ -27,15 +27,27 @@ def fetch!(object, key, path)
 end
 
 
-edge = load_yaml(EDGE_PATH)
-abort("edge contract: unsupported apiVersion") unless edge["apiVersion"] == "infra.nilx.one/v1"
-abort("edge contract: unsupported kind") unless edge["kind"] == "EdgeContract"
-abort("edge contract: owner must be aiaiaiai-org/infra") unless edge.dig("metadata", "owner") == "aiaiaiai-org/infra"
+# Each edge is one public entrypoint on one server, with its own Docker network. A product's
+# workloads join the network of the edge on the server they are placed on, and no other.
+edges = {}
+Dir.glob(EDGE_GLOB).sort.each do |path|
+  edge = load_yaml(path)
+  abort("#{path}: unsupported apiVersion") unless edge["apiVersion"] == "infra.nilx.one/v1"
+  abort("#{path}: unsupported kind") unless edge["kind"] == "EdgeContract"
+  abort("#{path}: owner must be aiaiaiai-org/infra") unless edge.dig("metadata", "owner") == "aiaiaiai-org/infra"
 
-edge_spec = fetch!(edge, "spec", EDGE_PATH)
-network = fetch!(edge_spec, "network", EDGE_PATH)
-network_name = fetch!(network, "name", EDGE_PATH)
-abort("edge contract: network must be external") unless network["external"] == true
+  name = fetch!(fetch!(edge, "metadata", path), "name", path)
+  abort("#{path}: duplicate edge id #{name}") if edges.key?(name)
+  spec = fetch!(edge, "spec", path)
+  network = fetch!(spec, "network", path)
+  fetch!(network, "name", path)
+  abort("#{path}: network must be external") unless network["external"] == true
+  edges[name] = { "path" => path, "spec" => spec }
+end
+abort("edge contracts: at least one edge is required") if edges.empty?
+
+edge_networks = edges.values.map { |edge| edge.dig("spec", "network", "name") }
+abort("edge contracts: two edges share a network") unless edge_networks.uniq.length == edge_networks.length
 
 servers = {}
 Dir.glob(SERVER_GLOB).sort.each do |path|
@@ -48,7 +60,7 @@ Dir.glob(SERVER_GLOB).sort.each do |path|
   spec = fetch!(contract, "spec", path)
   abort("#{path}: duplicate server id #{name}") if servers.key?(name)
   fetch!(spec, "role", path)
-  abort("#{path}: edgeNetwork must be #{network_name}") unless spec["edgeNetwork"] == network_name
+  abort("#{path}: edgeNetwork must be the network of an edge") unless edge_networks.include?(spec["edgeNetwork"])
 
   ports = Array(fetch!(spec, "publicPorts", path))
   abort("#{path}: publicPorts must be non-empty strings") unless ports.any? && ports.all? { |value| value.is_a?(String) && !value.empty? }
@@ -80,7 +92,7 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
   abort("#{path}: runtime.kind must be container or systemd-release") unless %w[container systemd-release].include?(runtime_kind)
 
   if runtime_kind == "container"
-    abort("#{path}: network must be #{network_name}") unless spec["network"] == network_name
+    abort("#{path}: network must be the network of an edge") unless edge_networks.include?(spec["network"])
 
     aliases = Array(fetch!(spec, "aliases", path))
     abort("#{path}: aliases must be non-empty strings") unless aliases.any? && aliases.all? { |value| value.is_a?(String) && !value.empty? }
@@ -110,7 +122,7 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
     environment = runtime["environment"] || []
     abort("#{path}: runtime.environment must be an array") unless environment.is_a?(Array)
     environment.each do |entry|
-      abort("#{path}: runtime.environment entries must be KEY=VALUE strings") unless entry.is_a?(String) && entry.match?(%r{\A[A-Z][A-Z0-9_]*=[A-Za-z0-9_./:@+-]*\z})
+      abort("#{path}: runtime.environment entries must be KEY=VALUE strings") unless entry.is_a?(String) && entry.match?(%r{\A[A-Z][A-Z0-9_]*=[A-Za-z0-9_./:@+,-]*\z})
     end
 
     labels = runtime["labels"] || []
@@ -161,45 +173,77 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
   services[name] = contract
 end
 
-placement = fetch!(edge_spec, "placement", EDGE_PATH)
-target_name = fetch!(placement, "target", EDGE_PATH)
-target = servers[target_name] || abort("edge placement: unknown server target #{target_name}")
-
-entrypoint = fetch!(edge_spec, "entrypoint", EDGE_PATH)
-entrypoint_ports = Array(fetch!(entrypoint, "ports", EDGE_PATH))
-target_ports = Array(target.dig("spec", "publicPorts"))
-missing_ports = entrypoint_ports - target_ports
-abort("edge placement: target #{target_name} is missing ports #{missing_ports.join(', ')}") unless missing_ports.empty?
-
-routes = Array(edge_spec["routes"])
-abort("edge contract: routes must not be empty") if routes.empty?
-
-seen_routes = {}
-routed_services = []
-routes.each do |route|
-  route_id = fetch!(route, "id", EDGE_PATH)
-  service_id = fetch!(route, "service", EDGE_PATH)
-  service = services[service_id] || abort("edge route #{route_id}: unknown service #{service_id}")
-  routed_services << service_id
-  host = fetch!(route, "host", EDGE_PATH)
-  prefix = fetch!(route, "pathPrefix", EDGE_PATH)
-  key = [host, prefix]
-  abort("edge route #{route_id}: duplicate host/path #{key.join}") if seen_routes[key]
-  seen_routes[key] = true
-
-  upstream = fetch!(route, "upstream", EDGE_PATH)
-  alias_name, port_text = upstream.split(":", 2)
-  expected_aliases = Array(service.dig("spec", "aliases"))
-  expected_port = service.dig("spec", "port").to_s
-
-  abort("edge route #{route_id}: upstream alias #{alias_name} is not declared") unless expected_aliases.include?(alias_name)
-  abort("edge route #{route_id}: upstream port #{port_text} must be #{expected_port}") unless port_text == expected_port
-  abort("edge route #{route_id}: pathPrefix must start with /") unless prefix.start_with?("/")
-  abort("edge route #{route_id}: health must start with /") unless fetch!(route, "health", EDGE_PATH).start_with?("/")
+# Where each workload runs: exactly one server places it.
+placed_on = {}
+servers.each do |server_name, server|
+  Array(server.dig("spec", "workloads")).each do |workload|
+    abort("server #{server_name}: unknown workload #{workload}") unless services.key?(workload)
+    abort("workload #{workload} is placed on more than one server") if placed_on.key?(workload)
+    placed_on[workload] = server_name
+  end
 end
 
-target_workloads = Array(target.dig("spec", "workloads"))
-missing_workloads = routed_services.uniq - target_workloads
-abort("edge placement: target #{target_name} is missing workloads #{missing_workloads.join(', ')}") unless missing_workloads.empty?
+edge_on_server = {}
+route_count = 0
+edges.each do |edge_name, edge|
+  path = edge.fetch("path")
+  spec = edge.fetch("spec")
+  network_name = spec.dig("network", "name")
 
-puts("validated #{servers.length} server, #{services.length} workload contracts, and #{routes.length} edge routes")
+  placement = fetch!(spec, "placement", path)
+  target_name = fetch!(placement, "target", path)
+  target = servers[target_name] || abort("#{path}: unknown server target #{target_name}")
+  abort("#{path}: server #{target_name} already has an edge") if edge_on_server.key?(target_name)
+  edge_on_server[target_name] = edge_name
+  abort("#{path}: server #{target_name} must use edgeNetwork #{network_name}") unless target.dig("spec", "edgeNetwork") == network_name
+
+  entrypoint = fetch!(spec, "entrypoint", path)
+  entrypoint_ports = Array(fetch!(entrypoint, "ports", path))
+  missing_ports = entrypoint_ports - Array(target.dig("spec", "publicPorts"))
+  abort("#{path}: target #{target_name} is missing ports #{missing_ports.join(', ')}") unless missing_ports.empty?
+
+  routes = Array(spec["routes"])
+  abort("#{path}: routes must not be empty") if routes.empty?
+
+  seen_routes = {}
+  routes.each do |route|
+    route_id = fetch!(route, "id", path)
+    service_id = fetch!(route, "service", path)
+    service = services[service_id] || abort("#{path}: route #{route_id}: unknown service #{service_id}")
+    host = fetch!(route, "host", path)
+    prefix = fetch!(route, "pathPrefix", path)
+    key = [host, prefix]
+    abort("#{path}: route #{route_id}: duplicate host/path #{key.join}") if seen_routes[key]
+    seen_routes[key] = true
+
+    # An edge routes only to workloads on its own server, in its own network.
+    abort("#{path}: route #{route_id}: #{service_id} is not placed on #{target_name}") unless placed_on[service_id] == target_name
+    abort("#{path}: route #{route_id}: #{service_id} is not in network #{network_name}") unless service.dig("spec", "network") == network_name
+
+    upstream = fetch!(route, "upstream", path)
+    alias_name, port_text = upstream.split(":", 2)
+    expected_aliases = Array(service.dig("spec", "aliases"))
+    expected_port = service.dig("spec", "port").to_s
+
+    abort("#{path}: route #{route_id}: upstream alias #{alias_name} is not declared") unless expected_aliases.include?(alias_name)
+    abort("#{path}: route #{route_id}: upstream port #{port_text} must be #{expected_port}") unless port_text == expected_port
+    abort("#{path}: route #{route_id}: pathPrefix must start with /") unless prefix.start_with?("/")
+    abort("#{path}: route #{route_id}: health must start with /") unless fetch!(route, "health", path).start_with?("/")
+    route_count += 1
+  end
+end
+
+# A container joins the network of the edge on its server.
+services.each do |name, service|
+  runtime = service.dig("spec", "runtime") || { "kind" => "container" }
+  next unless runtime["kind"] == "container"
+
+  server_name = placed_on[name]
+  next if server_name.nil?
+
+  edge_name = edge_on_server[server_name] || abort("workload #{name}: server #{server_name} has no edge for its network")
+  expected = edges.dig(edge_name, "spec", "network", "name")
+  abort("workload #{name}: network must be #{expected}, the network of #{edge_name} on #{server_name}") unless service.dig("spec", "network") == expected
+end
+
+puts("validated #{edges.length} edges, #{servers.length} servers, #{services.length} workload contracts, and #{route_count} edge routes")
