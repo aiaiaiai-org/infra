@@ -86,15 +86,32 @@ else
   retention = runtime["releaseRetention"]
   abort("#{service_path}: releaseRetention must be between 1 and 100") unless retention.is_a?(Integer) && retention.between?(1, 100)
 
-  post_activate = runtime["postActivateCommand"]
-  abort("#{service_path}: postActivateCommand must be a non-empty string") unless post_activate.is_a?(String) && !post_activate.strip.empty?
+  hooks = %w[validateCommand preActivateCommand postActivateCommand].to_h do |key|
+    command = runtime[key]
+    abort("#{service_path}: #{key} must be a single-line string without single quotes") unless command.nil? || (command.is_a?(String) && command.match?(/\A[^'\n\r]+\z/))
+    [key, command.to_s]
+  end
+
+  hook_environment = runtime.fetch("hookEnvironment", "release")
+  abort("#{service_path}: hookEnvironment must be release or service") unless %w[release service].include?(hook_environment)
+
+  health_url = ""
+  if spec["listen"]
+    abort("#{service_path}: listen must be 127.0.0.1:<port>") unless spec["listen"].to_s.match?(/\A127\.0\.0\.1:\d{1,5}\z/)
+    abort("#{service_path}: health must start with /") unless spec["health"].to_s.start_with?("/")
+    health_url = "http://#{spec['listen']}#{spec['health']}"
+  end
 
   result.merge!(
     "repository" => repository,
     "deployment_path" => deployment_path,
     "service" => service_name,
     "release_retention" => retention.to_s,
-    "post_activate_command" => post_activate,
+    "validate_command" => hooks.fetch("validateCommand"),
+    "pre_activate_command" => hooks.fetch("preActivateCommand"),
+    "post_activate_command" => hooks.fetch("postActivateCommand"),
+    "hook_environment" => hook_environment,
+    "health_url" => health_url,
   )
 end
 

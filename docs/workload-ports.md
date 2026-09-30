@@ -26,6 +26,15 @@ Product repositories should therefore not choose an application port independent
 - `nilxone-telegram` → `production` → `nilxone-telegram:1927`
 - `nilxone-discord` → `production` → `nilxone-discord:1927`
 
+## Host-native workloads
+
+A `systemd-release` workload shares the host's port namespace, so the
+container default cannot be reused blindly. When an edge routes to it, it
+declares `spec.listen: 127.0.0.1:<port>`. The address is loopback only and
+unique per server, and the edge route's upstream must equal it exactly.
+
+- `prism-hub` → `production` → `127.0.0.1:1927` on `edge-prod-2`
+
 ## Why two ports?
 
 The separation prevents a test workload from accidentally presenting itself on the production workload port and makes deployment class visible at the network boundary. It is an infra convention, not an application-level requirement.

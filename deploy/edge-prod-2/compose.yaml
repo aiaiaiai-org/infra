@@ -1,0 +1,43 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: aiaiaiai-infra-${EDGE_TARGET}
+
+services:
+  caddy:
+    image: ${CADDY_IMAGE:?CADDY_IMAGE is required}
+    restart: unless-stopped
+    init: true
+    # Host networking: upstreams are loopback-bound host-native workloads.
+    network_mode: host
+    environment:
+      PRISM_HUB_DOMAIN: ${PRISM_HUB_DOMAIN:-hub.aiaiaiai.org}
+      EDGE_TRANSPORT: ${EDGE_TRANSPORT:-transport_cloudflare}
+      CF_API_TOKEN: ${CF_API_TOKEN:?CF_API_TOKEN is required}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    healthcheck:
+      test:
+        - CMD
+        - caddy
+        - version
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy_data:
+    name: ${EDGE_TARGET}-caddy-data
+    external: true
+  caddy_config:
+    name: ${EDGE_TARGET}-caddy-config
+    external: true

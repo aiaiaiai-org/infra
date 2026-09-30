@@ -26,7 +26,7 @@ jobs:
         run: ruby scripts/validate-contracts.rb
 
       - name: Validate shell syntax
-        run: bash -n deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh
+        run: bash -n deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/edge-prod-2/deploy.sh deploy/edge-prod-2/check-public.sh deploy/edge-prod-2/cloudflare-dns.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh
 
       - name: Validate workload placement resolver
         run: |
@@ -64,6 +64,26 @@ jobs:
           grep -Fxq 'service=prism-hubot.service' <<< "$output"
           grep -Fxq 'release_retention=5' <<< "$output"
           grep -Fxq 'post_activate_command=bundle exec rake telegram:commands' <<< "$output"
+          grep -Fxq 'hook_environment=release' <<< "$output"
+
+      - name: Validate prism-hub contract on edge-prod-2
+        run: |
+          set -Eeuo pipefail
+          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb prism-hub)"
+          grep -Fxq 'target=edge-prod-2' <<< "$output"
+          grep -Fxq 'runtime=systemd-release' <<< "$output"
+          grep -Fxq 'repository=aiaiaiai-org/prism-hub' <<< "$output"
+          grep -Fxq 'deployment_path=/opt/prism-hub' <<< "$output"
+          grep -Fxq 'service=prism-hub.service' <<< "$output"
+          grep -Fxq 'hook_environment=service' <<< "$output"
+          grep -Fxq 'pre_activate_command=bin/rails db:migrate' <<< "$output"
+          grep -Fxq 'health_url=http://127.0.0.1:1927/healthz' <<< "$output"
+
+          routes="$(env -u GITHUB_OUTPUT ruby scripts/edge-routes.rb edge-prod-2)"
+          grep -Fxq 'zone=aiaiaiai.org' <<< "$routes"
+          grep -Fxq 'hosts=hub.aiaiaiai.org' <<< "$routes"
+          grep -Fxq 'public_urls=https://hub.aiaiaiai.org/healthz' <<< "$routes"
+          grep -Fxq 'upstream_urls=http://127.0.0.1:1927/healthz' <<< "$routes"
 
       - name: Validate scoped upstream isolation
         run: |
@@ -135,6 +155,23 @@ jobs:
           grep -Fq 'dns cloudflare {env.CF_API_TOKEN}' deploy/edge/Caddyfile
           ! grep -Fq '0x1.nilx.one' deploy/edge/Caddyfile
           ! grep -Eq 'reverse_proxy api:10000|reverse_proxy market-bot:10000|infra-bot' deploy/edge/Caddyfile
+
+      - name: Validate edge-prod-2 Caddy and Compose contract
+        run: |
+          set -Eeuo pipefail
+          docker run --rm \
+            --env CF_API_TOKEN=0123456789abcdef0123456789abcdef01234567 \
+            --env PRISM_HUB_DOMAIN=hub.aiaiaiai.org \
+            --env EDGE_TRANSPORT=transport_cloudflare \
+            --volume "$PWD/deploy/edge-prod-2/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            infra-edge-caddy:ci \
+            caddy validate --config /etc/caddy/Caddyfile
+          cp deploy/edge-prod-2/env.example deploy/edge-prod-2/.env
+          sed -i 's/^CF_API_TOKEN=.*/CF_API_TOKEN=0123456789abcdef0123456789abcdef01234567/' deploy/edge-prod-2/.env
+          docker compose --file deploy/edge-prod-2/compose.yaml --env-file deploy/edge-prod-2/.env config --quiet
+          test "$(grep -Fc 'reverse_proxy 127.0.0.1:1927' deploy/edge-prod-2/Caddyfile)" -eq 1
+          grep -Fq '{$PRISM_HUB_DOMAIN:hub.aiaiaiai.org}' deploy/edge-prod-2/Caddyfile
+          grep -Fxq '	admin off' deploy/edge-prod-2/Caddyfile
 
       - name: Preserve verified Caddy artifact
         uses: actions/upload-artifact@v4
@@ -254,3 +291,61 @@ jobs:
           check_route nilx.localhost /telegram/health nilxone-telegram
           check_route nilx.localhost /discord/health nilxone-discord
           check_route bond.nilx.localhost /health nilxone-web
+
+  routing-edge-prod-2:
+    name: Routing smoke (edge-prod-2)
+    needs:
+      - contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reuse verified Caddy artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: edge-caddy-${{ github.sha }}
+
+      - name: Load verified Caddy artifact
+        run: gzip -dc edge-caddy-image.tar.gz | docker load
+
+      - name: Route through a host-network edge to a loopback upstream
+        run: |
+          set -Eeuo pipefail
+          cleanup() {
+            docker logs infra-ci-edge-prod-2 >&2 || true
+            docker rm --force infra-ci-edge-prod-2 >/dev/null 2>&1 || true
+            kill "$hub_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          mkdir -p "$RUNNER_TEMP/hub/api/v1"
+          printf 'prism-hub' > "$RUNNER_TEMP/hub/healthz"
+          printf 'prism-hub-api' > "$RUNNER_TEMP/hub/api/v1/ping"
+          python3 -m http.server 1927 --bind 127.0.0.1 --directory "$RUNNER_TEMP/hub" >/dev/null 2>&1 &
+          hub_pid=$!
+
+          docker run --detach --name infra-ci-edge-prod-2 \
+            --network host \
+            --env CF_API_TOKEN=0123456789abcdef0123456789abcdef01234567 \
+            --env PRISM_HUB_DOMAIN=http://hub.localhost:18082 \
+            --env EDGE_TRANSPORT=transport \
+            --volume "$PWD/deploy/edge-prod-2/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            infra-edge-caddy:ci \
+            caddy run --config /etc/caddy/Caddyfile >/dev/null
+
+          check_route() {
+            local path="$1"
+            local expected="$2"
+            for _ in $(seq 1 30); do
+              if curl --fail --silent --resolve hub.localhost:18082:127.0.0.1 "http://hub.localhost:18082${path}" | grep -qx "$expected"; then
+                return 0
+              fi
+              sleep 1
+            done
+            curl --fail --silent --show-error --resolve hub.localhost:18082:127.0.0.1 "http://hub.localhost:18082${path}" | grep -qx "$expected"
+          }
+
+          check_route /healthz prism-hub
+          check_route /api/v1/ping prism-hub-api

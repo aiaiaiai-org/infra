@@ -1,3 +1,4 @@
+# © 2026 aiaiaiai · aiaiaiai.org
 apiVersion: infra.nilx.one/v1
 kind: EdgeContract
 metadata:
@@ -6,6 +7,10 @@ metadata:
 spec:
   placement:
     target: edge-prod-1
+  # Every public host this edge serves must sit under one of these domains,
+  # and no other edge may claim them. aiaiaiai.org belongs to edge-prod-2.
+  domains:
+    - nilx.one
   network:
     name: nilx-edge
     external: true
@@ -18,51 +23,52 @@ spec:
       - 443/tcp
       - 443/udp
     tls: automatic
+    config: deploy/edge/Caddyfile
   routes:
     - id: market-bot-test
-      host: ${MARKET_DOMAIN}
+      host: 0xda-market.nilx.one
       pathPrefix: /bot-test/
       stripPrefix: true
       service: market-bot-test
       upstream: market-bot-development:1703
       health: /health
     - id: market-bot-production
-      host: ${MARKET_DOMAIN}
+      host: 0xda-market.nilx.one
       pathPrefix: /bot/
       stripPrefix: true
       service: market-bot-production
       upstream: market-bot-production:1927
       health: /health
     - id: market-api-production
-      host: ${MARKET_DOMAIN}
+      host: 0xda-market.nilx.one
       pathPrefix: /
       stripPrefix: false
       service: market-api-production
       upstream: market-api-production:1927
       health: /health
     - id: nilxone-identity
-      host: ${NILX_WEB_DOMAIN}
+      host: nilx.one
       pathPrefix: /api/v1/
       stripPrefix: false
       service: nilxone-identity
       upstream: nilxone-identity:1927
       health: /health
     - id: nilxone-telegram
-      host: ${NILX_WEB_DOMAIN}
+      host: nilx.one
       pathPrefix: /telegram/
       stripPrefix: true
       service: nilxone-telegram
       upstream: nilxone-telegram:1927
       health: /health
     - id: nilxone-discord
-      host: ${NILX_WEB_DOMAIN}
+      host: nilx.one
       pathPrefix: /discord/
       stripPrefix: true
       service: nilxone-discord
       upstream: nilxone-discord:1927
       health: /health
     - id: nilxone-web
-      host: ${NILX_WEB_DOMAIN}
+      host: nilx.one
       pathPrefix: /
       stripPrefix: false
       service: nilxone-web

@@ -66,6 +66,10 @@ jobs:
       service: ${{ steps.resolve.outputs.service }}
       release_retention: ${{ steps.resolve.outputs.release_retention }}
       post_activate_command: ${{ steps.resolve.outputs.post_activate_command }}
+      validate_command: ${{ steps.resolve.outputs.validate_command }}
+      pre_activate_command: ${{ steps.resolve.outputs.pre_activate_command }}
+      hook_environment: ${{ steps.resolve.outputs.hook_environment }}
+      health_url: ${{ steps.resolve.outputs.health_url }}
       prepare_env: ${{ steps.resolve.outputs.prepare_env }}
       image: ${{ steps.image.outputs.image }}
       ref: ${{ steps.ref.outputs.ref }}
@@ -112,7 +116,7 @@ jobs:
     environment:
       name: ${{ needs.resolve.outputs.target }}
     env:
-      WORKLOAD: ${{ github.event.client_payload.workload }}
+      WORKLOAD: ${{ inputs.workload || github.event.client_payload.workload }}
       RUNTIME: ${{ needs.resolve.outputs.runtime }}
       SOURCE_REPOSITORY: ${{ inputs.source_repository || needs.resolve.outputs.repository }}
       IMAGE_REF: ${{ needs.resolve.outputs.image }}
@@ -128,6 +132,10 @@ jobs:
       SERVICE_NAME: ${{ needs.resolve.outputs.service }}
       KEEP_RELEASES: ${{ needs.resolve.outputs.release_retention }}
       POST_ACTIVATE_COMMAND: ${{ needs.resolve.outputs.post_activate_command }}
+      VALIDATE_COMMAND: ${{ needs.resolve.outputs.validate_command }}
+      PRE_ACTIVATE_COMMAND: ${{ needs.resolve.outputs.pre_activate_command }}
+      HOOK_ENVIRONMENT: ${{ needs.resolve.outputs.hook_environment }}
+      HEALTH_URL: ${{ needs.resolve.outputs.health_url }}
       PREPARE_ENV: ${{ needs.resolve.outputs.prepare_env }}
       REMOTE_WORKLOAD_DIR: .local/share/aiaiaiai-infra/workloads/${{ inputs.workload || github.event.client_payload.workload }}
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
@@ -306,7 +314,7 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           set -Eeuo pipefail
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "DEPLOY_MODE=validate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' POST_ACTIVATE_COMMAND='$POST_ACTIVATE_COMMAND' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "DEPLOY_MODE=validate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' ${VALIDATE_COMMAND:+VALIDATE_COMMAND='$VALIDATE_COMMAND'} HOOK_ENVIRONMENT='$HOOK_ENVIRONMENT' HEALTH_URL='$HEALTH_URL' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
 
       - name: Activate systemd release
         if: ${{ needs.resolve.outputs.runtime == 'systemd-release' }}
@@ -315,7 +323,7 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           set -Eeuo pipefail
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "DEPLOY_MODE=activate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "DEPLOY_MODE=activate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' PRE_ACTIVATE_COMMAND='$PRE_ACTIVATE_COMMAND' POST_ACTIVATE_COMMAND='$POST_ACTIVATE_COMMAND' HOOK_ENVIRONMENT='$HOOK_ENVIRONMENT' HEALTH_URL='$HEALTH_URL' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
 
       - name: Clean runner secret material
         if: always()

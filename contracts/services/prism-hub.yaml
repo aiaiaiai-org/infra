@@ -1,0 +1,26 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: prism-hub
+  owner: aiaiaiai-org/prism-hub
+spec:
+  deployment: production
+  repository: aiaiaiai-org/prism-hub
+  # Host-native workloads share the host port namespace: loopback only,
+  # unique per server. The edge reaches it at exactly this address.
+  listen: 127.0.0.1:1927
+  health: /healthz
+  runtime:
+    kind: systemd-release
+    deploymentPath: /opt/prism-hub
+    service: prism-hub.service
+    releaseRetention: 5
+    # Rails reads its configuration from the unit's EnvironmentFile, so hooks
+    # run through systemd-run with that same file instead of a bare shell.
+    hookEnvironment: service
+    validateCommand: bin/rails zeitwerk:check
+    preActivateCommand: bin/rails db:migrate
+  public:
+    host: hub.aiaiaiai.org
+    pathPrefix: /

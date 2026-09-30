@@ -1,0 +1,31 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+#
+# prism-hub on edge-prod-2. Install once as /etc/systemd/system/prism-hub.service
+# (see docs/edge-prod-2.md); releases never modify it.
+#
+# The listen address is the workload contract (contracts/services/prism-hub.yaml):
+# loopback only, reached by the host-network edge Caddy.
+
+[Unit]
+Description=prism-hub
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+WorkingDirectory=/opt/prism-hub/current
+EnvironmentFile=/opt/prism-hub/shared/.env
+Environment=RAILS_ENV=production
+ExecStart=/opt/ruby/current/bin/bundle exec puma --config config/puma.rb --bind tcp://127.0.0.1:1927
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/opt/prism-hub/shared
+
+[Install]
+WantedBy=multi-user.target

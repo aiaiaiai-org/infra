@@ -1,6 +1,13 @@
 # infra
 
-Canonical infrastructure contract for the `aiaiaiai-org` public edge.
+Canonical infrastructure contract for the `aiaiaiai-org` public edges.
+
+| Edge | Domains | Serves |
+| --- | --- | --- |
+| `edge-prod-1` | `nilx.one` | 0x1, 0xda-market |
+| `edge-prod-2` | `aiaiaiai.org` | the parent organisation and Prism — see [`docs/edge-prod-2.md`](docs/edge-prod-2.md) |
+
+Each domain belongs to exactly one edge; `scripts/validate-contracts.rb` rejects any route or Caddy site outside its edge's domains.
 
 This repository owns the edge target, public ports, Caddy routing, deployment validation, activation, public verification, and rollback. Product repositories own their application runtime, data, secrets, images, and release lifecycle.
 
@@ -75,7 +82,7 @@ Current workload owners:
 
 The server contract is [`contracts/servers/edge-prod-1.yaml`](contracts/servers/edge-prod-1.yaml). It exposes `80/tcp`, `443/tcp`, and `443/udp`.
 
-The route registry is [`contracts/edge.yaml`](contracts/edge.yaml). Workload contracts live under [`contracts/services`](contracts/services).
+Edge route registries live under [`contracts/edges`](contracts/edges), one per target: [`edge-prod-1.yaml`](contracts/edges/edge-prod-1.yaml) and [`edge-prod-2.yaml`](contracts/edges/edge-prod-2.yaml). Workload contracts live under [`contracts/services`](contracts/services).
 
 Public routes:
 
@@ -149,7 +156,8 @@ The deployment workflow uses `1927` when `SSH_PORT` is not set. A dedicated test
 
 - `nilx-web` — deploys and verifies only the `nilx-web` edge surface and owns the nilx wildcard DNS lifecycle;
 - `market` — deploys and verifies only the `market` edge surface;
-- `prism` — deploys the contracted `prism-hubot` systemd release and does not depend on market or nilx.web upstreams.
+- `prism` — deploys the contracted `prism-hubot` systemd release and does not depend on market or nilx.web upstreams;
+- `aiaiaiai` — deploys and verifies the `edge-prod-2` edge (Environment `edge-prod-2`), including its DNS-only records; hosts and health URLs come from `contracts/edges/edge-prod-2.yaml`.
 
 The selected ref is the infra ref for edge surfaces and the `prism-hubot` ref for Prism. Separate conditional steps keep the three deployment paths isolated while preserving a single operator entry point and independent concurrency.
 
@@ -197,21 +205,25 @@ The credential a product repository needs to hold is therefore narrowed to whate
 ```text
 .
 ├── contracts/
-│   ├── edge.yaml
-│   ├── servers/edge-prod-1.yaml
+│   ├── edges/{edge-prod-1,edge-prod-2}.yaml
+│   ├── servers/{edge-prod-1,edge-prod-2}.yaml
 │   └── services/
 │       ├── market-api-production.yaml
 │       ├── market-bot-production.yaml
 │       ├── market-bot-test.yaml
 │       ├── nilxone-discord.yaml
 │       ├── nilxone-telegram.yaml
-│       └── nilxone-web.yaml
+│       ├── nilxone-web.yaml
+│       ├── prism-hub.yaml
+│       └── prism-hubot.yaml
 ├── deploy/
-│   ├── edge/
-│   └── workload/deploy.sh
+│   ├── edge/            # edge-prod-1
+│   ├── edge-prod-2/     # edge-prod-2 (host-network Caddy, DNS, prism-hub unit)
+│   └── workload/
 ├── scripts/
 │   ├── validate-contracts.rb
-│   └── resolve-workload-target.rb
+│   ├── resolve-workload-target.rb
+│   └── edge-routes.rb
 └── .github/workflows/
     ├── ci.yml
     ├── deploy-market.yml
@@ -254,3 +266,21 @@ The caller still needs a GitHub credential capable of creating
 `repository_dispatch` events in this repository. That credential is a GitHub
 API credential, not a machine credential; it never grants SSH access to the
 target.
+
+Release hooks are contract fields, all optional:
+
+| Field | When | Default |
+| --- | --- | --- |
+| `validateCommand` | validate phase, before anything live changes | `bundle exec rake env:check` |
+| `preActivateCommand` | after install, before `current` moves (e.g. migrations) | — |
+| `postActivateCommand` | after restart and health | — |
+| `hookEnvironment` | `release`: plain shell in the release; `service`: `systemd-run` with the unit's `EnvironmentFile` | `release` |
+
+A workload that declares `spec.listen: 127.0.0.1:<port>` and `spec.health` is
+also polled at that loopback URL after restart; activation rolls back if it
+never answers. Old releases are pruned by install time, never the current or
+previous one.
+
+`prism-hub` is the second such workload, placed on `edge-prod-2`:
+`/opt/prism-hub`, `prism-hub.service`, `127.0.0.1:1927`, migrations before
+activation.

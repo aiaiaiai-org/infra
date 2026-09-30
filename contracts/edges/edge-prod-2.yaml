@@ -1,0 +1,35 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: EdgeContract
+metadata:
+  name: aiaiaiai-edge
+  owner: aiaiaiai-org/infra
+spec:
+  placement:
+    target: edge-prod-2
+  # The whole aiaiaiai.org domain is served from edge-prod-2 and nowhere else.
+  domains:
+    - aiaiaiai.org
+  # Caddy shares the host network namespace, so host-native (systemd-release)
+  # workloads stay bound to loopback and are never reachable from outside.
+  network:
+    name: host
+    external: true
+    driver: host
+  entrypoint:
+    service: caddy
+    image: caddy:2-alpine
+    ports:
+      - 80/tcp
+      - 443/tcp
+      - 443/udp
+    tls: automatic
+    config: deploy/edge-prod-2/Caddyfile
+  routes:
+    - id: prism-hub
+      host: hub.aiaiaiai.org
+      pathPrefix: /
+      stripPrefix: false
+      service: prism-hub
+      upstream: 127.0.0.1:1927
+      health: /healthz
