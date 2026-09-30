@@ -22,7 +22,7 @@ spec:
     labels:
       - one.nilx.product=0x1
       - one.nilx.service=identity
-      - one.nilx.identity.contract=9
+      - one.nilx.identity.contract=10
     volumes:
       - nilxone-identity-data:/data
   public:
