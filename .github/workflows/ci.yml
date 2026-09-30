@@ -26,7 +26,28 @@ jobs:
         run: ruby scripts/validate-contracts.rb
 
       - name: Validate shell syntax
-        run: bash -n deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh
+        # bash -n checks only its first file; the others would be arguments to it.
+        run: |
+          set -Eeuo pipefail
+          for script in deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh deploy/edge-aiaiaiai/deploy.sh deploy/edge-aiaiaiai/verify.sh deploy/edge-aiaiaiai/bootstrap-server.sh; do
+            bash -n "$script"
+          done
+
+      - name: Validate workload secret environment
+        run: |
+          set -Eeuo pipefail
+          ruby -c scripts/workload-secret-env.rb
+          mapping="$(printf 'POSTGRES_PASSWORD=PRISM_POSTGRES_PASSWORD\nPGPASSWORD=PRISM_POSTGRES_PASSWORD\n' | base64 -w0)"
+          built="$(WORKLOAD_SECRETS="$mapping" ALL_SECRETS='{"PRISM_POSTGRES_PASSWORD":"pw=1","SSH_HOST":"x"}' ruby scripts/workload-secret-env.rb | base64 --decode)"
+          test "$built" = "$(printf 'POSTGRES_PASSWORD=pw=1\nPGPASSWORD=pw=1')"
+          # A named secret the Environment lacks, or leaves empty, stops the deployment.
+          ! WORKLOAD_SECRETS="$mapping" ALL_SECRETS='{}' ruby scripts/workload-secret-env.rb 2>/dev/null
+          ! WORKLOAD_SECRETS="$mapping" ALL_SECRETS='{"PRISM_POSTGRES_PASSWORD":""}' ruby scripts/workload-secret-env.rb 2>/dev/null
+          ! WORKLOAD_SECRETS="$mapping" ALL_SECRETS='{"PRISM_POSTGRES_PASSWORD":"a\nb"}' ruby scripts/workload-secret-env.rb 2>/dev/null
+          # An error names the secret, never its value.
+          message="$(WORKLOAD_SECRETS="$mapping" ALL_SECRETS='{"PRISM_POSTGRES_PASSWORD":"leak-4a1f\nleak-9c2e"}' ruby scripts/workload-secret-env.rb 2>&1 || true)"
+          grep -Fq 'PRISM_POSTGRES_PASSWORD' <<< "$message"
+          ! grep -Fq 'leak-' <<< "$message"
 
       - name: Validate workload placement resolver
         run: |
@@ -64,6 +85,47 @@ jobs:
           grep -Fxq 'service=prism-hubot.service' <<< "$output"
           grep -Fxq 'release_retention=5' <<< "$output"
           grep -Fxq 'post_activate_command=bundle exec rake telegram:commands' <<< "$output"
+
+      - name: Validate aiaiaiai edge workload contracts
+        run: |
+          set -Eeuo pipefail
+          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb prism-postgres)"
+          grep -Fxq 'target=edge-prod-2' <<< "$output"
+          grep -Fxq 'network=aiaiaiai-edge' <<< "$output"
+          grep -Fxq 'port=1927' <<< "$output"
+          grep -Fxq 'health_kind=tcp' <<< "$output"
+          grep -Eq '^contract_image=postgres@sha256:[0-9a-f]{64}$' <<< "$output"
+          test "$(sed -n 's/^secrets=//p' <<< "$output" | base64 --decode)" = 'POSTGRES_PASSWORD=PRISM_POSTGRES_PASSWORD'
+
+          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb prism-hub)"
+          grep -Fxq 'target=edge-prod-2' <<< "$output"
+          grep -Fxq 'network=aiaiaiai-edge' <<< "$output"
+          grep -Fxq 'health=/healthz' <<< "$output"
+          grep -Fxq 'health_kind=http' <<< "$output"
+          grep -Fxq 'contract_image=' <<< "$output"
+          secrets="$(sed -n 's/^secrets=//p' <<< "$output" | base64 --decode)"
+          grep -Fxq 'PGPASSWORD=PRISM_POSTGRES_PASSWORD' <<< "$secrets"
+          grep -Fxq 'SECRET_KEY_BASE=PRISM_HUB_SECRET_KEY_BASE' <<< "$secrets"
+
+          # The 0x1 edge is unchanged: its workloads still land on edge-prod-1 in nilx-edge.
+          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb nilxone-web)"
+          grep -Fxq 'target=edge-prod-1' <<< "$output"
+          grep -Fxq 'network=nilx-edge' <<< "$output"
+
+      - name: Validate aiaiaiai edge Caddy and Compose
+        run: |
+          set -Eeuo pipefail
+          docker run --rm \
+            --env PRISM_API_DOMAIN=api.aiaiaiai.org \
+            --volume "$PWD/deploy/edge-aiaiaiai/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine \
+            caddy validate --config /etc/caddy/Caddyfile
+          test "$(grep -Fc 'reverse_proxy prism-hub:1927' deploy/edge-aiaiaiai/Caddyfile)" -eq 1
+          # Nothing of the 0x1 product is routed from the aiaiaiai edge, and the reverse.
+          ! grep -Eq 'nilx|nilxone|market' deploy/edge-aiaiaiai/Caddyfile
+          ! grep -Fq 'prism-hub' deploy/edge/Caddyfile
+          cp deploy/edge-aiaiaiai/env.example deploy/edge-aiaiaiai/.env
+          docker compose --file deploy/edge-aiaiaiai/compose.yaml --env-file deploy/edge-aiaiaiai/.env config --quiet
 
       - name: Validate scoped upstream isolation
         run: |
@@ -254,3 +316,60 @@ jobs:
           check_route nilx.localhost /telegram/health nilxone-telegram
           check_route nilx.localhost /discord/health nilxone-discord
           check_route bond.nilx.localhost /health nilxone-web
+
+  routing-aiaiaiai:
+    name: Routing smoke (aiaiaiai edge)
+    needs:
+      - contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Route through the aiaiaiai edge
+        run: |
+          set -Eeuo pipefail
+          cleanup() {
+            docker logs infra-ci-aiaiaiai-caddy >&2 || true
+            docker rm --force infra-ci-aiaiaiai-caddy infra-ci-prism-hub >/dev/null 2>&1 || true
+            docker network rm infra-ci-aiaiaiai-edge >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker network create infra-ci-aiaiaiai-edge >/dev/null
+          docker run --detach --name infra-ci-prism-hub \
+            --network infra-ci-aiaiaiai-edge --network-alias prism-hub \
+            python:3.13-alpine sh -ec \
+            "mkdir -p /srv/api/v1; printf prism-hub > /srv/healthz; printf channels > /srv/api/v1/channels; python3 -m http.server 1927 --bind 0.0.0.0 --directory /srv" >/dev/null
+
+          for _ in $(seq 1 30); do
+            docker exec infra-ci-prism-hub wget -q -T 1 -O- http://127.0.0.1:1927/healthz | grep -qx prism-hub && break
+            sleep 1
+          done
+
+          docker run --detach --name infra-ci-aiaiaiai-caddy \
+            --network infra-ci-aiaiaiai-edge \
+            --publish 18081:80 \
+            --env PRISM_API_DOMAIN=http://api.localhost \
+            --volume "$PWD/deploy/edge-aiaiaiai/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine \
+            caddy run --config /etc/caddy/Caddyfile >/dev/null
+
+          request() {
+            curl --silent --output /tmp/body --write-out '%{http_code}' \
+              --resolve "api.localhost:18081:127.0.0.1" "http://api.localhost:18081$1"
+          }
+          for _ in $(seq 1 30); do
+            [[ "$(request /prism-hub/healthz)" == 200 ]] && break
+            sleep 1
+          done
+
+          # The prefix is stripped on the way to prism-hub.
+          test "$(request /prism-hub/healthz)" = 200 && grep -qx prism-hub /tmp/body
+          test "$(request /prism-hub/api/v1/channels)" = 200 && grep -qx channels /tmp/body
+          test "$(request /prism-hub)" = 308
+          # Nothing else on the host is served.
+          test "$(request /)" = 404
+          test "$(request /healthz)" = 404
+

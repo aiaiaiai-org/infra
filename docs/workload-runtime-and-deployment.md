@@ -146,6 +146,16 @@ The existing container runtime remains valid and is the preferred model when ima
 
 A container contract describes the network-facing runtime properties such as network, stable alias, port, and health path. The deployment implementation, not the caller, owns the concrete container lifecycle.
 
+A container contract may also declare:
+
+- `healthKind: tcp` for a workload that speaks no HTTP, such as a database. Its health is its port
+  accepting a connection, and it takes no `health` path. The default is `http`.
+- `runtime.image`, an image pinned in the contract (a digest, for a third-party image). A dispatch
+  cannot replace it; the contract is the release identity.
+- `runtime.secrets`, `ENV_NAME=SECRET_NAME` pairs. The values come from the secrets of the target
+  server's GitHub Environment at deployment and are never written in a contract. A named secret
+  the Environment lacks, or leaves empty, stops the deployment.
+
 ## Why both runtimes exist
 
 These runtimes solve different operational problems.

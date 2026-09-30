@@ -17,6 +17,19 @@ See [`docs/workload-ports.md`](docs/workload-ports.md) for the normative workloa
 
 The port is part of the workload contract. Product repositories must not invent a deployment-specific port unless the infra contract is intentionally changed. Edge upstreams and workload contracts must always agree. Test and production ports are deliberately distinct.
 
+## Edges
+
+Each product contour has its own edge: one server, one Docker network, one Caddy. A workload joins
+the network of the edge on the server it is placed on, and an edge routes only to its own workloads.
+
+| Edge | Server | Network | Serves | Contract |
+| --- | --- | --- | --- | --- |
+| 0x1 | `edge-prod-1` | `nilx-edge` | `nilx.one`, `0xda-market.nilx.one` | [`contracts/edges/nilx-edge.yaml`](contracts/edges/nilx-edge.yaml) |
+| aiaiaiai | `edge-prod-2` | `aiaiaiai-edge` | `api.aiaiaiai.org`: `prism-*` and other aiaiaiai services | [`contracts/edges/aiaiaiai-edge.yaml`](contracts/edges/aiaiaiai-edge.yaml) |
+
+The sections below up to **Workload deployment** describe the 0x1 edge. The aiaiaiai edge, and how
+to bring `edge-prod-2` up, is [`docs/edge-prod-2.md`](docs/edge-prod-2.md).
+
 ## Current production model
 
 ```text
@@ -75,7 +88,7 @@ Current workload owners:
 
 The server contract is [`contracts/servers/edge-prod-1.yaml`](contracts/servers/edge-prod-1.yaml). It exposes `80/tcp`, `443/tcp`, and `443/udp`.
 
-The route registry is [`contracts/edge.yaml`](contracts/edge.yaml). Workload contracts live under [`contracts/services`](contracts/services).
+The route registry of this edge is [`contracts/edges/nilx-edge.yaml`](contracts/edges/nilx-edge.yaml). Workload contracts live under [`contracts/services`](contracts/services).
 
 Public routes:
 
@@ -197,23 +210,32 @@ The credential a product repository needs to hold is therefore narrowed to whate
 ```text
 .
 ├── contracts/
-│   ├── edge.yaml
-│   ├── servers/edge-prod-1.yaml
+│   ├── edges/
+│   │   ├── nilx-edge.yaml
+│   │   └── aiaiaiai-edge.yaml
+│   ├── servers/
+│   │   ├── edge-prod-1.yaml
+│   │   └── edge-prod-2.yaml
 │   └── services/
 │       ├── market-api-production.yaml
 │       ├── market-bot-production.yaml
 │       ├── market-bot-test.yaml
 │       ├── nilxone-discord.yaml
 │       ├── nilxone-telegram.yaml
-│       └── nilxone-web.yaml
+│       ├── nilxone-web.yaml
+│       ├── prism-hub.yaml
+│       └── prism-postgres.yaml
 ├── deploy/
 │   ├── edge/
+│   ├── edge-aiaiaiai/
 │   └── workload/deploy.sh
 ├── scripts/
 │   ├── validate-contracts.rb
-│   └── resolve-workload-target.rb
+│   ├── resolve-workload-target.rb
+│   └── workload-secret-env.rb
 └── .github/workflows/
     ├── ci.yml
+    ├── deploy-aiaiaiai-edge.yml
     ├── deploy-market.yml
     ├── deploy-nilx-web.yml
     ├── deploy-prism.yml

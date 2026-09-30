@@ -21,6 +21,7 @@ network="${EDGE_NETWORK:-nilx-edge}"
 alias_name="${WORKLOAD_ALIAS:-}"
 port="${WORKLOAD_PORT:-}"
 health_path="${WORKLOAD_HEALTH:-}"
+health_kind="${WORKLOAD_HEALTH_KIND:-http}"
 environment_b64="${WORKLOAD_ENVIRONMENT:-}"
 labels_b64="${WORKLOAD_LABELS:-}"
 volumes_b64="${WORKLOAD_VOLUMES:-}"
@@ -56,10 +57,19 @@ if [[ ! "$port" =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
   echo "WORKLOAD_PORT is invalid" >&2
   exit 1
 fi
-if [[ ! "$health_path" =~ ^/ ]]; then
-  echo "WORKLOAD_HEALTH must start with /" >&2
-  exit 1
-fi
+case "$health_kind" in
+  http)
+    if [[ ! "$health_path" =~ ^/ ]]; then
+      echo "WORKLOAD_HEALTH must start with /" >&2
+      exit 1
+    fi
+    ;;
+  tcp) ;;
+  *)
+    echo "WORKLOAD_HEALTH_KIND must be http or tcp" >&2
+    exit 1
+    ;;
+esac
 if [[ ! "$environment_b64" =~ ^[A-Za-z0-9+/]*={0,2}$ ]]; then
   echo "WORKLOAD_ENVIRONMENT is invalid" >&2
   exit 1
@@ -173,6 +183,19 @@ docker run --detach \
   --env-file "$environment_file" \
   "$image_ref" >/dev/null
 
+# An HTTP workload is healthy when its health path answers; a TCP one (a database) when its port
+# accepts a connection.
+probe_health() {
+  if [[ "$health_kind" == "tcp" ]]; then
+    docker run --rm --network "$network" alpine:3.22 \
+      nc -z -w 2 "$alias_name" "$port" >/dev/null 2>&1
+  else
+    docker run --rm --network "$network" curlimages/curl:latest \
+      --fail --silent --show-error \
+      "http://${alias_name}:${port}${health_path}" >/dev/null 2>&1
+  fi
+}
+
 healthy=0
 for _ in $(seq 1 30); do
   running="$(docker inspect --format '{{.State.Running}}' "$workload" 2>/dev/null || true)"
@@ -180,9 +203,7 @@ for _ in $(seq 1 30); do
     docker logs --tail 200 "$workload" >&2 || true
     break
   fi
-  if docker run --rm --network "$network" curlimages/curl:latest \
-      --fail --silent --show-error \
-      "http://${alias_name}:${port}${health_path}" >/dev/null 2>&1; then
+  if probe_health; then
     healthy=1
     break
   fi
@@ -192,6 +213,8 @@ done
 if [[ "$healthy" != "1" ]]; then
   echo "workload $workload did not become healthy on $alias_name:$port$health_path" >&2
   if [[ -n "$current_image" ]]; then
+    # The previous image gets the environment too: without it a workload that needs its
+    # configuration (a database URL, a key) would be rolled back into a crash loop.
     docker rm -f "$workload" >/dev/null 2>&1 || true
     docker run --detach \
       "${label_args[@]}" "${volume_args[@]}" \
@@ -200,6 +223,10 @@ if [[ "$healthy" != "1" ]]; then
       --network-alias "$alias_name" \
       --restart unless-stopped \
       --security-opt no-new-privileges:true \
+      --log-driver json-file \
+      --log-opt max-size=10m \
+      --log-opt max-file=3 \
+      --env-file "$environment_file" \
       "$current_image" >/dev/null
     echo "rolled back $workload to $current_image" >&2
   fi

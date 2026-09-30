@@ -1,0 +1,30 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+#
+# The aiaiaiai.org edge on edge-prod-2. Only prism-* and other aiaiaiai services are routed here;
+# the 0x1 product has its own edge (deploy/edge) on edge-prod-1.
+
+{$PRISM_API_DOMAIN:api.aiaiaiai.org} {
+	encode zstd gzip
+
+	@prism_hub_root path /prism-hub
+	redir @prism_hub_root /prism-hub/ 308
+
+	handle_path /prism-hub/* {
+		reverse_proxy prism-hub:1927 {
+			health_uri /healthz
+			health_interval 30s
+			health_timeout 5s
+			lb_try_duration 5s
+		}
+	}
+
+	# Nothing else is served on this host yet.
+	handle {
+		respond 404
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

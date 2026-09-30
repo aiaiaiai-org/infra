@@ -1,0 +1,50 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: aiaiaiai-infra-${EDGE_TARGET}
+
+services:
+  caddy:
+    image: ${CADDY_IMAGE:-caddy:2-alpine}
+    restart: unless-stopped
+    init: true
+    environment:
+      PRISM_API_DOMAIN: ${PRISM_API_DOMAIN:?PRISM_API_DOMAIN is required}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+    healthcheck:
+      test:
+        - CMD
+        - caddy
+        - version
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  edge:
+    name: ${EDGE_NETWORK:-aiaiaiai-edge}
+    external: true
+
+volumes:
+  caddy_data:
+    name: ${EDGE_TARGET}-caddy-data
+    external: true
+  caddy_config:
+    name: ${EDGE_TARGET}-caddy-config
+    external: true

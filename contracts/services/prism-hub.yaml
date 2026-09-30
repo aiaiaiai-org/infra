@@ -1,0 +1,30 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: prism-hub
+  owner: aiaiaiai-org/prism-hub
+spec:
+  deployment: production
+  network: aiaiaiai-edge
+  aliases:
+    - prism-hub
+  protocol: http
+  port: 1927
+  health: /healthz
+  runtime:
+    kind: container
+    environment:
+      # The password is not in the URL: it is PGPASSWORD, the same secret the database is created with.
+      - DATABASE_URL=postgres://prism_hub@prism-postgres:1927/prism_hub
+      - PRISM_SIGNAL_TELEGRAM_CHANNELS=vanek_nikolaev
+      - PRISM_SIGNAL_ALERT_CHANNEL=alerts
+    secrets:
+      - PGPASSWORD=PRISM_POSTGRES_PASSWORD
+      - SECRET_KEY_BASE=PRISM_HUB_SECRET_KEY_BASE
+    labels:
+      - org.aiaiaiai.product=prism
+      - org.aiaiaiai.service=prism-hub
+  public:
+    host: api.aiaiaiai.org
+    pathPrefix: /prism-hub/
