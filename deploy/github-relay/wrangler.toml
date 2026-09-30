@@ -1,6 +1,6 @@
 # © 2026 aiaiaiai · aiaiaiai.org
 
-name = "github-discord-relay"
+name = "github-relay"
 main = "src/worker.ts"
 compatibility_date = "2026-09-01"
 workers_dev = true

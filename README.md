@@ -205,9 +205,9 @@ POST /repos/aiaiaiai-org/infra/dispatches
 
 The credential a product repository needs to hold is therefore narrowed to whatever can call the GitHub dispatch API for this repository (a fine-grained token scoped only to `Contents: write` on `aiaiaiai-org/infra`, or an installation token from a GitHub App installed only here) — never a box credential. Losing that credential lets someone request a redeploy of an already-contracted workload; it does not grant shell access, and it cannot point a workload at an undeclared box, alias, or port.
 
-## GitHub → Discord relay
+## GitHub relay
 
-Task updates from the organizations (new issues, assignees, close/reopen, and GitHub Projects status changes) reach Discord through a Cloudflare Worker, not the edge: `projects_v2_item` events exist only on organization webhooks and can't trigger Actions. The Worker lives in [`deploy/github-discord-relay/`](deploy/github-discord-relay/README.md), its secrets in the `github-discord-relay` GitHub Environment, and `deploy-github-discord-relay.yml` deploys it. `RELAY_ROUTES` maps each organization to its own Discord channel.
+GitHub events (new issues, assignees, close/reopen, and GitHub Projects status changes) reach Discord and Telegram through a Cloudflare Worker rather than the edge: `projects_v2_item` events exist only on organization webhooks and can't trigger Actions. `RELAY_ROUTES` maps a source, an organization or a single `owner/repo`, to its destinations. The Worker lives in [`deploy/github-relay/`](deploy/github-relay/README.md), its secrets in the `github-relay` GitHub Environment, and `deploy-github-relay.yml` deploys it.
 
 ## Repository layout
 
@@ -232,7 +232,7 @@ Task updates from the organizations (new issues, assignees, close/reopen, and Gi
 ├── deploy/
 │   ├── edge/
 │   ├── edge-aiaiaiai/
-│   ├── github-discord-relay/
+│   ├── github-relay/
 │   └── workload/deploy.sh
 ├── scripts/
 │   ├── validate-contracts.rb
@@ -241,7 +241,7 @@ Task updates from the organizations (new issues, assignees, close/reopen, and Gi
 └── .github/workflows/
     ├── ci.yml
     ├── deploy-aiaiaiai-edge.yml
-    ├── deploy-github-discord-relay.yml
+    ├── deploy-github-relay.yml
     ├── deploy-market.yml
     ├── deploy-nilx-web.yml
     ├── deploy-prism.yml

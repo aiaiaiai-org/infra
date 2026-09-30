@@ -4,16 +4,14 @@ import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { describe, it } from "node:test";
 import {
-  buildMessage,
+  buildNotice,
   githubProjectLookup,
   type ProjectItemLookup,
-  routeFor,
   verifySignature,
-} from "./relay.ts";
+} from "./github.ts";
 
 const sender = { login: "0x0sky", html_url: "https://github.com/0x0sky" };
 const options = { statusField: "Status" };
-const hook = "https://discord.com/api/webhooks/1/abc";
 
 function issues(action: string, extra: Record<string, unknown> = {}) {
   return {
@@ -61,32 +59,6 @@ const item = {
 };
 const lookup: ProjectItemLookup = async () => ({ ...item });
 
-describe("routeFor", () => {
-  const routes = JSON.stringify({
-    "nilx-one": { discord: hook, token: "t0ken" },
-    "0xda-market": { discord: hook },
-    evil: { discord: "https://example.com/steal" },
-  });
-
-  it("picks the organization's channel and token, case-insensitively", () => {
-    assert.deepEqual(routeFor(routes, issues("opened")), {
-      discord: hook,
-      token: "t0ken",
-    });
-    assert.deepEqual(
-      routeFor(routes, { organization: { login: "0xDA-Market" } }),
-      { discord: hook },
-    );
-  });
-
-  it("drops unknown organizations, non-Discord targets and bad config", () => {
-    assert.equal(routeFor(routes, { organization: { login: "other" } }), null);
-    assert.equal(routeFor(routes, { organization: { login: "evil" } }), null);
-    assert.equal(routeFor(routes, {}), null);
-    assert.equal(routeFor("not json", issues("opened")), null);
-  });
-});
-
 describe("verifySignature", () => {
   const body = '{"zen":"ok"}';
   const good = `sha256=${createHmac("sha256", "s3cret").update(body).digest("hex")}`;
@@ -101,63 +73,58 @@ describe("verifySignature", () => {
 });
 
 describe("issue events", () => {
-  it("announces a new task with its assignees and blocks mentions", async () => {
-    const message = await buildMessage("issues", issues("opened"), options);
-    assert.deepEqual(message?.allowed_mentions, { parse: [] });
-    assert.deepEqual(message?.embeds[0], {
+  it("announces a new task with its assignees", async () => {
+    assert.deepEqual(await buildNotice("issues", issues("opened"), options), {
+      kind: "opened",
       title: "nilx-one/web#42 Map pins @everyone",
       url: "https://github.com/nilx-one/web/issues/42",
-      description: "New task, assigned to @kai",
-      color: 0x3fb950,
-      author: { name: "0x0sky", url: "https://github.com/0x0sky" },
+      summary: "New task, assigned to @kai",
+      actor: sender,
     });
   });
 
   it("reports assignment changes and closing reason", async () => {
-    const assigned = await buildMessage(
+    const assigned = await buildNotice(
       "issues",
       issues("assigned", { assignee: { login: "dasha" } }),
       options,
     );
-    assert.equal(assigned?.embeds[0]?.description, "Assigned to @dasha");
+    assert.equal(assigned?.summary, "Assigned to @dasha");
 
-    const closed = await buildMessage(
+    const closed = await buildNotice(
       "issues",
       issues("closed", {
         issue: { ...issues("x").issue, state_reason: "not_planned" },
       }),
       options,
     );
-    assert.equal(closed?.embeds[0]?.description, "Closed as not planned");
+    assert.equal(closed?.summary, "Closed as not planned");
   });
 
   it("stays quiet on unrelated actions, events and private repositories", async () => {
-    assert.equal(
-      await buildMessage("issues", issues("labeled"), options),
-      null,
-    );
-    assert.equal(await buildMessage("push", {}, options), null);
+    assert.equal(await buildNotice("issues", issues("labeled"), options), null);
+    assert.equal(await buildNotice("push", {}, options), null);
     const secret = issues("opened", {
       repository: { full_name: "nilx-one/secret", private: true },
     });
-    assert.equal(await buildMessage("issues", secret, options), null);
+    assert.equal(await buildNotice("issues", secret, options), null);
   });
 });
 
 describe("project status changes", () => {
   it("shows the move between status columns", async () => {
-    const message = await buildMessage(
+    const notice = await buildNotice(
       "projects_v2_item",
       statusChange("Todo", "In Progress"),
       { ...options, lookup },
     );
-    assert.deepEqual(message?.embeds[0], {
+    assert.deepEqual(notice, {
+      kind: "status",
       title: "nilx-one/web#42 Map pins",
       url: "https://github.com/nilx-one/web/issues/42",
-      description: "Status: Todo → In Progress",
-      color: 0xf0883e,
-      author: { name: "0x0sky", url: "https://github.com/0x0sky" },
-      footer: { text: "0x1 roadmap" },
+      summary: "Status: Todo → In Progress",
+      actor: sender,
+      context: "0x1 roadmap",
     });
   });
 
@@ -170,7 +137,7 @@ describe("project status changes", () => {
     ];
     for (const [payload, look] of cases) {
       assert.equal(
-        await buildMessage("projects_v2_item", payload, {
+        await buildNotice("projects_v2_item", payload, {
           ...options,
           lookup: look,
         }),

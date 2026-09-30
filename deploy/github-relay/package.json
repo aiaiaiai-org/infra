@@ -1,5 +1,5 @@
 {
-  "name": "github-discord-relay",
+  "name": "github-relay",
   "private": true,
   "type": "module",
   "scripts": {

@@ -1,9 +1,10 @@
 # © 2026 aiaiaiai · aiaiaiai.org
 
-name: Deploy GitHub Discord relay
+name: Deploy GitHub relay
 
-# The Cloudflare Worker behind the organization webhooks that post tasks to Discord.
-# Secrets live in the github-discord-relay Environment; see deploy/github-discord-relay/README.md.
+# The Cloudflare Worker that carries GitHub webhook events (organizations or single repositories)
+# to Discord and Telegram. Secrets live in the github-relay Environment; see
+# deploy/github-relay/README.md.
 on:
   workflow_dispatch:
 
@@ -11,37 +12,34 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-github-discord-relay
+  group: deploy-github-relay
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy GitHub Discord relay
+    name: Deploy GitHub relay
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
-      name: github-discord-relay
+      name: github-relay
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      RELAY_WEBHOOK_SECRET: ${{ secrets.RELAY_WEBHOOK_SECRET }}
+      RELAY_ROUTES: ${{ secrets.RELAY_ROUTES }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
     defaults:
       run:
-        working-directory: deploy/github-discord-relay
+        working-directory: deploy/github-relay
 
     steps:
       - name: Validate credentials
         working-directory: .
-        env:
-          RELAY_WEBHOOK_SECRET: ${{ secrets.RELAY_WEBHOOK_SECRET }}
-          RELAY_ROUTES: ${{ secrets.RELAY_ROUTES }}
         run: |
           set -Eeuo pipefail
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           test -n "$RELAY_WEBHOOK_SECRET"
-          # Every route is an organization login mapped to a Discord webhook URL.
-          jq -e 'type == "object" and length > 0 and all(.[]; .discord | type == "string" and startswith("https://discord.com/api/webhooks/"))' \
-            <<< "$RELAY_ROUTES" > /dev/null
 
       - name: Checkout infra
         uses: actions/checkout@v4
@@ -52,6 +50,10 @@ jobs:
         with:
           node-version: 24
 
+      - name: Validate routes
+        # The Worker's own parser; prints sources and destination kinds, never a URL or token.
+        run: node src/check-routes.ts
+
       - name: Test relay
         run: node --test src/*.test.ts
 
@@ -59,13 +61,11 @@ jobs:
         run: npx --yes wrangler@4 deploy
 
       - name: Upload Worker secrets
-        env:
-          RELAY_WEBHOOK_SECRET: ${{ secrets.RELAY_WEBHOOK_SECRET }}
-          RELAY_ROUTES: ${{ secrets.RELAY_ROUTES }}
         run: |
           set -Eeuo pipefail
           umask 077
           secrets="$RUNNER_TEMP/relay-secrets.json"
           trap 'rm -f "$secrets"' EXIT
-          jq -n '{GITHUB_WEBHOOK_SECRET: env.RELAY_WEBHOOK_SECRET, RELAY_ROUTES: env.RELAY_ROUTES}' > "$secrets"
+          jq -n '{GITHUB_WEBHOOK_SECRET: env.RELAY_WEBHOOK_SECRET, RELAY_ROUTES: env.RELAY_ROUTES}
+            + (if env.TELEGRAM_BOT_TOKEN != "" then {TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN} else {} end)' > "$secrets"
           npx --yes wrangler@4 secret bulk "$secrets"

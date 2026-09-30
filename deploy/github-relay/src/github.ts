@@ -1,21 +1,25 @@
 // © 2026 aiaiaiai · aiaiaiai.org
 
-// Turns GitHub organization webhook deliveries into Discord task messages:
-// new issues, assignee changes, close/reopen, and GitHub Projects status moves.
+// Point A: GitHub webhook deliveries, verified and reduced to a Notice that
+// any destination can render. Covers new issues, assignee changes,
+// close/reopen, and GitHub Projects status moves.
 
-export interface DiscordEmbed {
-  title: string;
-  url?: string;
-  description: string;
-  color: number;
-  author?: { name: string; url?: string; icon_url?: string };
-  footer?: { text: string };
+export type NoticeKind =
+  "opened" | "assigned" | "unassigned" | "closed" | "reopened" | "status";
+
+export interface Actor {
+  login: string;
+  html_url?: string;
+  avatar_url?: string;
 }
 
-export interface DiscordMessage {
-  embeds: DiscordEmbed[];
-  // Issue titles are user-written; never let them ping @everyone or roles.
-  allowed_mentions: { parse: [] };
+export interface Notice {
+  kind: NoticeKind;
+  title: string;
+  url?: string;
+  summary: string;
+  actor: Actor;
+  context?: string;
 }
 
 export interface ProjectItem {
@@ -32,12 +36,6 @@ export type ProjectItemLookup = (ids: {
   project: string;
   field: string;
 }) => Promise<ProjectItem | null>;
-
-interface Actor {
-  login: string;
-  html_url?: string;
-  avatar_url?: string;
-}
 
 interface IssuesPayload {
   action: string;
@@ -71,49 +69,7 @@ interface ProjectItemPayload {
   sender: Actor;
 }
 
-const COLORS = {
-  opened: 0x3fb950,
-  assigned: 0x58a6ff,
-  unassigned: 0x8b949e,
-  closed: 0xa371f7,
-  reopened: 0xd29922,
-  status: 0xf0883e,
-} as const;
-
 const TITLE_LIMIT = 256;
-
-export interface Route {
-  discord: string;
-  token?: string;
-}
-
-// `routes` is the RELAY_ROUTES secret: organization login → Discord webhook
-// URL and an optional read-only GitHub token for that organization, e.g.
-// {"nilx-one": {"discord": "https://discord.com/api/webhooks/…", "token": "github_pat_…"}}.
-export function routeFor(routes: string, payload: unknown): Route | null {
-  const org = (payload as { organization?: { login?: string } } | null)
-    ?.organization?.login;
-  if (!org) return null;
-  let table: unknown;
-  try {
-    table = JSON.parse(routes);
-  } catch {
-    return null;
-  }
-  if (!table || typeof table !== "object") return null;
-  const entry = Object.entries(table).find(
-    ([login]) => login.toLowerCase() === org.toLowerCase(),
-  )?.[1] as { discord?: unknown; token?: unknown } | undefined;
-  if (
-    typeof entry?.discord !== "string" ||
-    !entry.discord.startsWith("https://discord.com/api/webhooks/")
-  ) {
-    return null;
-  }
-  const route: Route = { discord: entry.discord };
-  if (typeof entry.token === "string" && entry.token) route.token = entry.token;
-  return route;
-}
 
 export async function verifySignature(
   secret: string,
@@ -142,68 +98,62 @@ export async function verifySignature(
   return diff === 0;
 }
 
-export async function buildMessage(
+export async function buildNotice(
   event: string,
   payload: unknown,
   options: { statusField: string; lookup?: ProjectItemLookup },
-): Promise<DiscordMessage | null> {
-  if (event === "issues") return issueMessage(payload as IssuesPayload);
+): Promise<Notice | null> {
+  if (event === "issues") return issueNotice(payload as IssuesPayload);
   if (event === "projects_v2_item") {
-    return projectStatusMessage(payload as ProjectItemPayload, options);
+    return projectStatusNotice(payload as ProjectItemPayload, options);
   }
   return null;
 }
 
-function issueMessage(payload: IssuesPayload): DiscordMessage | null {
+function issueNotice(payload: IssuesPayload): Notice | null {
   const { issue, repository } = payload;
   if (repository.private) return null;
   const who = payload.assignee ? `@${payload.assignee.login}` : "";
-  let description: string;
-  let color: number;
+  let summary: string;
   switch (payload.action) {
     case "opened": {
       const assignees = (issue.assignees ?? []).map((a) => `@${a.login}`);
-      description = assignees.length
+      summary = assignees.length
         ? `New task, assigned to ${assignees.join(", ")}`
         : "New task, unassigned";
-      color = COLORS.opened;
       break;
     }
     case "assigned":
-      description = `Assigned to ${who}`;
-      color = COLORS.assigned;
+      summary = `Assigned to ${who}`;
       break;
     case "unassigned":
-      description = `Unassigned ${who}`;
-      color = COLORS.unassigned;
+      summary = `Unassigned ${who}`;
       break;
     case "closed":
-      description =
+      summary =
         issue.state_reason === "not_planned"
           ? "Closed as not planned"
           : "Closed as completed";
-      color = COLORS.closed;
       break;
     case "reopened":
-      description = "Reopened";
-      color = COLORS.reopened;
+      summary = "Reopened";
       break;
     default:
       return null;
   }
-  return message({
+  return {
+    kind: payload.action as NoticeKind,
     title: clip(`${repository.full_name}#${issue.number} ${issue.title}`),
     url: issue.html_url,
-    description,
-    color,
-    author: author(payload.sender),
-  });
+    summary,
+    actor: payload.sender,
+  };
 }
 
-async function projectStatusMessage(
+async function projectStatusNotice(
   payload: ProjectItemPayload,
   options: { statusField: string; lookup?: ProjectItemLookup },
-): Promise<DiscordMessage | null> {
+): Promise<Notice | null> {
   const change = payload.changes?.field_value;
   if (payload.action !== "edited" || change?.field_type !== "single_select") {
     return null;
@@ -223,19 +173,19 @@ async function projectStatusMessage(
   const from = change.from?.name ?? "No status";
   const to = change.to?.name ?? "No status";
   if (from === to) return null;
-  const embed: DiscordEmbed = {
+  const notice: Notice = {
+    kind: "status",
     title: clip(
       item
         ? [item.reference, item.title].filter(Boolean).join(" ")
         : "Project item",
     ),
-    description: `Status: ${from} → ${to}`,
-    color: COLORS.status,
-    author: author(payload.sender),
+    summary: `Status: ${from} → ${to}`,
+    actor: payload.sender,
   };
-  if (item?.url) embed.url = item.url;
-  if (item?.projectTitle) embed.footer = { text: item.projectTitle };
-  return message(embed);
+  if (item?.url) notice.url = item.url;
+  if (item?.projectTitle) notice.context = item.projectTitle;
+  return notice;
 }
 
 export function githubProjectLookup(
@@ -257,7 +207,7 @@ export function githubProjectLookup(
       headers: {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
-        "user-agent": "nilxone-github-discord-relay",
+        "user-agent": "aiaiaiai-github-relay",
       },
       body: JSON.stringify({ query, variables }),
     });
@@ -290,17 +240,6 @@ export function githubProjectLookup(
     if (field?.name) item.fieldName = field.name;
     return item;
   };
-}
-
-function message(embed: DiscordEmbed): DiscordMessage {
-  return { embeds: [embed], allowed_mentions: { parse: [] } };
-}
-
-function author(actor: Actor): NonNullable<DiscordEmbed["author"]> {
-  const result: NonNullable<DiscordEmbed["author"]> = { name: actor.login };
-  if (actor.html_url) result.url = actor.html_url;
-  if (actor.avatar_url) result.icon_url = actor.avatar_url;
-  return result;
 }
 
 function clip(text: string): string {

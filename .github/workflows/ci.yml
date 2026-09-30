@@ -205,8 +205,8 @@ jobs:
           path: edge-caddy-image.tar.gz
           retention-days: 1
 
-  github-discord-relay:
-    name: GitHub Discord relay
+  github-relay:
+    name: GitHub relay
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -218,7 +218,7 @@ jobs:
           node-version: 24
 
       - name: Test relay
-        run: node --test deploy/github-discord-relay/src/*.test.ts
+        run: node --test deploy/github-relay/src/*.test.ts
 
   routing:
     name: Routing smoke
