@@ -358,7 +358,7 @@ jobs:
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           set -Eeuo pipefail
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "DEPLOY_MODE=activate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "DEPLOY_MODE=activate DEPLOY_PATH='$DEPLOYMENT_PATH' SERVICE_NAME='$SERVICE_NAME' RELEASE_ID='${{ steps.source.outputs.sha }}' KEEP_RELEASES='$KEEP_RELEASES' POST_ACTIVATE_COMMAND='$POST_ACTIVATE_COMMAND' RELEASE_ARCHIVE='$DEPLOYMENT_PATH/.deploy/${{ steps.source.outputs.sha }}.tar.gz' bash '$DEPLOYMENT_PATH/.deploy/systemd-release.sh'"
 
       - name: Clean runner secret material
         if: always()
