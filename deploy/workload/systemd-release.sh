@@ -254,9 +254,11 @@ activate_release() {
     exit 1
   fi
 
-  mapfile -t old_releases < <(find "$releases_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -r)
+  # Newest first by install time; release names are commit SHAs, not an order.
+  mapfile -t old_releases < <(find "$releases_dir" -mindepth 1 -maxdepth 1 -type d -printf '%T@\t%p\n' | sort -rn | cut -f2)
   for old_release in "${old_releases[@]:$keep_releases}"; do
-    rm -rf "$releases_dir/$old_release"
+    [[ "$old_release" == "$release_dir" || "$old_release" == "$previous_target" ]] && continue
+    rm -rf "$old_release"
   done
 
   rm -f "$archive_path"

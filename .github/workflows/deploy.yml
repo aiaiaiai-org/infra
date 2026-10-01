@@ -199,7 +199,7 @@ jobs:
           set -Eeuo pipefail
           deployment_path=/opt/prism-hubot
           release_id="${{ steps.prism_source.outputs.sha }}"
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "DEPLOY_MODE=activate DEPLOY_PATH='$deployment_path' SERVICE_NAME='prism-hubot.service' RELEASE_ID='$release_id' KEEP_RELEASES='5' RELEASE_ARCHIVE='$deployment_path/.deploy/$release_id.tar.gz' bash '$deployment_path/.deploy/systemd-release.sh'"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "DEPLOY_MODE=activate DEPLOY_PATH='$deployment_path' SERVICE_NAME='prism-hubot.service' RELEASE_ID='$release_id' KEEP_RELEASES='5' POST_ACTIVATE_COMMAND='bundle exec rake telegram:commands' RELEASE_ARCHIVE='$deployment_path/.deploy/$release_id.tar.gz' bash '$deployment_path/.deploy/systemd-release.sh'"
 
       - name: Clean secret material
         if: always()
