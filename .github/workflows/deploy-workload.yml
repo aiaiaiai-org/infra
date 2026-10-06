@@ -260,10 +260,12 @@ jobs:
               "DISCORD_CLIENT_ID=$PROVIDER_DISCORD_CLIENT_ID" \
               "DISCORD_CLIENT_SECRET=$PROVIDER_DISCORD_CLIENT_SECRET")"
             printf '%s' "$provider_env" > "$RUNNER_TEMP/identity-provider.env"
+            test -s "$RUNNER_TEMP/identity-provider.env"
           else
+            # A non-secret prepareEnv still receives the same second argument
+            # contract, but it does not need fake provider credentials.
             : > "$RUNNER_TEMP/identity-provider.env"
           fi
-          test -s "$RUNNER_TEMP/identity-provider.env"
           chmod 600 "$RUNNER_TEMP/identity-provider.env"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$REMOTE_WORKLOAD_DIR' && chmod 700 '$REMOTE_WORKLOAD_DIR'"
           scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "source/${PREPARE_ENV}" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh"
