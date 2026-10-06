@@ -263,7 +263,11 @@ jobs:
           else
             : > "$RUNNER_TEMP/identity-provider.env"
           fi
-          test -s "$RUNNER_TEMP/identity-provider.env"
+          # prepareEnv is a generic workload hook. Identity fills this input
+          # with provider secrets; other product-owned preparation scripts get
+          # an intentionally empty file rather than being forced to invent a
+          # provider secret just to use the hook.
+          test -f "$RUNNER_TEMP/identity-provider.env"
           chmod 600 "$RUNNER_TEMP/identity-provider.env"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$REMOTE_WORKLOAD_DIR' && chmod 700 '$REMOTE_WORKLOAD_DIR'"
           scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "source/${PREPARE_ENV}" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh"
