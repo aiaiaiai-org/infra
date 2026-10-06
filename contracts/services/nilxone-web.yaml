@@ -15,6 +15,7 @@ spec:
     kind: container
     environment:
       - CLIENT_ROOT=/srv/site
+    prepareEnv: deploy/web/prepare-map-runtime.sh
     volumes:
       - nilxone-web-map-data:/srv/map-data:ro
   public:
