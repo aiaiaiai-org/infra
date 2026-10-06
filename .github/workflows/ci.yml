@@ -58,6 +58,8 @@ jobs:
           grep -Fxq 'alias=nilxone-web' <<< "$output"
           grep -Fxq 'port=1927' <<< "$output"
           grep -Fxq 'health=/health' <<< "$output"
+          grep -Fxq 'prepare_env=deploy/web/prepare-map-runtime.sh' <<< "$output"
+          grep -Fxq 'repository=nilx-one/web' <<< "$output"
           ! env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb does-not-exist 2>/dev/null
 
       - name: Validate identity workload contract
