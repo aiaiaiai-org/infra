@@ -310,7 +310,8 @@ jobs:
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "chmod 600 '$REMOTE_WORKLOAD_DIR/.env'; chmod 700 '$REMOTE_WORKLOAD_DIR/deploy.sh'"
 
       - name: Authenticate container registry
-        if: ${{ needs.resolve.outputs.runtime == 'container' }}
+        # Docker Hub / digest-pinned public images do not need GHCR credentials.
+        if: ${{ needs.resolve.outputs.runtime == 'container' && startsWith(needs.resolve.outputs.image, 'ghcr.io/') }}
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
