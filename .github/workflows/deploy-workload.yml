@@ -196,6 +196,21 @@ jobs:
           test -s "$HOME/.ssh/known_hosts"
           ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" true
 
+      # The producer encrypts application credentials for this Environment's SSH
+      # public key. Only the job holding SSH_PRIVATE_KEY can decrypt this request.
+      # Neither repository_dispatch nor infra Secrets stores plaintext credentials.
+      - name: Decrypt workload-scoped credentials
+        if: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.secrets_age != '' }}
+        env:
+          WORKLOAD_SECRET_ENVELOPE: ${{ github.event.client_payload.secrets_age }}
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          umask 077
+          printf '%s' "$WORKLOAD_SECRET_ENVELOPE" | age --decrypt --identity "$HOME/.ssh/id_ed25519" > "$RUNNER_TEMP/source-credentials.env"
+          test -s "$RUNNER_TEMP/source-credentials.env"
+
       - name: Checkout source release
         if: ${{ needs.resolve.outputs.runtime == 'systemd-release' || needs.resolve.outputs.prepare_env != '' }}
         uses: actions/checkout@v7
@@ -243,6 +258,19 @@ jobs:
           git -C source archive --format=tar.gz --output="$RUNNER_TEMP/release/release.tar.gz" HEAD
           test -s "$RUNNER_TEMP/release/release.tar.gz"
 
+      - name: Checkout infra deployment tooling
+        if: ${{ needs.resolve.outputs.runtime == 'container' || needs.resolve.outputs.runtime == 'systemd-release' }}
+        uses: actions/checkout@v7
+        with:
+          path: infra
+          sparse-checkout: |
+            deploy/workload/deploy.sh
+            deploy/workload/systemd-release.sh
+            scripts/workload-secret-env.rb
+            scripts/prepare-identity-provider-env.rb
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Prepare target runtime environment
         if: ${{ needs.resolve.outputs.prepare_env != '' }}
         env:
@@ -252,14 +280,20 @@ jobs:
           set -Eeuo pipefail
           test -f "source/${PREPARE_ENV}"
           if [[ "$WORKLOAD" == "nilxone-identity" ]]; then
-            provider_env="$(printf '%s\n' \
+            if [[ -f "$RUNNER_TEMP/source-credentials.env" ]]; then
+              WORKLOAD_SECRET_SOURCE_FILE="$RUNNER_TEMP/source-credentials.env" \
+                IDENTITY_PROVIDER_ENV_FILE="$RUNNER_TEMP/identity-provider.env" \
+                ruby infra/scripts/prepare-identity-provider-env.rb
+            else
+              provider_env="$(printf '%s\n' \
               "PUBLIC_ORIGIN=https://nilx.one" \
               "TELOXIDE_TOKEN=$PROVIDER_TELOXIDE_TOKEN" \
               "TELEGRAM_OIDC_CLIENT_ID=$PROVIDER_TELEGRAM_OIDC_CLIENT_ID" \
               "TELEGRAM_OIDC_CLIENT_SECRET=$PROVIDER_TELEGRAM_OIDC_CLIENT_SECRET" \
               "DISCORD_CLIENT_ID=$PROVIDER_DISCORD_CLIENT_ID" \
               "DISCORD_CLIENT_SECRET=$PROVIDER_DISCORD_CLIENT_SECRET")"
-            printf '%s' "$provider_env" > "$RUNNER_TEMP/identity-provider.env"
+              printf '%s' "$provider_env" > "$RUNNER_TEMP/identity-provider.env"
+            fi
             test -s "$RUNNER_TEMP/identity-provider.env"
           else
             # A non-secret prepareEnv still receives the same second argument
@@ -275,18 +309,6 @@ jobs:
           if [[ "$WORKLOAD" == "nilxone-identity" ]]; then
             printf 'WORKLOAD_SECRET_ENV_FILE=runtime.env\n' >> "$RUNNER_TEMP/workload.env"
           fi
-      - name: Checkout infra deployment tooling
-        if: ${{ needs.resolve.outputs.runtime == 'container' || needs.resolve.outputs.runtime == 'systemd-release' }}
-        uses: actions/checkout@v7
-        with:
-          path: infra
-          sparse-checkout: |
-            deploy/workload/deploy.sh
-            deploy/workload/systemd-release.sh
-            scripts/workload-secret-env.rb
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-
       - name: Prepare workload secrets
         if: ${{ needs.resolve.outputs.runtime == 'container' && needs.resolve.outputs.secrets != '' }}
         env:
@@ -294,6 +316,9 @@ jobs:
           ALL_SECRETS: ${{ toJSON(secrets) }}
         run: |
           set -Eeuo pipefail
+          if [[ -f "$RUNNER_TEMP/source-credentials.env" ]]; then
+            export WORKLOAD_SECRET_SOURCE_FILE="$RUNNER_TEMP/source-credentials.env"
+          fi
           secret_env="$(ruby infra/scripts/workload-secret-env.rb)"
           printf 'WORKLOAD_SECRET_ENV=%s\n' "$secret_env" >> "$RUNNER_TEMP/workload.env"
 
@@ -319,8 +344,21 @@ jobs:
           INFRA_DEPLOY_TOKEN: ${{ secrets.INFRA_DEPLOY_TOKEN }}
         run: |
           set -Eeuo pipefail
-          test -n "$GHCR_PULL_USER" || { echo "::error::Missing repository variable GHCR_PULL_USER." >&2; exit 1; }
-          test -n "$INFRA_DEPLOY_TOKEN" || { echo "::error::Missing repository secret INFRA_DEPLOY_TOKEN." >&2; exit 1; }
+          # The encrypted caller payload can include a short-lived GHCR token. It
+          # never becomes part of the workload's container environment.
+          if [[ -f "$RUNNER_TEMP/source-credentials.env" ]]; then
+            owner="$(sed -n 's/^GHCR_PULL_USER=//p' "$RUNNER_TEMP/source-credentials.env")"
+            token="$(sed -n 's/^GHCR_PULL_TOKEN=//p' "$RUNNER_TEMP/source-credentials.env")"
+            if [[ -n "$owner" && -n "$token" ]]; then
+              GHCR_PULL_USER="$owner"
+              INFRA_DEPLOY_TOKEN="$token"
+            elif [[ -n "$owner" || -n "$token" ]]; then
+              echo "::error::Encrypted GHCR credentials are incomplete." >&2
+              exit 1
+            fi
+          fi
+          [[ "$GHCR_PULL_USER" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "::error::Missing or invalid GHCR pull user." >&2; exit 1; }
+          test -n "$INFRA_DEPLOY_TOKEN" || { echo "::error::Missing GHCR pull credential." >&2; exit 1; }
           printf '%s' "$INFRA_DEPLOY_TOKEN" | ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "docker login ghcr.io -u '$GHCR_PULL_USER' --password-stdin"
 
       - name: Validate and activate container
@@ -365,7 +403,7 @@ jobs:
 
       - name: Clean runner secret material
         if: always()
-        run: rm -f "$RUNNER_TEMP/workload.env"
+        run: rm -f "$RUNNER_TEMP/workload.env" "$RUNNER_TEMP/source-credentials.env"
 
       - name: Publish summary
         if: always()

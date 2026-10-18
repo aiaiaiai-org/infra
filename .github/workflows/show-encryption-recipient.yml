@@ -1,0 +1,48 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+#
+# Explicit operator action. Publishes only a PUBLIC encryption recipient;
+# the corresponding SSH private key never leaves this Environment.
+name: Show workload encryption recipient
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Production Environment containing SSH_PRIVATE_KEY
+        required: true
+        type: choice
+        options:
+          - edge-prod-1
+          - edge-prod-2
+
+permissions:
+  contents: read
+
+jobs:
+  recipient:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.target }}
+    steps:
+      - name: Derive the public recipient
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          test -n "$SSH_PRIVATE_KEY"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/deploy-key"
+          trap 'rm -f "$RUNNER_TEMP/deploy-key"' EXIT
+          recipient="$(ssh-keygen -y -f "$RUNNER_TEMP/deploy-key")"
+          [[ "$recipient" == ssh-ed25519\ * || "$recipient" == ssh-rsa\ * ]] || {
+            echo "::error::age accepts ssh-ed25519 and ssh-rsa recipients" >&2
+            exit 1
+          }
+          {
+            echo "## Public encryption recipient for ${{ inputs.target }}"
+            echo
+            echo 'Store this as a non-secret `INFRA_AGE_RECIPIENT` Variable in the producing repository:'
+            echo
+            printf '\x60\x60\x60\n%s\n\x60\x60\x60\n' "$recipient"
+          } >> "$GITHUB_STEP_SUMMARY"
