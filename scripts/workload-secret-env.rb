@@ -26,12 +26,44 @@ rescue ArgumentError
 end
 abort("WORKLOAD_SECRETS names no secret") if mapping.empty?
 
-begin
-  secrets = JSON.parse(ENV.fetch("ALL_SECRETS", "{}"))
-rescue JSON::ParserError
-  abort("ALL_SECRETS is not a JSON object")
+# A caller can supply an age-encrypted, per-run source file instead of copying its
+# application credentials to infra's Environment. Only keys declared by the
+# reviewed workload contract may enter the container. _GHCR_* credentials are
+# reserved for the registry login step and never enter the workload runtime.
+source_file = ENV.fetch("WORKLOAD_SECRET_SOURCE_FILE", "")
+if !source_file.empty?
+  abort("source secret file is unreadable") unless File.file?(source_file) && File.readable?(source_file)
+  raw = File.binread(source_file)
+  abort("source secret file is too large") if raw.bytesize > 32_768
+  raw.force_encoding(Encoding::UTF_8)
+  abort("source secret file is not valid UTF-8") unless raw.valid_encoding?
+  secrets = {}
+  raw.lines(chomp: true).each do |line|
+    match = /\A([A-Z][A-Z0-9_]*)=([^\r\n\0]*)\z/.match(line)
+    abort("invalid source secret entry") unless match
+    key, value = match.captures
+    abort("duplicate source secret entry") if secrets.key?(key)
+    secrets[key] = value
+  end
+else
+  begin
+    secrets = JSON.parse(ENV.fetch("ALL_SECRETS", "{}"))
+  rescue JSON::ParserError
+    abort("ALL_SECRETS is not a JSON object")
+  end
+  abort("ALL_SECRETS is not a JSON object") unless secrets.is_a?(Hash)
 end
-abort("ALL_SECRETS is not a JSON object") unless secrets.is_a?(Hash)
+
+if !source_file.empty?
+  expected = mapping.map do |entry|
+    match = MAPPING.match(entry) || abort("secret mapping must be ENV_NAME=SECRET_NAME")
+    match[2]
+  end.uniq
+  extras = secrets.keys - expected - %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
+  missing = expected - secrets.keys
+  abort("unexpected source credential names") unless extras.empty?
+  abort("missing contract-specified source credentials") unless missing.empty?
+end
 
 names = []
 lines = mapping.map do |entry|
