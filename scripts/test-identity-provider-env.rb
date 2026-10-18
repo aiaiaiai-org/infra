@@ -95,6 +95,7 @@ Dir.mktmpdir("identity-preflight") do |dir|
   _out, _err, status = run_preflight.call
   abort("identity accepted empty credential envelope") if status.success?
 
+  File.write(path, DEFAULT)
   _out, _err, status = run_preflight.call("PROVIDER_DISCORD_CLIENT_ID" => "")
   abort("identity accepted missing public provider client ID") if status.success?
 
