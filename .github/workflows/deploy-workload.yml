@@ -47,14 +47,6 @@ on:
         description: Discord client ID
         required: false
         type: string
-    secrets:
-      TELOXIDE_TOKEN:
-        required: false
-      TELEGRAM_OIDC_CLIENT_SECRET:
-        required: false
-      DISCORD_CLIENT_SECRET:
-        required: false
-
 permissions:
   contents: read
 
@@ -162,11 +154,8 @@ jobs:
       PREPARE_ENV: ${{ needs.resolve.outputs.prepare_env }}
       REMOTE_WORKLOAD_DIR: .local/share/aiaiaiai-infra/workloads/${{ inputs.workload || github.event.client_payload.workload }}
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
-      PROVIDER_TELOXIDE_TOKEN: ${{ secrets.TELOXIDE_TOKEN }}
       PROVIDER_TELEGRAM_OIDC_CLIENT_ID: ${{ inputs.telegram_oidc_client_id || github.event.client_payload.telegram_oidc_client_id }}
-      PROVIDER_TELEGRAM_OIDC_CLIENT_SECRET: ${{ secrets.TELEGRAM_OIDC_CLIENT_SECRET }}
       PROVIDER_DISCORD_CLIENT_ID: ${{ inputs.discord_client_id || github.event.client_payload.discord_client_id }}
-      PROVIDER_DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
 
     steps:
       - name: Validate SSH credentials
@@ -242,12 +231,13 @@ jobs:
             printf 'WORKLOAD_LABELS=%s\n' "$WORKLOAD_LABELS"
             printf 'WORKLOAD_VOLUMES=%s\n' "$WORKLOAD_VOLUMES"
           } > "$RUNNER_TEMP/workload.env"
-          if [[ -n "$PREPARE_ENV" && "$WORKLOAD" == "nilxone-identity" ]]; then
-            test -n "$PROVIDER_TELOXIDE_TOKEN"
-            test -n "$PROVIDER_TELEGRAM_OIDC_CLIENT_ID"
-            test -n "$PROVIDER_TELEGRAM_OIDC_CLIENT_SECRET"
-            test -n "$PROVIDER_DISCORD_CLIENT_ID"
-            test -n "$PROVIDER_DISCORD_CLIENT_SECRET"
+          if [[ "$WORKLOAD" == "nilxone-identity" ]]; then
+            test -n "$PROVIDER_TELEGRAM_OIDC_CLIENT_ID" || { echo "::error::Missing Telegram OIDC client ID." >&2; exit 1; }
+            test -n "$PROVIDER_DISCORD_CLIENT_ID" || { echo "::error::Missing Discord client ID." >&2; exit 1; }
+            if [[ ! -s "$RUNNER_TEMP/source-credentials.env" ]]; then
+              echo "::error::Identity requires encrypted workload-scoped credentials from its producer." >&2
+              exit 1
+            fi
           fi
 
       - name: Prepare systemd release
@@ -280,20 +270,9 @@ jobs:
           set -Eeuo pipefail
           test -f "source/${PREPARE_ENV}"
           if [[ "$WORKLOAD" == "nilxone-identity" ]]; then
-            if [[ -f "$RUNNER_TEMP/source-credentials.env" ]]; then
-              WORKLOAD_SECRET_SOURCE_FILE="$RUNNER_TEMP/source-credentials.env" \
-                IDENTITY_PROVIDER_ENV_FILE="$RUNNER_TEMP/identity-provider.env" \
-                ruby infra/scripts/prepare-identity-provider-env.rb
-            else
-              provider_env="$(printf '%s\n' \
-              "PUBLIC_ORIGIN=https://nilx.one" \
-              "TELOXIDE_TOKEN=$PROVIDER_TELOXIDE_TOKEN" \
-              "TELEGRAM_OIDC_CLIENT_ID=$PROVIDER_TELEGRAM_OIDC_CLIENT_ID" \
-              "TELEGRAM_OIDC_CLIENT_SECRET=$PROVIDER_TELEGRAM_OIDC_CLIENT_SECRET" \
-              "DISCORD_CLIENT_ID=$PROVIDER_DISCORD_CLIENT_ID" \
-              "DISCORD_CLIENT_SECRET=$PROVIDER_DISCORD_CLIENT_SECRET")"
-              printf '%s' "$provider_env" > "$RUNNER_TEMP/identity-provider.env"
-            fi
+            WORKLOAD_SECRET_SOURCE_FILE="$RUNNER_TEMP/source-credentials.env" \
+              IDENTITY_PROVIDER_ENV_FILE="$RUNNER_TEMP/identity-provider.env" \
+              ruby infra/scripts/prepare-identity-provider-env.rb
             test -s "$RUNNER_TEMP/identity-provider.env"
           else
             # A non-secret prepareEnv still receives the same second argument
