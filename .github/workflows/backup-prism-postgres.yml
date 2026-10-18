@@ -35,7 +35,6 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
       AWS_EC2_METADATA_DISABLED: 'true'
-      GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
 
     steps:
       - name: Checkout
@@ -63,7 +62,7 @@ jobs:
             echo '- Database: `prism_hub`'
             echo '- Source: `edge-prod-2 / prism-postgres`'
             echo '- Destination: external S3-compatible bucket'
-            echo '- Encryption: age X25519, recipient key kept separate from decryption key'
+            echo '- Encryption: age public-key, recovery private key held off-server'
             echo '- Status: `${{ job.status }}`'
             echo '- Note: upload success does not replace a restore drill'
           } >> "$GITHUB_STEP_SUMMARY"
