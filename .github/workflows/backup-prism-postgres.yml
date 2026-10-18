@@ -1,0 +1,69 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Backup Prism PostgreSQL
+
+# Daily encrypted logical dump to independent S3-compatible storage.
+# No container mutation, no secrets in artifacts, and no plaintext dump on disk.
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-prism-postgres
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Encrypted offsite database backup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment:
+      name: edge-prod-2
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+      BACKUP_S3_ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT }}
+      BACKUP_S3_BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
+      BACKUP_S3_REGION: ${{ vars.BACKUP_S3_REGION }}
+      BACKUP_AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+      AWS_EC2_METADATA_DISABLED: 'true'
+      GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install age encryption tool
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends age
+          command -v aws
+          age --version
+
+      - name: Export and upload encrypted logical dump
+        run: bash scripts/backup-prism-postgres.sh
+
+      - name: Publish result
+        if: always()
+        run: |
+          {
+            echo '### Prism PostgreSQL offsite backup'
+            echo
+            echo '- Database: `prism_hub`'
+            echo '- Source: `edge-prod-2 / prism-postgres`'
+            echo '- Destination: external S3-compatible bucket'
+            echo '- Encryption: age X25519, recipient key kept separate from decryption key'
+            echo '- Status: `${{ job.status }}`'
+            echo '- Note: upload success does not replace a restore drill'
+          } >> "$GITHUB_STEP_SUMMARY"
