@@ -1,0 +1,28 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: h-ua-bot
+  owner: 0x0sky/h-ua-bot
+spec:
+  deployment: production
+  network: aiaiaiai-edge
+  aliases:
+    - h-ua-bot
+  protocol: http
+  port: 1927
+  health: /health
+  runtime:
+    kind: container
+    environment:
+      - HUA_HUB_ORIGIN=https://api.aiaiaiai.org/prism-hub
+      - HUA_HUB_PROVIDER_SCOPE=h-ua-bot
+      - HUA_ALERT_CHANNEL=alerts
+      - HUA_SOURCES=vanek_nikolaev
+    secrets:
+      - HUA_TELEGRAM_TOKEN=HUA_TELEGRAM_TOKEN
+      - HUA_HUB_TOKEN=HUA_HUB_TOKEN
+      - HUA_DELIVERY_SECRET=HUA_DELIVERY_SECRET
+    labels:
+      - org.aiaiaiai.product=h-ua-bot
+      - org.aiaiaiai.service=h-ua-bot
