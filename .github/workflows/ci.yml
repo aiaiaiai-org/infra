@@ -61,6 +61,9 @@ jobs:
           grep -Fq 'PRISM_POSTGRES_PASSWORD' <<< "$message"
           ! grep -Fq 'leak-' <<< "$message"
 
+      - name: Validate encrypted workload secret handoff
+        run: ruby scripts/test-workload-secret-handoff.rb
+
       - name: Validate workload placement resolver
         run: |
           set -Eeuo pipefail
