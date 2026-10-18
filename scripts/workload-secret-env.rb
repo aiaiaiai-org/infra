@@ -17,20 +17,20 @@ require "json"
 MAPPING = /\A([A-Z][A-Z0-9_]*)=([A-Z][A-Z0-9_]*)\z/
 
 mapping_b64 = ENV.fetch("WORKLOAD_SECRETS", "")
-abort("WORKLOAD_SECRETS is empty") if mapping_b64.strip.empty?
+source_file = ENV.fetch("WORKLOAD_SECRET_SOURCE_FILE", "")
+abort("WORKLOAD_SECRETS is empty") if mapping_b64.strip.empty? && source_file.empty?
 
 begin
-  mapping = Base64.strict_decode64(mapping_b64).lines.map(&:strip).reject(&:empty?)
+  mapping = mapping_b64.strip.empty? ? [] : Base64.strict_decode64(mapping_b64).lines.map(&:strip).reject(&:empty?)
 rescue ArgumentError
   abort("WORKLOAD_SECRETS is not base64")
 end
-abort("WORKLOAD_SECRETS names no secret") if mapping.empty?
+abort("WORKLOAD_SECRETS names no secret") if mapping.empty? && source_file.empty?
 
 # A caller can supply an age-encrypted, per-run source file instead of copying its
 # application credentials to infra's Environment. Only keys declared by the
 # reviewed workload contract may enter the container. _GHCR_* credentials are
 # reserved for the registry login step and never enter the workload runtime.
-source_file = ENV.fetch("WORKLOAD_SECRET_SOURCE_FILE", "")
 if !source_file.empty?
   abort("source secret file is unreadable") unless File.file?(source_file) && File.readable?(source_file)
   raw = File.binread(source_file)
@@ -59,16 +59,23 @@ if !source_file.empty?
     match = MAPPING.match(entry) || abort("secret mapping must be ENV_NAME=SECRET_NAME")
     match[2]
   end.uniq
-  extras = secrets.keys - expected - %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
-  missing = expected - secrets.keys
+  identity = ENV.fetch("WORKLOAD", "") == "nilxone-identity"
+  provider_names = identity ? %w[TELOXIDE_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET] : []
+  extras = secrets.keys - expected - provider_names - %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
+  missing = expected + provider_names - secrets.keys
   abort("unexpected source credential names") unless extras.empty?
   abort("missing contract-specified source credentials") unless missing.empty?
+  registry_names = %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
+  provided = registry_names.count { |name| secrets.key?(name) }
+  abort("incomplete registry credential pair") if provided == 1
+  abort("empty registry credential") if registry_names.any? { |name| secrets.key?(name) && secrets[name].empty? }
 end
 
 names = []
 lines = mapping.map do |entry|
   match = MAPPING.match(entry) || abort("secret mapping must be ENV_NAME=SECRET_NAME")
   env_name, secret_name = match.captures
+  abort("registry credentials may not enter workload runtime") if [env_name, secret_name].any? { |name| name.start_with?("GHCR_") }
   abort("secret mapping sets #{env_name} twice") if names.include?(env_name)
   names << env_name
 
