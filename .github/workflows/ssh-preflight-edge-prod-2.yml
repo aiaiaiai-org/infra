@@ -1,0 +1,87 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Check edge-prod-2 SSH access
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ssh-preflight-edge-prod-2
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: SSH identity and Docker (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: edge-prod-2
+    env:
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+      EXPECTED_HOST_FINGERPRINT: SHA256:B66nNmPvaJBwlsjKwqbr4/hEArInm8pAeJoaSqsMwmA
+    steps:
+      - name: Verify target configuration
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = '62.238.19.244'
+          test "$SSH_USER" = 'deploy'
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+
+      - name: Configure SSH and verify host identity
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          ssh_dir="$RUNNER_TEMP/ssh-preflight"
+          install -m 0700 -d "$ssh_dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$ssh_dir/id_ed25519"
+          chmod 600 "$ssh_dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$ssh_dir/id_ed25519" >/dev/null
+
+          ssh-keyscan -T 10 -p "$SSH_PORT" -t ed25519 "$SSH_HOST" > "$ssh_dir/known_hosts" 2>/dev/null
+          test -s "$ssh_dir/known_hosts"
+          chmod 600 "$ssh_dir/known_hosts"
+          fingerprints="$(ssh-keygen -lf "$ssh_dir/known_hosts" -E sha256)"
+          test "$(printf '%s\n' "$fingerprints" | wc -l)" -eq 1
+          actual="$(printf '%s\n' "$fingerprints" | awk '{ print $2 }')"
+          if [[ "$actual" != "$EXPECTED_HOST_FINGERPRINT" ]]; then
+            echo '::error::edge-prod-2 SSH host fingerprint mismatch'
+            exit 1
+          fi
+          echo 'ED25519 host fingerprint verified'
+
+      - name: Verify SSH identity and Docker (read-only)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/ssh-preflight/known_hosts" \
+            -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 \
+            -i "$RUNNER_TEMP/ssh-preflight/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" '
+              set -eu
+              test "$(id -un)" = deploy
+              test "$(hostname)" = edge-prod-2
+              docker info --format "{{.ServerVersion}}" >/dev/null
+              docker compose version >/dev/null
+              echo "SSH identity, Docker Engine, and Compose verified"
+            '
+
+      - name: Remove temporary SSH material
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ssh-preflight"
