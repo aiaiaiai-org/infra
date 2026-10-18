@@ -29,9 +29,21 @@ jobs:
         # bash -n checks only its first file; the others would be arguments to it.
         run: |
           set -Eeuo pipefail
-          for script in deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh deploy/edge-aiaiaiai/deploy.sh deploy/edge-aiaiaiai/verify.sh deploy/edge-aiaiaiai/bootstrap-server.sh; do
+          for script in deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh deploy/edge-aiaiaiai/deploy.sh deploy/edge-aiaiaiai/verify.sh deploy/edge-aiaiaiai/bootstrap-server.sh scripts/backup-prism-postgres.sh; do
             bash -n "$script"
           done
+
+      - name: Validate Prism backup contract
+        run: |
+          set -Eeuo pipefail
+          ruby -e '
+            require "yaml"
+            workflow = YAML.load_file(".github/workflows/backup-prism-postgres.yml")
+            abort "missing backup job" unless workflow.dig("jobs", "backup", "environment", "name") == "edge-prod-2"
+            abort "must be scheduled" unless File.read(".github/workflows/backup-prism-postgres.yml").include?("schedule:")
+            abort "missing encryption" unless File.read("scripts/backup-prism-postgres.sh").include?("age -r")
+            abort "must verify offsite object" unless File.read("scripts/backup-prism-postgres.sh").include?("s3api head-object")
+          '
 
       - name: Validate workload secret environment
         run: |
