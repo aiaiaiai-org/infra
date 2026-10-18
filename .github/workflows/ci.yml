@@ -64,6 +64,28 @@ jobs:
       - name: Validate encrypted workload secret handoff
         run: ruby scripts/test-workload-secret-handoff.rb
 
+      - name: Validate encrypted Identity provider handoff
+        run: |
+          ruby -c scripts/prepare-identity-provider-env.rb
+          ruby scripts/test-identity-provider-env.rb
+
+      - name: Verify age encryption to target SSH public key
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+          umask 077
+          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/recipient"
+          ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/other"
+          printf 'TOKEN=isolated\n' > "$RUNNER_TEMP/plain.env"
+          age --armor --recipient "$(cat "$RUNNER_TEMP/recipient.pub")" \
+            --output "$RUNNER_TEMP/payload.age" "$RUNNER_TEMP/plain.env"
+          age --decrypt --identity "$RUNNER_TEMP/recipient" \
+            --output "$RUNNER_TEMP/decrypted.env" "$RUNNER_TEMP/payload.age"
+          cmp "$RUNNER_TEMP/plain.env" "$RUNNER_TEMP/decrypted.env"
+          ! age --decrypt --identity "$RUNNER_TEMP/other" "$RUNNER_TEMP/payload.age" > /dev/null 2>&1
+          ! grep -Fq 'TOKEN=isolated' "$RUNNER_TEMP/payload.age"
+
       - name: Validate workload placement resolver
         run: |
           set -Eeuo pipefail
