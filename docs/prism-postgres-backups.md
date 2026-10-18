@@ -26,12 +26,13 @@ exists and has nonzero length.
    machine with `ssh-keygen`:
 
    ```sh
-   ssh-keygen -t ed25519 -N '' -C 'prism backup recovery' -f "$HOME/.ssh/prism-backup-recovery"
+   ssh-keygen -t ed25519 -a 100 -C 'prism backup recovery' -f "$HOME/.ssh/prism-backup-recovery"
    cat "$HOME/.ssh/prism-backup-recovery.pub"
    ```
 
-   The public `ssh-ed25519 ...` line is a valid age recipient. Store the
-   private key in an independent encrypted recovery location as well; losing it
+   Enter a strong passphrase when prompted. The public `ssh-ed25519 ...` line
+   is a valid age recipient. Store the private key in an independent encrypted
+   recovery location as well; losing it
    makes the encrypted backups unreadable. Never reuse the GitHub Actions
    deployment SSH key for backup recovery.
 
