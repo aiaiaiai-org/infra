@@ -258,6 +258,19 @@ jobs:
           git -C source archive --format=tar.gz --output="$RUNNER_TEMP/release/release.tar.gz" HEAD
           test -s "$RUNNER_TEMP/release/release.tar.gz"
 
+      - name: Checkout infra deployment tooling
+        if: ${{ needs.resolve.outputs.runtime == 'container' || needs.resolve.outputs.runtime == 'systemd-release' }}
+        uses: actions/checkout@v7
+        with:
+          path: infra
+          sparse-checkout: |
+            deploy/workload/deploy.sh
+            deploy/workload/systemd-release.sh
+            scripts/workload-secret-env.rb
+            scripts/prepare-identity-provider-env.rb
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Prepare target runtime environment
         if: ${{ needs.resolve.outputs.prepare_env != '' }}
         env:
@@ -267,14 +280,20 @@ jobs:
           set -Eeuo pipefail
           test -f "source/${PREPARE_ENV}"
           if [[ "$WORKLOAD" == "nilxone-identity" ]]; then
-            provider_env="$(printf '%s\n' \
+            if [[ -f "$RUNNER_TEMP/source-credentials.env" ]]; then
+              WORKLOAD_SECRET_SOURCE_FILE="$RUNNER_TEMP/source-credentials.env" \
+                IDENTITY_PROVIDER_ENV_FILE="$RUNNER_TEMP/identity-provider.env" \
+                ruby infra/scripts/prepare-identity-provider-env.rb
+            else
+              provider_env="$(printf '%s\n' \
               "PUBLIC_ORIGIN=https://nilx.one" \
               "TELOXIDE_TOKEN=$PROVIDER_TELOXIDE_TOKEN" \
               "TELEGRAM_OIDC_CLIENT_ID=$PROVIDER_TELEGRAM_OIDC_CLIENT_ID" \
               "TELEGRAM_OIDC_CLIENT_SECRET=$PROVIDER_TELEGRAM_OIDC_CLIENT_SECRET" \
               "DISCORD_CLIENT_ID=$PROVIDER_DISCORD_CLIENT_ID" \
               "DISCORD_CLIENT_SECRET=$PROVIDER_DISCORD_CLIENT_SECRET")"
-            printf '%s' "$provider_env" > "$RUNNER_TEMP/identity-provider.env"
+              printf '%s' "$provider_env" > "$RUNNER_TEMP/identity-provider.env"
+            fi
             test -s "$RUNNER_TEMP/identity-provider.env"
           else
             # A non-secret prepareEnv still receives the same second argument
@@ -290,18 +309,6 @@ jobs:
           if [[ "$WORKLOAD" == "nilxone-identity" ]]; then
             printf 'WORKLOAD_SECRET_ENV_FILE=runtime.env\n' >> "$RUNNER_TEMP/workload.env"
           fi
-      - name: Checkout infra deployment tooling
-        if: ${{ needs.resolve.outputs.runtime == 'container' || needs.resolve.outputs.runtime == 'systemd-release' }}
-        uses: actions/checkout@v7
-        with:
-          path: infra
-          sparse-checkout: |
-            deploy/workload/deploy.sh
-            deploy/workload/systemd-release.sh
-            scripts/workload-secret-env.rb
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-
       - name: Prepare workload secrets
         if: ${{ needs.resolve.outputs.runtime == 'container' && needs.resolve.outputs.secrets != '' }}
         env:
