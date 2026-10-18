@@ -97,7 +97,14 @@ A secret a contract names but the Environment lacks stops the deployment before 
 After that, each step is repeated only for what changed. A database image changes only through a
 reviewed change to its contract.
 
+## Backups and recovery
+
+Encrypted logical backups to independent S3 storage are documented in
+[`prism-postgres-backups.md`](prism-postgres-backups.md). The backup workflow must be
+configured, merged and verified with an actual offsite restore drill before it can be
+considered operational. This is not a substitute for PostgreSQL PITR.
+
 ## What stays by hand
 
-- Backups of the `prism-postgres-data` volume. Nothing here takes them yet.
+- Provisioning private S3 storage, a separate recovery key, retention, and restore drills.
 - Upgrading PostgreSQL across a major version: a new digest in the contract is not a migration.
