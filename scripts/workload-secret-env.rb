@@ -6,6 +6,7 @@
 #
 #   ALL_SECRETS      the Environment's secrets as a JSON object (`toJSON(secrets)`)
 #   WORKLOAD_SECRETS base64 of the contract's `runtime.secrets` lines, `ENV_NAME=SECRET_NAME`
+#   WORKLOAD_PRODUCER_ENVIRONMENT base64 of allowlisted producer variable names
 #
 # Prints base64 of `ENV_NAME=value` lines for deploy.sh's WORKLOAD_SECRET_ENV. A secret the
 # contract names but the Environment lacks, or leaves empty, stops the deployment: a workload
@@ -26,6 +27,18 @@ rescue ArgumentError
   abort("WORKLOAD_SECRETS is not base64")
 end
 abort("WORKLOAD_SECRETS names no secret") if mapping.empty? && source_file.empty?
+
+producer_names_b64 = ENV.fetch("WORKLOAD_PRODUCER_ENVIRONMENT", "")
+begin
+  producer_names = producer_names_b64.strip.empty? ? [] :
+    Base64.strict_decode64(producer_names_b64).lines.map(&:strip).reject(&:empty?)
+rescue ArgumentError
+  abort("WORKLOAD_PRODUCER_ENVIRONMENT is not base64")
+end
+abort("invalid producer environment allowlist") unless
+  producer_names.all? { |name| name.match?(/\A[A-Z][A-Z0-9_]*\z/) } &&
+  producer_names.uniq.length == producer_names.length
+abort("producer variables require a source envelope") if source_file.empty? && !producer_names.empty?
 
 # A caller can supply an age-encrypted, per-run source file instead of copying its
 # application credentials to infra's Environment. Only keys declared by the
@@ -61,8 +74,8 @@ if !source_file.empty?
   end.uniq
   identity = ENV.fetch("WORKLOAD", "") == "nilxone-identity"
   provider_names = identity ? %w[TELOXIDE_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET] : []
-  extras = secrets.keys - expected - provider_names - %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
-  missing = expected + provider_names - secrets.keys
+  extras = secrets.keys - expected - producer_names - provider_names - %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
+  missing = expected + producer_names + provider_names - secrets.keys
   abort("unexpected source credential names") unless extras.empty?
   abort("missing contract-specified source credentials") unless missing.empty?
   registry_names = %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
@@ -86,4 +99,12 @@ lines = mapping.map do |entry|
   "#{env_name}=#{value}"
 end
 
-print(Base64.strict_encode64(lines.join("\n") + "\n"))
+producer_lines = producer_names.map do |name|
+  abort("producer variable duplicates runtime secret") if names.include?(name)
+  value = secrets[name]
+  abort("missing producer variable #{name}") unless value.is_a?(String) && !value.empty?
+  abort("invalid producer variable #{name}") unless value.match?(/\A[A-Za-z0-9_\.\/:@+,-]+\z/)
+  "#{name}=#{value}"
+end
+
+print(Base64.strict_encode64((lines + producer_lines).join("\n") + "\n"))
