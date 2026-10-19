@@ -14,11 +14,12 @@ spec:
   health: /health
   runtime:
     kind: container
-    environment:
-      - HUA_HUB_ORIGIN=https://api.aiaiaiai.org/prism-hub
-      - HUA_HUB_PROVIDER_SCOPE=h-ua-bot
-      - HUA_ALERT_CHANNEL=alerts
-      - HUA_SOURCES=vanek_nikolaev
+    # Values belong to the producing repository; infra defines only the allowlist.
+    producerEnvironment:
+      - HUA_HUB_ORIGIN
+      - HUA_HUB_PROVIDER_SCOPE
+      - HUA_ALERT_CHANNEL
+      - HUA_SOURCES
     secrets:
       - HUA_TELEGRAM_TOKEN=HUA_TELEGRAM_TOKEN
       - HUA_HUB_TOKEN=HUA_HUB_TOKEN
