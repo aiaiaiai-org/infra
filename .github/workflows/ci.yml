@@ -156,11 +156,60 @@ jobs:
           grep -Fxq 'HUA_TELEGRAM_TOKEN=HUA_TELEGRAM_TOKEN' <<< "$secrets"
           grep -Fxq 'HUA_HUB_TOKEN=HUA_HUB_TOKEN' <<< "$secrets"
           grep -Fxq 'HUA_DELIVERY_SECRET=HUA_DELIVERY_SECRET' <<< "$secrets"
+          vars="$(sed -n 's/^producer_environment=//p' <<< "$output" | base64 --decode)"
+          grep -Fxq 'HUA_HUB_ORIGIN' <<< "$vars"
+          grep -Fxq 'HUA_HUB_PROVIDER_SCOPE' <<< "$vars"
+          grep -Fxq 'HUA_ALERT_CHANNEL' <<< "$vars"
+          grep -Fxq 'HUA_SOURCES' <<< "$vars"
+          test "$(grep -c '^HUA_' <<< "$vars")" -eq 4
+          test -z "$(sed -n 's/^environment=//p' <<< "$output" | base64 --decode)"
+
 
           # The 0x1 edge is unchanged: its workloads still land on edge-prod-1 in nilx-edge.
           output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb nilxone-web)"
           grep -Fxq 'target=edge-prod-1' <<< "$output"
           grep -Fxq 'network=nilx-edge' <<< "$output"
+
+      - name: Validate producer-owned runtime variable envelope
+        run: |
+          set -Eeuo pipefail
+          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb h-ua-bot)"
+          secret_names="$(sed -n 's/^secrets=//p' <<< "$output")"
+          variable_names="$(sed -n 's/^producer_environment=//p' <<< "$output")"
+          source_file="$(mktemp)"
+          trap 'rm -f "$source_file"' EXIT
+          cat > "$source_file" <<'EOF'
+          HUA_TELEGRAM_TOKEN=ci-telegram-token
+          HUA_HUB_TOKEN=ci-hub-token
+          HUA_DELIVERY_SECRET=ci-delivery-secret
+          HUA_HUB_ORIGIN=https://api.aiaiaiai.org/prism-hub
+          HUA_HUB_PROVIDER_SCOPE=h-ua-bot
+          HUA_ALERT_CHANNEL=alerts
+          HUA_SOURCES=vanek_nikolaev
+          EOF
+          assembled="$(WORKLOAD=h-ua-bot WORKLOAD_SECRETS="$secret_names" \
+            WORKLOAD_PRODUCER_ENVIRONMENT="$variable_names" \
+            WORKLOAD_SECRET_SOURCE_FILE="$source_file" \
+            ruby scripts/workload-secret-env.rb | base64 --decode)"
+          test "$(wc -l <<< "$assembled")" -eq 7
+          grep -Fxq 'HUA_HUB_ORIGIN=https://api.aiaiaiai.org/prism-hub' <<< "$assembled"
+          grep -Fxq 'HUA_SOURCES=vanek_nikolaev' <<< "$assembled"
+          sed -i '/^HUA_SOURCES=/d' "$source_file"
+          if WORKLOAD=h-ua-bot WORKLOAD_SECRETS="$secret_names" \
+            WORKLOAD_PRODUCER_ENVIRONMENT="$variable_names" \
+            WORKLOAD_SECRET_SOURCE_FILE="$source_file" \
+            ruby scripts/workload-secret-env.rb >/dev/null 2>&1; then
+            echo "::error::Missing producer variable must fail." >&2
+            exit 1
+          fi
+          printf 'EXTRA_UNREVIEWED=bad\n' >> "$source_file"
+          if WORKLOAD=h-ua-bot WORKLOAD_SECRETS="$secret_names" \
+            WORKLOAD_PRODUCER_ENVIRONMENT="$variable_names" \
+            WORKLOAD_SECRET_SOURCE_FILE="$source_file" \
+            ruby scripts/workload-secret-env.rb >/dev/null 2>&1; then
+            echo "::error::Unexpected producer key must fail." >&2
+            exit 1
+          fi
 
       - name: Validate aiaiaiai edge Caddy and Compose
         run: |
