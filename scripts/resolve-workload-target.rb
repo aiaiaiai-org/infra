@@ -53,6 +53,14 @@ if runtime_kind == "container"
 
   environment = Array(runtime["environment"])
   abort("#{service_path}: runtime.environment entries must be KEY=VALUE strings") unless environment.all? { |entry| entry.is_a?(String) && entry.match?(%r{\A[A-Z][A-Z0-9_]*=[A-Za-z0-9_./:@+,-]*\z}) }
+  producer_environment = Array(runtime["producerEnvironment"])
+  abort("#{service_path}: runtime.producerEnvironment must contain unique environment names") unless
+    producer_environment.all? { |name| name.is_a?(String) && name.match?(/\A[A-Z][A-Z0-9_]*\z/) } &&
+    producer_environment.uniq.length == producer_environment.length
+  static_names = environment.map { |entry| entry.split("=", 2).first }
+  abort("#{service_path}: producer environment overlaps static environment") unless
+    (producer_environment & static_names).empty?
+
   labels = Array(runtime["labels"])
   abort("#{service_path}: runtime.labels entries must be KEY=VALUE strings") unless labels.all? { |entry| entry.is_a?(String) && entry.match?(%r{\A[a-z0-9][a-z0-9_.-]*=[A-Za-z0-9_./:@+-]+\z}) }
   volumes = Array(runtime["volumes"])
@@ -60,6 +68,10 @@ if runtime_kind == "container"
 
   secret_mappings = Array(runtime["secrets"])
   abort("#{service_path}: runtime.secrets entries must be ENV_NAME=SECRET_NAME") unless secret_mappings.all? { |entry| entry.is_a?(String) && entry.match?(/\A[A-Z][A-Z0-9_]*=[A-Z][A-Z0-9_]*\z/) }
+
+  secret_names = secret_mappings.map { |mapping| mapping.split("=", 2).first }
+  abort("#{service_path}: producer environment overlaps runtime secrets") unless
+    (producer_environment & secret_names).empty?
 
   prepare_env = runtime["prepareEnv"].to_s
   if !prepare_env.empty?
@@ -77,6 +89,7 @@ if runtime_kind == "container"
     "contract_image" => runtime["image"].to_s,
     "secrets" => secret_mappings.empty? ? "" : Base64.strict_encode64(secret_mappings.join("\n") + "\n"),
     "environment" => Base64.strict_encode64(environment.join("\n") + "\n"),
+    "producer_environment" => producer_environment.empty? ? "" : Base64.strict_encode64(producer_environment.join("\n") + "\n"),
     "labels" => Base64.strict_encode64(labels.join("\n") + "\n"),
     "volumes" => Base64.strict_encode64(volumes.join("\n") + "\n"),
     "prepare_env" => prepare_env,
