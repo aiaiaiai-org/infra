@@ -49,6 +49,7 @@ on:
         type: string
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: deploy-workload-${{ inputs.workload || github.event.client_payload.workload }}
@@ -319,26 +320,26 @@ jobs:
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
-          GHCR_PULL_USER: ${{ vars.GHCR_PULL_USER }}
-          INFRA_DEPLOY_TOKEN: ${{ secrets.INFRA_DEPLOY_TOKEN }}
+          GHCR_PULL_USER: ${{ vars.GHCR_PULL_USER || github.actor }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN || secrets.INFRA_DEPLOY_TOKEN || github.token }}
         run: |
           set -Eeuo pipefail
-          # The encrypted caller payload can include a short-lived GHCR token. It
-          # never becomes part of the workload's container environment.
+          # Registry credentials belong to infra; the runtime envelope need not
+          # contain GHCR credentials. Legacy producers may still supply a pair.
           if [[ -f "$RUNNER_TEMP/source-credentials.env" ]]; then
             owner="$(sed -n 's/^GHCR_PULL_USER=//p' "$RUNNER_TEMP/source-credentials.env")"
             token="$(sed -n 's/^GHCR_PULL_TOKEN=//p' "$RUNNER_TEMP/source-credentials.env")"
             if [[ -n "$owner" && -n "$token" ]]; then
               GHCR_PULL_USER="$owner"
-              INFRA_DEPLOY_TOKEN="$token"
+              GHCR_PULL_TOKEN="$token"
             elif [[ -n "$owner" || -n "$token" ]]; then
               echo "::error::Encrypted GHCR credentials are incomplete." >&2
               exit 1
             fi
           fi
           [[ "$GHCR_PULL_USER" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "::error::Missing or invalid GHCR pull user." >&2; exit 1; }
-          test -n "$INFRA_DEPLOY_TOKEN" || { echo "::error::Missing GHCR pull credential." >&2; exit 1; }
-          printf '%s' "$INFRA_DEPLOY_TOKEN" | ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "docker login ghcr.io -u '$GHCR_PULL_USER' --password-stdin"
+          test -n "$GHCR_PULL_TOKEN" || { echo "::error::Missing infra-owned GHCR pull credential." >&2; exit 1; }
+          printf '%s' "$GHCR_PULL_TOKEN" | ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "docker login ghcr.io -u '$GHCR_PULL_USER' --password-stdin"
 
       - name: Validate and activate container
         if: ${{ needs.resolve.outputs.runtime == 'container' }}
