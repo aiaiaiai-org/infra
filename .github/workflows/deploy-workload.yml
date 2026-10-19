@@ -71,6 +71,7 @@ jobs:
       health_kind: ${{ steps.resolve.outputs.health_kind }}
       secrets: ${{ steps.resolve.outputs.secrets }}
       environment: ${{ steps.resolve.outputs.environment }}
+      producer_environment: ${{ steps.resolve.outputs.producer_environment }}
       labels: ${{ steps.resolve.outputs.labels }}
       volumes: ${{ steps.resolve.outputs.volumes }}
       deployment_path: ${{ steps.resolve.outputs.deployment_path }}
@@ -146,6 +147,7 @@ jobs:
       WORKLOAD_HEALTH_KIND: ${{ needs.resolve.outputs.health_kind }}
       WORKLOAD_SECRETS: ${{ needs.resolve.outputs.secrets }}
       WORKLOAD_ENVIRONMENT: ${{ needs.resolve.outputs.environment }}
+      WORKLOAD_PRODUCER_ENVIRONMENT: ${{ needs.resolve.outputs.producer_environment }}
       WORKLOAD_LABELS: ${{ needs.resolve.outputs.labels }}
       WORKLOAD_VOLUMES: ${{ needs.resolve.outputs.volumes }}
       DEPLOYMENT_PATH: ${{ needs.resolve.outputs.deployment_path }}
