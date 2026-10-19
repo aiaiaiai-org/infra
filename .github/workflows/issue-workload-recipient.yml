@@ -1,0 +1,69 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+#
+# Publishes only the public SSH recipient for a workload's resolved target.
+# A dispatch caller cannot select a target or access the private SSH key.
+name: Issue workload encryption recipient
+run-name: Recipient ${{ github.event.client_payload.workload }} / ${{ github.event.client_payload.request_id }}
+
+on:
+  repository_dispatch:
+    types: [issue-workload-recipient]
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      target: ${{ steps.target.outputs.target }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate and resolve request
+        id: target
+        env:
+          WORKLOAD: ${{ github.event.client_payload.workload }}
+          REQUEST_ID: ${{ github.event.client_payload.request_id }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$WORKLOAD" =~ ^[a-z0-9][a-z0-9-]*$ ]] || {
+            echo "::error::Invalid workload." >&2
+            exit 1
+          }
+          [[ "$REQUEST_ID" =~ ^[0-9]{1,20}$ ]] || {
+            echo "::error::Invalid source run ID." >&2
+            exit 1
+          }
+          ruby scripts/resolve-workload-target.rb "$WORKLOAD"
+
+  recipient:
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: ${{ needs.resolve.outputs.target }}
+    steps:
+      - name: Derive public recipient
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          test -n "$SSH_PRIVATE_KEY"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/infra-key"
+          trap 'rm -f "$RUNNER_TEMP/infra-key"' EXIT
+          ssh-keygen -y -f "$RUNNER_TEMP/infra-key" > "$RUNNER_TEMP/recipient.pub"
+          [[ "$(wc -l < "$RUNNER_TEMP/recipient.pub")" -eq 1 ]]
+          grep -Eq '^ssh-(ed25519|rsa) [A-Za-z0-9+/=]+( .*)?$' "$RUNNER_TEMP/recipient.pub"
+          ssh-keygen -lf "$RUNNER_TEMP/recipient.pub" >/dev/null
+      - name: Publish short-lived public key artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: recipient-${{ github.event.client_payload.workload }}-${{ github.event.client_payload.request_id }}
+          path: ${{ runner.temp }}/recipient.pub
+          if-no-files-found: error
+          retention-days: 1
