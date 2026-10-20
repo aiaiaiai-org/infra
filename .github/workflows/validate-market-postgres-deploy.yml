@@ -1,0 +1,32 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+# Pre-merge deployability evidence only. Does not dispatch, SSH or activate production.
+name: Validate Market PostgreSQL Deploy
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/validate-market-postgres-deploy.yml"
+      - "contracts/services/market-postgres-production.yaml"
+      - "contracts/servers/edge-prod-1.yaml"
+      - "scripts/validate-market-postgres-deploy.sh"
+      - "scripts/test-market-postgres-contract.rb"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: market-postgres-preflight-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-validation:
+    name: Isolated PostgreSQL runtime preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact PR revision
+        uses: actions/checkout@v4
+
+      - name: Validate actual image, private network, auth and persistent data
+        run: bash scripts/validate-market-postgres-deploy.sh
