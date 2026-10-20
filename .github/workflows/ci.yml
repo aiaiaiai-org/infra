@@ -33,6 +33,9 @@ jobs:
             bash -n "$script"
           done
 
+      - name: Validate market production PostgreSQL isolation
+        run: ruby scripts/test-market-postgres-contract.rb
+
       - name: Validate Prism backup contract
         run: |
           set -Eeuo pipefail
