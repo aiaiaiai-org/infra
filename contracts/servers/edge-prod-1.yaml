@@ -13,6 +13,7 @@ spec:
     - 443/udp
   runtimeRoot: /opt/infra/targets/edge-prod-1
   workloads:
+    - market-postgres-production
     - market-api-production
     - market-bot-production
     - market-bot-test
