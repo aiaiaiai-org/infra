@@ -29,7 +29,7 @@ jobs:
         # bash -n checks only its first file; the others would be arguments to it.
         run: |
           set -Eeuo pipefail
-          for script in deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh deploy/edge-aiaiaiai/deploy.sh deploy/edge-aiaiaiai/verify.sh deploy/edge-aiaiaiai/bootstrap-server.sh scripts/backup-prism-postgres.sh; do
+          for script in deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh deploy/edge-aiaiaiai/deploy.sh deploy/edge-aiaiaiai/verify.sh deploy/edge-aiaiaiai/bootstrap-server.sh scripts/backup-prism-postgres.sh scripts/validate-market-postgres-deploy.sh; do
             bash -n "$script"
           done
 
