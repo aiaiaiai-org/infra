@@ -1,0 +1,30 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: market-postgres-production
+  owner: aiaiaiai-org/infra
+spec:
+  deployment: production
+  network: nilx-edge
+  aliases:
+    - market-postgres-production
+  protocol: tcp
+  port: 1927
+  healthKind: tcp
+  runtime:
+    kind: container
+    # Reuse the reviewed PostgreSQL 18.6 image digest already pinned for prism-postgres.
+    # Pin changes and major-version upgrades in separately reviewed releases.
+    image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    environment:
+      - PGPORT=1927
+      - POSTGRES_USER=market
+      - POSTGRES_DB=market
+    secrets:
+      - POSTGRES_PASSWORD=MARKET_POSTGRES_PASSWORD
+    labels:
+      - org.aiaiaiai.product=0xda-market
+      - org.aiaiaiai.service=postgres
+    volumes:
+      - market-postgres-production-data:/var/lib/postgresql
