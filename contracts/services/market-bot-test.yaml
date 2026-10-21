@@ -14,3 +14,11 @@ spec:
   public:
     host: 0xda-market.nilx.one
     pathPrefix: /bot-test/
+  runtime:
+    kind: container
+    environment:
+      - DEPLOY_ENV=development
+      - MARKET_CORE_ENV=development
+      - PORT=10000
+      - REGISTER_TELEGRAM_WEBHOOK=0
+      - REGISTER_TELEGRAM_WEBAPP=0
