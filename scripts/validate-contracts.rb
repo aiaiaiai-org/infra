@@ -103,7 +103,8 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
     port = fetch!(spec, "port", path)
     abort("#{path}: port must be between 1 and 65535") unless port.is_a?(Integer) && port.between?(1, 65_535)
     expected_default_port = deployment == "test" ? 1703 : 1927
-    abort("#{path}: #{deployment} workload must use default port #{expected_default_port}") unless port == expected_default_port
+    expected_port = name == "market-bot-test" ? 10000 : expected_default_port
+    abort("#{path}: #{deployment} workload must use port #{expected_port}") unless port == expected_port
 
     health_kind = spec["healthKind"] || "http"
     abort("#{path}: healthKind must be http or tcp") unless %w[http tcp].include?(health_kind)

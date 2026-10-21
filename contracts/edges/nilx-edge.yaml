@@ -24,7 +24,7 @@ spec:
       pathPrefix: /bot-test/
       stripPrefix: true
       service: market-bot-test
-      upstream: market-bot-development:1703
+      upstream: market-bot-development:10000
       health: /health
     - id: market-bot-production
       host: ${MARKET_DOMAIN}

@@ -33,6 +33,9 @@ jobs:
             bash -n "$script"
           done
 
+      - name: Validate Market development Bot deployment
+        run: ruby scripts/test-market-bot-development-contract.rb
+
       - name: Validate market production PostgreSQL isolation
         run: ruby scripts/test-market-postgres-contract.rb
 
