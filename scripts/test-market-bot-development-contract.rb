@@ -26,7 +26,7 @@ abort "missing public vars" unless runtime.fetch("producerEnvironment").sort == 
 
 # Verify that the actual infra resolver and credential allowlist accept only configured names.
 cmd = File.join(root, "scripts/resolve-workload-target.rb")
-resolved, err, status = Open3.capture3("ruby", cmd, "market-bot-test")
+resolved, err, status = Open3.capture3({ "GITHUB_OUTPUT" => nil }, "ruby", cmd, "market-bot-test")
 abort err unless status.success?
 abort "resolver drift" unless resolved.include?("target=edge-prod-1\n") && resolved.include?("port=10000\n")
 
