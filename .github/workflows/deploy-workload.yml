@@ -69,6 +69,7 @@ jobs:
       port: ${{ steps.resolve.outputs.port }}
       health: ${{ steps.resolve.outputs.health }}
       health_kind: ${{ steps.resolve.outputs.health_kind }}
+      command: ${{ steps.resolve.outputs.command }}
       secrets: ${{ steps.resolve.outputs.secrets }}
       environment: ${{ steps.resolve.outputs.environment }}
       producer_environment: ${{ steps.resolve.outputs.producer_environment }}
@@ -145,6 +146,7 @@ jobs:
       WORKLOAD_PORT: ${{ needs.resolve.outputs.port }}
       WORKLOAD_HEALTH: ${{ needs.resolve.outputs.health }}
       WORKLOAD_HEALTH_KIND: ${{ needs.resolve.outputs.health_kind }}
+      WORKLOAD_COMMAND: ${{ needs.resolve.outputs.command }}
       WORKLOAD_SECRETS: ${{ needs.resolve.outputs.secrets }}
       WORKLOAD_ENVIRONMENT: ${{ needs.resolve.outputs.environment }}
       WORKLOAD_PRODUCER_ENVIRONMENT: ${{ needs.resolve.outputs.producer_environment }}
@@ -230,6 +232,7 @@ jobs:
             printf 'WORKLOAD_PORT=%s\n' "$WORKLOAD_PORT"
             printf 'WORKLOAD_HEALTH=%s\n' "$WORKLOAD_HEALTH"
             printf 'WORKLOAD_HEALTH_KIND=%s\n' "$WORKLOAD_HEALTH_KIND"
+            printf 'WORKLOAD_COMMAND=%s\n' "$WORKLOAD_COMMAND"
             printf 'WORKLOAD_ENVIRONMENT=%s\n' "$WORKLOAD_ENVIRONMENT"
             printf 'WORKLOAD_LABELS=%s\n' "$WORKLOAD_LABELS"
             printf 'WORKLOAD_VOLUMES=%s\n' "$WORKLOAD_VOLUMES"
