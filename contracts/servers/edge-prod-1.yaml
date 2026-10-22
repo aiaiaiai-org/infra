@@ -15,6 +15,9 @@ spec:
   workloads:
     - market-postgres-production
     - market-api-production
+    - market-api-development
+    - market-fx-development
+    - market-prices-development
     - market-bot-production
     - market-bot-test
     - nilxone-web
