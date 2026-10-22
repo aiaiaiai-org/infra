@@ -1,6 +1,7 @@
 # © 2026 aiaiaiai · aiaiaiai.org
 
 name: Deploy workload
+run-name: Deploy ${{ inputs.workload || github.event.client_payload.workload }}
 
 on:
   repository_dispatch:
