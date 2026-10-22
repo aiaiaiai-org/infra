@@ -22,6 +22,7 @@ alias_name="${WORKLOAD_ALIAS:-}"
 port="${WORKLOAD_PORT:-}"
 health_path="${WORKLOAD_HEALTH:-}"
 health_kind="${WORKLOAD_HEALTH_KIND:-http}"
+command_b64="${WORKLOAD_COMMAND:-}"
 environment_b64="${WORKLOAD_ENVIRONMENT:-}"
 labels_b64="${WORKLOAD_LABELS:-}"
 volumes_b64="${WORKLOAD_VOLUMES:-}"
@@ -64,12 +65,16 @@ case "$health_kind" in
       exit 1
     fi
     ;;
-  tcp) ;;
+  tcp|process) ;;
   *)
-    echo "WORKLOAD_HEALTH_KIND must be http or tcp" >&2
+    echo "WORKLOAD_HEALTH_KIND must be http, tcp or process" >&2
     exit 1
     ;;
 esac
+if [[ ! "$command_b64" =~ ^[A-Za-z0-9+/]*={0,2}$ ]]; then
+  echo "WORKLOAD_COMMAND is invalid" >&2
+  exit 1
+fi
 if [[ ! "$environment_b64" =~ ^[A-Za-z0-9+/]*={0,2}$ ]]; then
   echo "WORKLOAD_ENVIRONMENT is invalid" >&2
   exit 1
@@ -120,6 +125,18 @@ write_labels() {
   fi
 }
 
+mapfile -t workload_command < <(write_labels "$command_b64")
+if (( ${#workload_command[@]} > 16 )); then
+  echo "WORKLOAD_COMMAND has too many arguments" >&2
+  exit 1
+fi
+for arg in "${workload_command[@]}"; do
+  [[ "$arg" =~ ^[A-Za-z0-9_./-]+$ ]] || { echo "WORKLOAD_COMMAND has an invalid argument" >&2; exit 1; }
+done
+if [[ "$health_kind" == "process" && ${#workload_command[@]} -eq 0 ]]; then
+  echo "process health requires a command" >&2
+  exit 1
+fi
 mapfile -t workload_labels < <(write_labels "$labels_b64" | sed '/^$/d')
 mapfile -t workload_volumes < <(write_labels "$volumes_b64" | sed '/^$/d')
 for volume in "${workload_volumes[@]}"; do
@@ -147,7 +164,7 @@ if [[ "$mode" == "rollback" ]]; then
     --restart unless-stopped \
     --security-opt no-new-privileges:true \
     --env-file "$environment_file" \
-    "$previous_image" >/dev/null
+    "$previous_image" "${workload_command[@]}" >/dev/null
   echo "workload $workload rolled back to $previous_image"
   exit 0
 fi
@@ -181,12 +198,14 @@ docker run --detach \
   --log-opt max-size=10m \
   --log-opt max-file=3 \
   --env-file "$environment_file" \
-  "$image_ref" >/dev/null
+  "$image_ref" "${workload_command[@]}" >/dev/null
 
 # An HTTP workload is healthy when its health path answers; a TCP one (a database) when its port
 # accepts a connection.
 probe_health() {
-  if [[ "$health_kind" == "tcp" ]]; then
+  if [[ "$health_kind" == "process" ]]; then
+    [[ "$(docker inspect --format '{{.State.Running}}' "$workload" 2>/dev/null || true)" == true ]]
+  elif [[ "$health_kind" == "tcp" ]]; then
     docker run --rm --network "$network" alpine:3.22 \
       nc -z -w 2 "$alias_name" "$port" >/dev/null 2>&1
   else
@@ -197,6 +216,9 @@ probe_health() {
 }
 
 healthy=0
+if [[ "$health_kind" == "process" ]]; then
+  sleep 5
+fi
 for _ in $(seq 1 30); do
   running="$(docker inspect --format '{{.State.Running}}' "$workload" 2>/dev/null || true)"
   if [[ "$running" != "true" ]]; then
@@ -227,7 +249,7 @@ if [[ "$healthy" != "1" ]]; then
       --log-opt max-size=10m \
       --log-opt max-file=3 \
       --env-file "$environment_file" \
-      "$current_image" >/dev/null
+      "$current_image" "${workload_command[@]}" >/dev/null
     echo "rolled back $workload to $current_image" >&2
   fi
   exit 1
