@@ -1,0 +1,29 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: market-api-development
+  owner: 0xda-market/core
+spec:
+  deployment: test
+  network: nilx-edge
+  aliases:
+    - market-api-development
+  protocol: http
+  port: 10000
+  health: /health
+  runtime:
+    kind: container
+    environment:
+      - DEPLOY_ENV=development
+      - PORT=10000
+      - ENABLE_MOCK_PAYMENT_PROVIDER=0
+      - MARKETPLACE_MIN_MARGIN_BPS=100
+      - MARKETPLACE_SUPPLY_BUFFER_BPS=100
+      - MARKETPLACE_VARIABLE_FEE_BPS=0
+      - MARKETPLACE_FIXED_COST_USDT=0
+      - FX_RATE_MAX_AGE_SECONDS=3600
+    secrets:
+      - DATABASE_URL=DATABASE_URL
+      - PUBLIC_API_TOKEN=PUBLIC_API_TOKEN
+      - MANUAL_PROVIDER_TOKEN=MANUAL_PROVIDER_TOKEN

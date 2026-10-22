@@ -103,17 +103,23 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
     port = fetch!(spec, "port", path)
     abort("#{path}: port must be between 1 and 65535") unless port.is_a?(Integer) && port.between?(1, 65_535)
     expected_default_port = deployment == "test" ? 1703 : 1927
-    expected_port = name == "market-bot-test" ? 10000 : expected_default_port
+    expected_port = %w[market-bot-test market-api-development].include?(name) ? 10000 : expected_default_port
     abort("#{path}: #{deployment} workload must use port #{expected_port}") unless port == expected_port
 
     health_kind = spec["healthKind"] || "http"
-    abort("#{path}: healthKind must be http or tcp") unless %w[http tcp].include?(health_kind)
+    abort("#{path}: healthKind must be http, tcp or process") unless %w[http tcp process].include?(health_kind)
     if health_kind == "http"
       health = fetch!(spec, "health", path)
       abort("#{path}: health must start with /") unless health.is_a?(String) && health.start_with?("/")
     elsif spec.key?("health")
-      abort("#{path}: a tcp health check takes no health path")
+      abort("#{path}: a non-http health check takes no health path")
     end
+
+    command = runtime["command"] || []
+    abort("#{path}: runtime.command must be a safe argv array") unless
+      command.is_a?(Array) && command.length <= 16 &&
+      command.all? { |arg| arg.is_a?(String) && arg.match?(/\A[A-Za-z0-9_.\/-]+\z/) }
+    abort("#{path}: process health requires an explicit command") if health_kind == "process" && command.empty?
 
     image = runtime["image"]
     unless image.nil?
