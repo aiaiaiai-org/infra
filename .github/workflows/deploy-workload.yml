@@ -233,7 +233,7 @@ jobs:
             printf 'WORKLOAD_PORT=%s\n' "$WORKLOAD_PORT"
             printf 'WORKLOAD_HEALTH=%s\n' "$WORKLOAD_HEALTH"
             printf 'WORKLOAD_HEALTH_KIND=%s\n' "$WORKLOAD_HEALTH_KIND"
-            printf 'WORKLOAD_COMMAND=%s\n' "$WORKLOAD_COMMAND"
+            printf 'WORKLOAD_COMMAND=%s\n' "${WORKLOAD_COMMAND:-}"
             printf 'WORKLOAD_ENVIRONMENT=%s\n' "$WORKLOAD_ENVIRONMENT"
             printf 'WORKLOAD_LABELS=%s\n' "$WORKLOAD_LABELS"
             printf 'WORKLOAD_VOLUMES=%s\n' "$WORKLOAD_VOLUMES"
