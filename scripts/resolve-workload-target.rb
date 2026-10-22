@@ -44,7 +44,7 @@ if runtime_kind == "container"
   abort("#{service_path}: port must be between 1 and 65535") unless port.is_a?(Integer) && port.between?(1, 65_535)
 
   health_kind = spec["healthKind"] || "http"
-  abort("#{service_path}: healthKind must be http or tcp") unless %w[http tcp].include?(health_kind)
+  abort("#{service_path}: healthKind must be http, tcp or process") unless %w[http tcp process].include?(health_kind)
   health = spec["health"].to_s
   abort("#{service_path}: health must start with /") if health_kind == "http" && !health.start_with?("/")
 
@@ -66,6 +66,12 @@ if runtime_kind == "container"
   volumes = Array(runtime["volumes"])
   abort("#{service_path}: runtime.volumes entries must be SOURCE:TARGET strings") unless volumes.all? { |entry| entry.is_a?(String) && entry.match?(%r{\A[a-z0-9][a-z0-9_.-]*:/[A-Za-z0-9_./-]+(?::ro|:rw)?\z}) }
 
+  command = runtime["command"] || []
+  abort("#{service_path}: runtime.command must be a safe argv array") unless
+    command.is_a?(Array) && command.length <= 16 &&
+    command.all? { |arg| arg.is_a?(String) && arg.match?(/\A[A-Za-z0-9_.\/-]+\z/) }
+  abort("#{service_path}: process health requires explicit command") if health_kind == "process" && command.empty?
+
   secret_mappings = Array(runtime["secrets"])
   abort("#{service_path}: runtime.secrets entries must be ENV_NAME=SECRET_NAME") unless secret_mappings.all? { |entry| entry.is_a?(String) && entry.match?(/\A[A-Z][A-Z0-9_]*=[A-Z][A-Z0-9_]*\z/) }
 
@@ -86,6 +92,7 @@ if runtime_kind == "container"
     "port" => port.to_s,
     "health" => health,
     "health_kind" => health_kind,
+    "command" => command.empty? ? "" : Base64.strict_encode64(command.join("\n") + "\n"),
     "contract_image" => runtime["image"].to_s,
     "secrets" => secret_mappings.empty? ? "" : Base64.strict_encode64(secret_mappings.join("\n") + "\n"),
     "environment" => Base64.strict_encode64(environment.join("\n") + "\n"),
