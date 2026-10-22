@@ -1,0 +1,32 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: market-prices-development
+  owner: 0xda-market/core
+spec:
+  deployment: test
+  network: nilx-edge
+  aliases:
+    - market-prices-development
+  protocol: tcp
+  port: 1703
+  healthKind: process
+  runtime:
+    kind: container
+    command:
+      - bundle
+      - exec
+      - ruby
+      - bin/refresh_market_prices_loop
+    environment:
+      - DEPLOY_ENV=development
+      - MARKET_PRICE_REFRESH_INTERVAL_SECONDS=60
+      - MARKET_PRICE_RETRY_INTERVAL_SECONDS=30
+      - MARKETPLACE_MIN_MARGIN_BPS=100
+      - MARKETPLACE_SUPPLY_BUFFER_BPS=100
+      - MARKETPLACE_VARIABLE_FEE_BPS=0
+      - MARKETPLACE_FIXED_COST_USDT=0
+      - FX_RATE_MAX_AGE_SECONDS=3600
+    secrets:
+      - DATABASE_URL=DATABASE_URL
