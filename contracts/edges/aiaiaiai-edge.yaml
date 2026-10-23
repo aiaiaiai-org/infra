@@ -27,3 +27,10 @@ spec:
       service: prism-hub
       upstream: prism-hub:1927
       health: /healthz
+    - id: hua-bot
+      host: ${PRISM_API_DOMAIN}
+      pathPrefix: /hua-bot/
+      stripPrefix: true
+      service: h-ua-bot
+      upstream: h-ua-bot:1927
+      health: /health

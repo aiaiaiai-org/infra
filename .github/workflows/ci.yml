@@ -154,6 +154,10 @@ jobs:
           secrets="$(sed -n 's/^secrets=//p' <<< "$output" | base64 --decode)"
           grep -Fxq 'PGPASSWORD=PRISM_POSTGRES_PASSWORD' <<< "$secrets"
           grep -Fxq 'SECRET_KEY_BASE=PRISM_HUB_SECRET_KEY_BASE' <<< "$secrets"
+          grep -Fxq 'PRISM_BOT_DELIVERY_SECRET=PRISM_BOT_DELIVERY_SECRET' <<< "$secrets"
+          environment="$(sed -n 's/^environment=//p' <<< "$output" | base64 --decode)"
+          grep -Fxq 'PRISM_BOT_ORIGIN=https://api.aiaiaiai.org' <<< "$environment"
+          grep -Fxq 'PRISM_BOT_PATH_PREFIX=/hua-bot' <<< "$environment"
 
           output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb h-ua-bot)"
           grep -Fxq 'target=edge-prod-2' <<< "$output"
@@ -497,6 +501,11 @@ jobs:
           test "$(request /prism-hub/healthz)" = 200 && grep -qx prism-hub /tmp/body
           test "$(request /prism-hub/api/v1/channels)" = 200 && grep -qx channels /tmp/body
           test "$(request /prism-hub)" = 308
+          test "$(request /hua-bot/health)" = 200 && grep -qx h-ua-bot /tmp/body
+          test "$(request /hua-bot/api/v1/delivery)" = 200 && grep -qx delivered /tmp/body
+          test "$(request /hua-bot)" = 308
+          test "$(request /hua-bot-other/health)" = 404
+          test "$(request /hua-bot/prism-hub/healthz)" = 404
           test "$(request /h-ua-bot/health)" = 200 && grep -qx h-ua-bot /tmp/body
           test "$(request /api/v1/delivery)" = 200 && grep -qx delivered /tmp/body
           # Nothing else on the host is served.

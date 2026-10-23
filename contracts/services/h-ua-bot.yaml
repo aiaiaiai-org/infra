@@ -27,3 +27,6 @@ spec:
     labels:
       - org.aiaiaiai.product=h-ua-bot
       - org.aiaiaiai.service=h-ua-bot
+  public:
+    host: api.aiaiaiai.org
+    pathPrefix: /hua-bot/
