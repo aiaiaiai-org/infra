@@ -19,6 +19,7 @@ spec:
     - market-fx-development
     - market-prices-development
     - market-bot-production
+    - market-trading-lab
     - market-bot-test
     - nilxone-web
     - nilxone-telegram

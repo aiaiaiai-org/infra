@@ -1,0 +1,24 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: market-trading-lab
+  owner: 0x0sky/trading-lab
+spec:
+  deployment: production
+  network: nilx-edge
+  aliases:
+    - market-trading-lab
+  protocol: http
+  port: 1927
+  health: /health
+  runtime:
+    kind: container
+    # No public route. Only workloads on nilx-edge can reach the private service.
+    environment:
+      - PORT=1927
+    secrets:
+      - TRADING_LAB_SERVICE_TOKEN=TRADING_LAB_SERVICE_TOKEN
+    labels:
+      - org.aiaiaiai.product=0xda-market
+      - org.aiaiaiai.service=trading-lab

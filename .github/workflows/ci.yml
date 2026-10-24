@@ -33,6 +33,9 @@ jobs:
             bash -n "$script"
           done
 
+      - name: Validate private Trading Lab placement and credential allowlist
+        run: ruby scripts/test-market-trading-lab-contract.rb
+
       - name: Validate Market development Core workload contracts
         run: ruby scripts/test-market-core-development-contract.rb
 
