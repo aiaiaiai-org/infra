@@ -33,6 +33,18 @@
 		}
 	}
 
+	# Point pages and immutable Web assets share the deployed 0x1 browser host.
+	# API, handoff/session, health and bot routes remain on their current services.
+	@market_web path / /assets/* /map/* /avatars/* /models/* /voices/* /monuments/* /market-api/* /market-license.txt /золоті /золоті/ /zoloti-vorota /zoloti-vorota/ /batkivshchyna /peizazhna-aleia /cosmopolite /gorodok-gallery /smart-plaza-polytech /raion /mandarin-plaza /respublika-park /lavina-mall /river-mall /retroville /tsum /skymall /dream-berry /dream-yellow /gulliver /osokorky /pozniaky /troieshchyna-centre /livoberezhna /petra-zaporozhtsia
+	handle @market_web {
+		reverse_proxy nilxone-web:1927 {
+			health_uri /health
+			health_interval 30s
+			health_timeout 5s
+			lb_try_duration 5s
+		}
+	}
+
 	handle {
 		reverse_proxy market-api-production:10000 {
 			health_uri /health
