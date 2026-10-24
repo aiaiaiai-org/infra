@@ -299,7 +299,8 @@ jobs:
           test "$(grep -Fc 'reverse_proxy market-api-production:10000' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy market-bot-production:10000' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy market-bot-development:10000' deploy/edge/Caddyfile)" -eq 1
-          test "$(grep -Fc 'reverse_proxy nilxone-web:1927' deploy/edge/Caddyfile)" -eq 2
+          test "$(grep -Fc 'reverse_proxy nilxone-web:1927' deploy/edge/Caddyfile)" -eq 3
+          grep -Fq 'handle @market_web' deploy/edge/Caddyfile
           test "$(grep -Fc 'reverse_proxy nilxone-telegram:1927' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy nilxone-discord:1927' deploy/edge/Caddyfile)" -eq 1
           grep -Fq '{$NILX_WEB_DOMAIN:nilx.one}' deploy/edge/Caddyfile
