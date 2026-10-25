@@ -23,10 +23,11 @@ File.foreach(source, chomp: true) do |entry|
   secrets[name] = value
 end
 
-required = %w[TELOXIDE_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET]
+required = %w[TELOXIDE_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET NILX_BROWSER_HANDOFF_TOKEN]
 optional = %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
 abort("unapproved identity provider entry") unless (secrets.keys - required - optional).empty?
 abort("missing identity provider credential") unless required.all? { |name| secrets[name].is_a?(String) && !secrets[name].empty? }
+abort("NILX_BROWSER_HANDOFF_TOKEN must contain at least 32 characters") if secrets.fetch("NILX_BROWSER_HANDOFF_TOKEN").length < 32
 abort("incomplete GHCR credential") if optional.count { |name| secrets.key?(name) } == 1
 abort("missing GHCR credential") if optional.any? { |name| secrets[name] == "" }
 
@@ -36,8 +37,10 @@ lines = [
   "TELEGRAM_OIDC_CLIENT_ID=#{ids.fetch('TELEGRAM_OIDC_CLIENT_ID')}",
   "TELEGRAM_OIDC_CLIENT_SECRET=#{secrets.fetch('TELEGRAM_OIDC_CLIENT_SECRET')}",
   "DISCORD_CLIENT_ID=#{ids.fetch('DISCORD_CLIENT_ID')}",
-  "DISCORD_CLIENT_SECRET=#{secrets.fetch('DISCORD_CLIENT_SECRET')}"
+  "DISCORD_CLIENT_SECRET=#{secrets.fetch('DISCORD_CLIENT_SECRET')}",
+  "NILX_BROWSER_HANDOFF_TOKEN=#{secrets.fetch('NILX_BROWSER_HANDOFF_TOKEN')}"
 ]
 File.open(output, File::WRONLY | File::CREAT | File::TRUNC, 0o600) do |file|
   file.write(lines.join("\n") + "\n")
 end
+

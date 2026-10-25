@@ -72,15 +72,31 @@ Dir.mktmpdir("scoped-secrets") do |directory|
     abort("registry token leaked into diagnostics") if "#{out}#{err}".include?("short-lived")
   end
 
-  identity = registry + "TELOXIDE_TOKEN=t\nTELEGRAM_OIDC_CLIENT_SECRET=u\nDISCORD_CLIENT_SECRET=v\n"
+  identity = registry + "TELOXIDE_TOKEN=t\nTELEGRAM_OIDC_CLIENT_SECRET=u\nDISCORD_CLIENT_SECRET=v\nNILX_BROWSER_HANDOFF_TOKEN=#{'h' * 64}\n"
   _out, errors, status = run_unmapped.call(identity, "nilxone-identity")
   abort("encrypted identity rejected without legacy secrets: #{errors}") unless status.success?
   [
     identity.sub("DISCORD_CLIENT_SECRET=v\n", ""),
+    identity.sub(/NILX_BROWSER_HANDOFF_TOKEN=.*\n/, ""),
+    identity.sub('h' * 64, 'short'),
     identity + "HUA_HUB_TOKEN=unapproved\n"
   ].each do |invalid|
     _, _, result = run_unmapped.call(invalid, "nilxone-identity")
     abort("invalid identity credentials accepted") if result.success?
   end
+
+  # API containers receive the token through runtime.secrets; unrelated workers reject it.
+  token_line = "NILX_BROWSER_HANDOFF_TOKEN=#{'h' * 64}\n"
+  File.write(path, token_line)
+  out, err, result = Open3.capture3(
+    {"WORKLOAD" => "market-api-development",
+     "WORKLOAD_SECRETS" => Base64.strict_encode64("NILX_BROWSER_HANDOFF_TOKEN=NILX_BROWSER_HANDOFF_TOKEN\n"),
+     "WORKLOAD_SECRET_SOURCE_FILE" => path}, "ruby", SCRIPT
+  )
+  abort("API handoff token rejected: #{err}") unless result.success?
+  abort("API handoff token missing") unless Base64.strict_decode64(out) == token_line
+  _, _, result = run_unmapped.call(registry + token_line, "market-fx-development")
+  abort("worker accepted handoff token") if result.success?
 end
 puts "workload secret handoff contract passes"
+
