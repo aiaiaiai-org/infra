@@ -303,6 +303,11 @@ jobs:
           test "$(grep -Fc 'reverse_proxy market-api-production:10000' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy market-api-development:10000' deploy/edge/Caddyfile)" -eq 1
           grep -Fq '@market_browser_development path /nilx-browser/handoffs /nilx-browser/exchange /nilx-browser/session /v1/webapp/bootstrap' deploy/edge/Caddyfile
+          grep -Fq 'market-development) EDGE_SCOPE=market-development' .github/workflows/deploy.yml
+          grep -Fq 'check_upstream market-api-development http://market-api-development:10000/health' deploy/edge/check-upstreams.sh
+          grep -Fq 'check_market_development' deploy/edge/check-upstreams.sh
+          grep -Fq 'market-development)' deploy/edge/check-public.sh
+          grep -Fq 'market|market-development|nilx-web|all' deploy/edge/deploy.sh
           test "$(grep -Fc 'reverse_proxy market-bot-production:10000' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy market-bot-development:10000' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy nilxone-web:1927' deploy/edge/Caddyfile)" -eq 3
