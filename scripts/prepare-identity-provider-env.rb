@@ -27,7 +27,7 @@ required = %w[TELOXIDE_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET N
 optional = %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
 abort("unapproved identity provider entry") unless (secrets.keys - required - optional).empty?
 abort("missing identity provider credential") unless required.all? { |name| secrets[name].is_a?(String) && !secrets[name].empty? }
-abort("NILX_BROWSER_HANDOFF_TOKEN must contain at least 32 characters") if secrets.fetch("NILX_BROWSER_HANDOFF_TOKEN").length < 32
+abort("NILX_BROWSER_HANDOFF_TOKEN must contain at least 32 bytes") if secrets.fetch("NILX_BROWSER_HANDOFF_TOKEN").bytesize < 32
 abort("incomplete GHCR credential") if optional.count { |name| secrets.key?(name) } == 1
 abort("missing GHCR credential") if optional.any? { |name| secrets[name] == "" }
 
