@@ -32,7 +32,7 @@ workloads.each do |id|
   if id == "market-api-development"
     abort "wrong API port" unless spec["port"] == 10000 && spec["health"] == "/health"
     abort "wrong API secrets" unless runtime.fetch("secrets").sort ==
-      %w[DATABASE_URL=DATABASE_URL PUBLIC_API_TOKEN=PUBLIC_API_TOKEN MANUAL_PROVIDER_TOKEN=MANUAL_PROVIDER_TOKEN].sort
+      %w[DATABASE_URL=DATABASE_URL PUBLIC_API_TOKEN=PUBLIC_API_TOKEN MANUAL_PROVIDER_TOKEN=MANUAL_PROVIDER_TOKEN NILX_BROWSER_HANDOFF_TOKEN=NILX_BROWSER_HANDOFF_TOKEN].sort
   else
     abort "worker port must be private" unless spec["port"] == 1703 && spec["healthKind"] == "process"
     abort "unexpected worker command" unless runtime.fetch("command") == command.fetch(id)
@@ -53,6 +53,7 @@ workloads.each do |id|
   if id == "market-api-development"
     credentials["PUBLIC_API_TOKEN"] = "ci-only-api-token"
     credentials["MANUAL_PROVIDER_TOKEN"] = "ci-only-manual-token"
+    credentials["NILX_BROWSER_HANDOFF_TOKEN"] = "h" * 64
   end
   Tempfile.create("market-core-credentials") do |f|
     credentials.each { |k,v| f.write("#{k}=#{v}\n") }

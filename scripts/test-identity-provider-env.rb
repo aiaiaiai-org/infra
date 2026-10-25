@@ -9,6 +9,7 @@ DEFAULT = [
   "TELOXIDE_TOKEN=bot-secret",
   "TELEGRAM_OIDC_CLIENT_SECRET=telegram-secret",
   "DISCORD_CLIENT_SECRET=discord-secret",
+  "NILX_BROWSER_HANDOFF_TOKEN=#{'h' * 64}",
   "GHCR_PULL_USER=test-user",
   "GHCR_PULL_TOKEN=ephemeral"
 ].join("\n") + "\n"
@@ -32,11 +33,15 @@ Dir.mktmpdir("identity-secret-contract") do |dir|
   abort("valid provider rejected: #{errors}") unless ok.success?
   data = File.read(output)
   abort("Telegram secret absent") unless data.include?("TELEGRAM_OIDC_CLIENT_SECRET=telegram-secret")
+  abort("handoff token absent") unless data.include?("NILX_BROWSER_HANDOFF_TOKEN=#{'h' * 64}\n")
   abort("incorrect public identity") unless data.include?("DISCORD_CLIENT_ID=discord-public-id")
   abort("GHCR token leaked into runtime") if data.include?("ephemeral")
   abort("missing provider env") unless data.start_with?("PUBLIC_ORIGIN=https://nilx.one")
 
   [
+    DEFAULT.sub(/NILX_BROWSER_HANDOFF_TOKEN=.*\n/, ""),
+    DEFAULT.sub('h' * 64, 'short'),
+    DEFAULT.sub('h' * 64, 'x' * 31),
     DEFAULT + "SSH_PRIVATE_KEY=never\n",
     DEFAULT + "TELOXIDE_TOKEN=duplicate\n",
     DEFAULT.sub("DISCORD_CLIENT_SECRET=discord-secret\n", ""),
@@ -45,7 +50,7 @@ Dir.mktmpdir("identity-secret-contract") do |dir|
   ].each do |payload|
     stdout, stderr, status = run.call(payload)
     abort("invalid provider payload accepted") if status.success?
-    abort("secret leaked in failure log") if "#{stdout}#{stderr}".include?("bot-secret")
+    abort("secret leaked in failure log") if ["bot-secret", 'h' * 64].any? { |secret| "#{stdout}#{stderr}".include?(secret) }
   end
 end
 puts "identity provider allowlist passes"
@@ -103,3 +108,4 @@ Dir.mktmpdir("identity-preflight") do |dir|
   abort("unrelated workload requires identity credentials: #{err}") unless status.success?
 end
 puts "identity deployment encrypted-handoff preflight passes"
+
