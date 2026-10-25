@@ -87,7 +87,7 @@ end
 names = []
 if secrets.key?("NILX_BROWSER_HANDOFF_TOKEN")
   token = secrets["NILX_BROWSER_HANDOFF_TOKEN"]
-  abort("NILX_BROWSER_HANDOFF_TOKEN must contain at least 32 characters") unless token.is_a?(String) && token.length >= 32
+  abort("NILX_BROWSER_HANDOFF_TOKEN must contain at least 32 bytes") unless token.is_a?(String) && token.bytesize >= 32
 end
 lines = mapping.map do |entry|
   match = MAPPING.match(entry) || abort("secret mapping must be ENV_NAME=SECRET_NAME")
