@@ -19,9 +19,12 @@ spec:
       - DATABASE_URL=postgres://prism_hub@prism-postgres:1927/prism_hub
       - PRISM_SIGNAL_TELEGRAM_CHANNELS=vanek_nikolaev,kpszsu,war_monitor,monitorwarr
       - PRISM_SIGNAL_ALERT_CHANNEL=alerts
+      - PRISM_BOT_ORIGIN=https://api.aiaiaiai.org
+      - PRISM_BOT_PATH_PREFIX=/hua-bot
     secrets:
       - PGPASSWORD=PRISM_POSTGRES_PASSWORD
       - SECRET_KEY_BASE=PRISM_HUB_SECRET_KEY_BASE
+      - PRISM_BOT_DELIVERY_SECRET=PRISM_BOT_DELIVERY_SECRET
     labels:
       - org.aiaiaiai.product=prism
       - org.aiaiaiai.service=prism-hub

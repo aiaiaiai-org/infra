@@ -108,3 +108,23 @@ considered operational. This is not a substitute for PostgreSQL PITR.
 
 - Provisioning private S3 storage, a separate recovery key, retention, and restore drills.
 - Upgrading PostgreSQL across a major version: a new digest in the contract is not a migration.
+
+## h-ua-bot delivery
+
+The canonical bot surface is `https://api.aiaiaiai.org/hua-bot/`.
+Caddy strips `/hua-bot` before forwarding to `h-ua-bot:1927`; the delivery
+endpoint is `POST /hua-bot/api/v1/delivery`, authenticated by the bot.
+No new DNS record is needed. Existing `/api/v1/delivery` and
+`/h-ua-bot/` routes remain compatible during rollout.
+
+Hub's workload contract supplies the origin and prefix and maps
+`PRISM_BOT_DELIVERY_SECRET` from the encrypted producer envelope. Configure
+that secret in **aiaiaiai-org/prism-hub → production**, matching
+**0x0sky/h-ua-bot → production → HUA_DELIVERY_SECRET**.
+Use the Hub workflow version that encrypts this additional secret.
+Activate the reviewed edge route before the new Hub workload; neither merge
+activates production. Porter still renders before the bot receives the request.
+
+The worker has one global destination; this configuration is for the current
+h-ua-bot delivery contour, not multi-bot routing. `/hua/` is reserved for a
+separate product API contract and is not an alias exposing all of Prism Hub.
