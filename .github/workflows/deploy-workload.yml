@@ -1,7 +1,7 @@
 # © 2026 aiaiaiai · aiaiaiai.org
 
 name: Deploy workload
-run-name: Deploy ${{ inputs.workload || github.event.client_payload.workload }}
+run-name: Deploy ${{ inputs.workload || github.event.client_payload.workload }}${{ github.event.client_payload.request_id && format(' / {0}', github.event.client_payload.request_id) || '' }}
 
 on:
   repository_dispatch:
