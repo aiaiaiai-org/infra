@@ -41,6 +41,7 @@ Dir.mktmpdir("identity-secret-contract") do |dir|
   [
     DEFAULT.sub(/NILX_BROWSER_HANDOFF_TOKEN=.*\n/, ""),
     DEFAULT.sub('h' * 64, 'short'),
+    DEFAULT.sub('h' * 64, 'x' * 31),
     DEFAULT + "SSH_PRIVATE_KEY=never\n",
     DEFAULT + "TELOXIDE_TOKEN=duplicate\n",
     DEFAULT.sub("DISCORD_CLIENT_SECRET=discord-secret\n", ""),
