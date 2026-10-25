@@ -1,0 +1,19 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: market-webapp-development
+  owner: 0xda-market/webapp-core
+spec:
+  deployment: test
+  network: nilx-edge
+  aliases:
+    - market-web-app
+  protocol: http
+  port: 8080
+  health: /health
+  runtime:
+    kind: container
+    labels:
+      - org.aiaiaiai.product=0xda-market
+      - org.aiaiaiai.service=webapp-core
