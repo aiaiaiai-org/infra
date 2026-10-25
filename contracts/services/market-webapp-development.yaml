@@ -10,7 +10,7 @@ spec:
   aliases:
     - market-web-app
   protocol: http
-  port: 8080
+  port: 1703
   health: /health
   runtime:
     kind: container
