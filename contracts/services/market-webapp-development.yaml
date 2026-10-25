@@ -8,7 +8,7 @@ spec:
   deployment: test
   network: nilx-edge
   aliases:
-    - market-web-app
+    - market-webapp-development
   protocol: http
   port: 1703
   health: /health
