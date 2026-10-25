@@ -12,6 +12,7 @@ on:
         options:
           - nilx-web
           - market
+          - market-development
           - prism
 permissions:
   contents: read
@@ -41,7 +42,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           case "$TARGET" in
-            nilx-web|market) test -n "$CF_API_TOKEN" ;;
+            nilx-web|market|market-development) test -n "$CF_API_TOKEN" ;;
             prism) ;;
             *) exit 1 ;;
           esac
@@ -81,6 +82,7 @@ jobs:
           case "$TARGET" in
             nilx-web) EDGE_SCOPE=nilx-web ;;
             market) EDGE_SCOPE=market ;;
+            market-development) EDGE_SCOPE=market-development ;;
             *) exit 1 ;;
           esac
           umask 077

@@ -31,7 +31,7 @@ case "$mode" in
     ;;
 esac
 case "$edge_scope" in
-  market|nilx-web|all) ;;
+  market|market-development|nilx-web|all) ;;
   *)
     echo "EDGE_SCOPE must be market, nilx-web, or all" >&2
     exit 1

@@ -20,7 +20,7 @@ if ! [[ "$HEALTH_RETRY_DELAY" =~ ^[0-9]+$ ]]; then
 fi
 
 case "$EDGE_SCOPE" in
-  market|nilx-web|all) ;;
+  market|market-development|nilx-web|all) ;;
   *)
     echo "EDGE_SCOPE must be market, nilx-web, or all" >&2
     exit 2
@@ -33,7 +33,7 @@ case "$MODE" in
   candidate-dns)
     urls=()
     case "$EDGE_SCOPE" in
-      market)
+      market|market-development)
         hosts=(0xda-market.nilx.one)
         ;;
       nilx-web)
@@ -52,6 +52,12 @@ case "$MODE" in
           https://0xda-market.nilx.one/health
           https://0xda-market.nilx.one/bot/health
           https://0xda-market.nilx.one/bot-test/health
+        )
+        ;;
+      market-development)
+        hosts=(0xda-market.nilx.one)
+        urls=(
+          'https://0xda-market.nilx.one/v1/webapp/bootstrap?preview_0x1=true'
         )
         ;;
       nilx-web)
@@ -191,6 +197,18 @@ for url in "${urls[@]}"; do
     failed=1
   fi
 done
+
+# A missing cookie must be rejected, but the development session endpoint
+# must exist. 401 means healthy; 404 or 5xx indicates a broken handoff route.
+if [[ "$MODE" == post-activation && "$EDGE_SCOPE" == market-development ]]; then
+  session_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    --connect-timeout "$HEALTH_CONNECT_TIMEOUT" --max-time "$HEALTH_MAX_TIME" \
+    https://0xda-market.nilx.one/nilx-browser/session || true)"
+  if [[ "$session_status" != 401 ]]; then
+    echo "market development unauthenticated session expected HTTP 401, got ${session_status:-request-failed}" >&2
+    failed=1
+  fi
+fi
 
 for redirect in "${redirects[@]}"; do
   IFS='|' read -r source expected <<<"$redirect"

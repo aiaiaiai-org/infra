@@ -6,7 +6,7 @@ EDGE_NETWORK="${EDGE_NETWORK:-nilx-edge}"
 EDGE_SCOPE="${1:-${EDGE_SCOPE:-all}}"
 
 case "$EDGE_SCOPE" in
-  market|nilx-web|all) ;;
+  market|market-development|nilx-web|all) ;;
   *)
     echo "EDGE_SCOPE must be market, nilx-web, or all" >&2
     exit 2
@@ -29,6 +29,11 @@ check_market() {
   check_upstream market-bot-test http://market-bot-development:10000/health
 }
 
+check_market_development() {
+  check_upstream market-api-development http://market-api-development:10000/health
+  check_upstream nilxone-web http://nilxone-web:1927/health
+}
+
 check_nilx_web() {
   check_upstream nilxone-web http://nilxone-web:1927/health
   check_upstream nilxone-telegram http://nilxone-telegram:1927/health
@@ -38,6 +43,9 @@ check_nilx_web() {
 case "$EDGE_SCOPE" in
   market)
     check_market
+    ;;
+  market-development)
+    check_market_development
     ;;
   nilx-web)
     check_nilx_web
