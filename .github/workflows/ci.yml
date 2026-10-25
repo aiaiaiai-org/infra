@@ -393,8 +393,10 @@ jobs:
           }
 
           start_fixture infra-ci-market-api market-api-production 10000 market-api-production
+          # Production-sensitive APIs must not be routed to the development service.
+          docker exec infra-ci-market-api sh -ec 'mkdir -p /srv/v1; printf market-api-production > /srv/v1/issuer-orders'
           start_fixture infra-ci-market-api-development market-api-development 10000 market-api-development
-          docker exec infra-ci-market-api-development sh -ec 'mkdir -p /srv/nilx-browser /srv/v1/webapp; printf market-api-development > /srv/nilx-browser/session; printf market-api-development > /srv/v1/webapp/bootstrap'
+          docker exec infra-ci-market-api-development sh -ec 'mkdir -p /srv/nilx-browser /srv/v1/webapp; for endpoint in handoffs exchange session; do printf market-api-development > "/srv/nilx-browser/$endpoint"; done; printf market-api-development > /srv/v1/webapp/bootstrap; mkdir -p /srv/v1; printf market-api-development > /srv/v1/issuer-orders'
           start_fixture infra-ci-market-bot market-bot-production 10000 market-bot-production
           start_fixture infra-ci-market-bot-test market-bot-development 10000 market-bot-development
           start_fixture infra-ci-nilxone-web nilxone-web 1927 nilxone-web
@@ -452,8 +454,11 @@ jobs:
           }
 
           check_route market.localhost /health market-api-production
+          check_route market.localhost /nilx-browser/handoffs market-api-development
+          check_route market.localhost /nilx-browser/exchange market-api-development
           check_route market.localhost /nilx-browser/session market-api-development
           check_route market.localhost /v1/webapp/bootstrap market-api-development
+          check_route market.localhost /v1/issuer-orders market-api-production
           check_route market.localhost /bot/health market-bot-production
           check_route market.localhost /bot-test/health market-bot-development
           check_route nilx.localhost /health nilxone-web
