@@ -57,12 +57,13 @@ unsolicited production alerts, or interpret no messages as safety.
 `/stop` must remove the test subscription. Never expose exact
 coordinates, chat IDs or secrets in issues and Actions logs.
 
-## Independent blocker: recoverability
+## Operational boundary: optional offsite backups
 
-The [Prism PostgreSQL backup issue #60](https://github.com/aiaiaiai-org/infra/issues/60)
-must be resolved before production rollout is treated as recoverable.
-Scheduled encrypted offsite dumps were failing on October 26 because
-`BACKUP_S3_ENDPOINT` was absent from the `edge-prod-2` Environment.
-A successful upload and an isolated restore test are separate gates.
+The owner declined paid S3 backup storage for the initial h-ua-bot release
+(26 October 2026). It is **not** a launch gate. Daily offsite backup
+scheduling is disabled and must not generate repeated failing GitHub Actions.
+This choice is an accepted data-loss risk: the existing persistent PostgreSQL
+volume is not an independently restorable backup. If backups become necessary,
+enable an independent offsite destination and complete a restore drill separately.
 
 <!-- © 2026 aiaiaiai · aiaiaiai.org -->
