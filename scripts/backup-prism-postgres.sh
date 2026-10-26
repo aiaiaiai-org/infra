@@ -4,17 +4,9 @@
 # Logical, encrypted offsite backup. No plaintext dump is written to the runner or VPS.
 set -Eeuo pipefail
 
-required=(
-  SSH_HOST SSH_USER SSH_PRIVATE_KEY SSH_PORT
-  BACKUP_S3_ENDPOINT BACKUP_S3_BUCKET BACKUP_S3_REGION BACKUP_AGE_RECIPIENT
-  AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY GITHUB_RUN_ID GITHUB_RUN_ATTEMPT
-)
-for name in "${required[@]}"; do
-  if [[ -z "${!name:-}" ]]; then
-    echo "::error::Missing backup configuration: $name" >&2
-    exit 78
-  fi
-done
+# Run the same fail-closed preflight as the GitHub workflow even when invoked
+# directly. No database contents are read while a configuration value is missing.
+bash "$(dirname "$0")/validate-prism-backup-env.sh"
 
 # This backup belongs to the verified edge-prod-2 host and deploy identity only.
 [[ "$SSH_HOST" == '62.238.19.244' && "$SSH_USER" == 'deploy' ]] ||
