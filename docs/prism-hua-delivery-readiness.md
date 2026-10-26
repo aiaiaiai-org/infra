@@ -5,7 +5,7 @@ notification pipeline. It does not deploy any service or modify subscriptions.
 
 ## The first operational check
 
-After an separately authorised activation of both workloads on `edge-prod-2`,
+After a separately authorised activation of both workloads on `edge-prod-2`,
 open **infra → Actions → Verify h-ua delivery connection → Run workflow**.
 
 The workflow runs in the existing `edge-prod-2` GitHub Environment and reads
