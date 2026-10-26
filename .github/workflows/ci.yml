@@ -29,7 +29,7 @@ jobs:
         # bash -n checks only its first file; the others would be arguments to it.
         run: |
           set -Eeuo pipefail
-          for script in deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh deploy/edge-aiaiaiai/deploy.sh deploy/edge-aiaiaiai/verify.sh deploy/edge-aiaiaiai/bootstrap-server.sh scripts/backup-prism-postgres.sh scripts/validate-market-postgres-deploy.sh scripts/check-prism-hua-handshake.sh; do
+          for script in deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh deploy/edge-aiaiaiai/deploy.sh deploy/edge-aiaiaiai/verify.sh deploy/edge-aiaiaiai/bootstrap-server.sh scripts/backup-prism-postgres.sh scripts/validate-prism-backup-env.sh scripts/validate-market-postgres-deploy.sh scripts/check-prism-hua-handshake.sh; do
             bash -n "$script"
           done
 
@@ -74,6 +74,9 @@ jobs:
             abort "missing encryption" unless File.read("scripts/backup-prism-postgres.sh").include?("age -r")
             abort "must verify offsite object" unless File.read("scripts/backup-prism-postgres.sh").include?("s3api head-object")
           '
+
+      - name: Verify backup configuration diagnostics
+        run: ruby scripts/test-prism-backup-env.rb
 
       - name: Validate workload secret environment
         run: |
