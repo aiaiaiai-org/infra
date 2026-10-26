@@ -21,6 +21,7 @@ spec:
     - market-bot-production
     - market-trading-lab
     - market-bot-test
+    - market-webapp-development
     - nilxone-web
     - nilxone-telegram
     - nilxone-discord
