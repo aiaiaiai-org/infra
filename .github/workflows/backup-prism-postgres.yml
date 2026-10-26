@@ -42,6 +42,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Fail early on missing offsite configuration
+        run: bash scripts/validate-prism-backup-env.sh
+
       - name: Install age encryption tool
         run: |
           set -Eeuo pipefail
