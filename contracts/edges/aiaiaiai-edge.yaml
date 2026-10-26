@@ -20,6 +20,12 @@ spec:
       - 443/udp
     tls: automatic
   routes:
+    - id: aiaiaiai-site
+      host: ${AIAIAIAI_SITE_DOMAIN}
+      pathPrefix: /
+      service: aiaiaiai-site
+      upstream: aiaiaiai-site:1927
+      health: /healthz
     - id: prism-hub
       host: ${PRISM_API_DOMAIN}
       pathPrefix: /prism-hub/

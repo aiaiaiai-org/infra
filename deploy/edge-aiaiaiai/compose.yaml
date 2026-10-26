@@ -8,6 +8,7 @@ services:
     restart: unless-stopped
     init: true
     environment:
+      AIAIAIAI_SITE_DOMAIN: ${AIAIAIAI_SITE_DOMAIN:-aiaiaiai.org}
       PRISM_API_DOMAIN: ${PRISM_API_DOMAIN:?PRISM_API_DOMAIN is required}
     ports:
       - "80:80"
