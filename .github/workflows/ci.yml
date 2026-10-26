@@ -29,7 +29,7 @@ jobs:
         # bash -n checks only its first file; the others would be arguments to it.
         run: |
           set -Eeuo pipefail
-          for script in deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh deploy/edge-aiaiaiai/deploy.sh deploy/edge-aiaiaiai/verify.sh deploy/edge-aiaiaiai/bootstrap-server.sh scripts/backup-prism-postgres.sh scripts/validate-market-postgres-deploy.sh scripts/check-prism-hua-handshake.sh; do
+          for script in deploy/edge/deploy.sh deploy/edge/verify.sh deploy/edge/check-public.sh deploy/edge/check-upstreams.sh deploy/edge/cloudflare-wildcard.sh deploy/workload/deploy.sh deploy/workload/systemd-release.sh deploy/edge-aiaiaiai/deploy.sh deploy/edge-aiaiaiai/verify.sh deploy/edge-aiaiaiai/bootstrap-server.sh scripts/backup-prism-postgres.sh scripts/validate-market-postgres-deploy.sh scripts/check-prism-hua-handshake.sh scripts/check-prism-source-cursors.sh; do
             bash -n "$script"
           done
 
@@ -49,6 +49,24 @@ jobs:
           abort 'unsafe payload changed' unless script.include?("--data-binary '{}'")
           abort 'handshake must reject unauthorised/invalid responses' unless script.include?('"$status" != "400"') && script.include?('invalid_request')
           abort 'handshake cannot provide recipient or message fields' if script.match?(/--data-binary\s+[^\n]*?(chat_id|idempotency_key|text)/)
+          RUBY
+
+      - name: Validate read-only four-source cursor diagnostic
+        run: |
+          set -Eeuo pipefail
+          ruby <<'RUBY'
+          source = File.read('.github/workflows/verify-prism-sources.yml')
+          script = File.read('scripts/check-prism-source-cursors.sh')
+          abort 'manual-only source diagnostic required' unless source.match?(/^on:\n  workflow_dispatch:\n\n/)
+          abort 'must use correct production Environment' unless source.include?('name: edge-prod-2')
+          abort 'must use infra SSH credentials' unless source.include?('secrets.SSH_PRIVATE_KEY')
+          abort 'must pin the known host fingerprint' unless script.include?('SHA256:B66nNmPvaJBwlsjKwqbr4/hEArInm8pAeJoaSqsMwmA')
+          abort 'read-only psql required' unless script.include?('WITH configured(source_id) AS') && script.include?('LEFT JOIN signal_source_cursors')
+          abort 'read-only database session required' unless script.include?('default_transaction_read_only=on')
+          abort 'no direct database mutation permitted' if script.match?(/\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY)\b/i)
+          %w[vanek_nikolaev kpszsu war_monitor monitorwarr].each do |channel|
+            abort "missing source #{channel}" unless script.include?("telegram.channel:#{channel}")
+          end
           RUBY
 
       - name: Validate private Trading Lab placement and credential allowlist
