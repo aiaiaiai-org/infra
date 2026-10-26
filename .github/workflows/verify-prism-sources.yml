@@ -1,0 +1,35 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+#
+# Manual read-only operational verification; no deployments or Telegram sends.
+name: Verify h-ua source cursors
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-hua-sources
+  cancel-in-progress: false
+
+jobs:
+  cursors:
+    name: Inspect four Prism source cursors
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    environment:
+      name: edge-prod-2
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Query only source cursor metadata
+        shell: bash
+        run: bash scripts/check-prism-source-cursors.sh
