@@ -3,8 +3,8 @@
 name: Backup Prism PostgreSQL
 
 # Optional encrypted logical dump to independent S3-compatible storage.
-# Disabled by default: the initial h-ua-bot release does not require paid S3.
-# No automatic schedule, no container mutation, no secrets in artifacts.
+# The initial h-ua-bot release does not require paid S3: no automatic schedule,
+# manual dispatch only. No container mutation, no secrets in artifacts.
 on:
   workflow_dispatch:
 

@@ -8,8 +8,8 @@ Paid S3 backups are **not activated** for the first h-ua-bot release, by the
 project owner's decision on 26 October 2026. No scheduled backup runs.
 The optional `.github/workflows/backup-prism-postgres.yml` workflow can
 produce a consistent custom-format `pg_dump` **only on manual dispatch**,
-after configuring an external destination and independent recovery keypair. A GitHub runner
-streams it directly over pinned-key SSH, encrypts it with **age**, and uploads it
+after configuring an external destination and independent recovery keypair.
+A GitHub runner streams it directly over pinned-key SSH, encrypts it with **age**, and uploads it
 to an external S3-compatible bucket using TLS. No plaintext dump is persisted
 on the VPS or the runner. An S3 `head-object` confirms the encrypted object
 exists and has nonzero length.
