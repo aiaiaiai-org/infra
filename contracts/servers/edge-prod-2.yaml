@@ -13,6 +13,7 @@ spec:
     - 443/udp
   runtimeRoot: /opt/infra/targets/edge-prod-2
   workloads:
+    - aiaiaiai-site
     - prism-postgres
     - prism-hub
     - h-ua-bot

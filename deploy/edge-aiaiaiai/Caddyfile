@@ -3,6 +3,20 @@
 # The aiaiaiai.org edge on edge-prod-2. Only prism-* and other aiaiaiai services are routed here;
 # the 0x1 product has its own edge (deploy/edge) on edge-prod-1.
 
+{$AIAIAIAI_SITE_DOMAIN:aiaiaiai.org} {
+	encode zstd gzip
+	reverse_proxy aiaiaiai-site:1927 {
+		health_uri /healthz
+		health_interval 30s
+		health_timeout 5s
+		lb_try_duration 5s
+	}
+	log {
+		output stdout
+		format json
+	}
+}
+
 {$PRISM_API_DOMAIN:api.aiaiaiai.org} {
 	encode zstd gzip
 

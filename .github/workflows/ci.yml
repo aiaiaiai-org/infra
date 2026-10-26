@@ -227,6 +227,15 @@ jobs:
             exit 1
           fi
 
+      - name: Validate website placement
+        run: |
+          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb aiaiaiai-site)"
+          grep -Fxq 'target=edge-prod-2' <<< "$output"
+          grep -Fxq 'network=aiaiaiai-edge' <<< "$output"
+          grep -Fxq 'alias=aiaiaiai-site' <<< "$output"
+          grep -Fxq 'port=1927' <<< "$output"
+          grep -Fxq 'health=/healthz' <<< "$output"
+
       - name: Validate aiaiaiai edge Caddy and Compose
         run: |
           set -Eeuo pipefail
@@ -481,7 +490,7 @@ jobs:
           set -Eeuo pipefail
           cleanup() {
             docker logs infra-ci-aiaiaiai-caddy >&2 || true
-            docker rm --force infra-ci-aiaiaiai-caddy infra-ci-prism-hub infra-ci-h-ua-bot >/dev/null 2>&1 || true
+            docker rm --force infra-ci-aiaiaiai-caddy infra-ci-prism-hub infra-ci-h-ua-bot infra-ci-aiaiaiai-site >/dev/null 2>&1 || true
             docker network rm infra-ci-aiaiaiai-edge >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
@@ -502,10 +511,20 @@ jobs:
             sleep 1
           done
 
+          docker run --detach --name infra-ci-aiaiaiai-site \
+            --network infra-ci-aiaiaiai-edge --network-alias aiaiaiai-site \
+            python:3.13-alpine sh -ec \
+            "mkdir -p /srv; printf aiaiaiai-site > /srv/healthz; printf website > /srv/index.html; python3 -m http.server 1927 --bind 0.0.0.0 --directory /srv" >/dev/null
+          for _ in $(seq 1 30); do
+            docker exec infra-ci-aiaiaiai-site wget -q -T 1 -O- http://127.0.0.1:1927/healthz | grep -qx aiaiaiai-site && break
+            sleep 1
+          done
+
           docker run --detach --name infra-ci-aiaiaiai-caddy \
             --network infra-ci-aiaiaiai-edge \
             --publish 18081:80 \
             --env PRISM_API_DOMAIN=http://api.localhost \
+            --env AIAIAIAI_SITE_DOMAIN=http://site.localhost \
             --volume "$PWD/deploy/edge-aiaiaiai/Caddyfile:/etc/caddy/Caddyfile:ro" \
             caddy:2-alpine \
             caddy run --config /etc/caddy/Caddyfile >/dev/null
@@ -533,4 +552,11 @@ jobs:
           # Nothing else on the host is served.
           test "$(request /)" = 404
           test "$(request /healthz)" = 404
-
+          # Apex website and API are separate hosts, with no prefix rewriting.
+          site_request() {
+            curl --silent --output /tmp/site-body --write-out '%{http_code}' \
+              --resolve "site.localhost:18081:127.0.0.1" "http://site.localhost:18081$1"
+          }
+          test "$(site_request /healthz)" = 200 && grep -qx aiaiaiai-site /tmp/site-body
+          test "$(site_request /)" = 200 && grep -qx website /tmp/site-body
+          test "$(site_request /prism-hub/api/v1/channels)" = 404

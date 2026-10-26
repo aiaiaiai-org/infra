@@ -1,0 +1,19 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: aiaiaiai-site
+  owner: aiaiaiai-org/aiaiaiai.org
+spec:
+  deployment: production
+  network: aiaiaiai-edge
+  aliases:
+    - aiaiaiai-site
+  protocol: http
+  port: 1927
+  health: /healthz
+  runtime:
+    kind: container
+  public:
+    host: aiaiaiai.org
+    pathPrefix: /
