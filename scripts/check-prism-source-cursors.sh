@@ -36,7 +36,7 @@ actual="$(printf '%s\n' "$fingerprints" | awk '{print $2}')"
 ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
     -o UserKnownHostsFile="$ssh_dir/known_hosts" -o ConnectTimeout=10 \
     -i "$ssh_dir/key" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-    'docker exec -i prism-postgres psql -X -U prism_hub -d prism_hub -At -F "|" -v ON_ERROR_STOP=1' \
+    'docker exec -i -e "PGOPTIONS=-c default_transaction_read_only=on" prism-postgres psql -X -U prism_hub -d prism_hub -At -F "|" -v ON_ERROR_STOP=1' \
     > "$ssh_dir/cursors" <<'SQL'
 WITH configured(source_id) AS (
   VALUES

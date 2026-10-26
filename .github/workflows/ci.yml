@@ -62,7 +62,8 @@ jobs:
           abort 'must use infra SSH credentials' unless source.include?('secrets.SSH_PRIVATE_KEY')
           abort 'must pin the known host fingerprint' unless script.include?('SHA256:B66nNmPvaJBwlsjKwqbr4/hEArInm8pAeJoaSqsMwmA')
           abort 'read-only psql required' unless script.include?('WITH configured(source_id) AS') && script.include?('LEFT JOIN signal_source_cursors')
-          abort 'no direct database mutation permitted' if script.match?(/^\s*(?:INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE)\b/i)
+          abort 'read-only database session required' unless script.include?('default_transaction_read_only=on')
+          abort 'no direct database mutation permitted' if script.match?(/\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY)\b/i)
           %w[vanek_nikolaev kpszsu war_monitor monitorwarr].each do |channel|
             abort "missing source #{channel}" unless script.include?("telegram.channel:#{channel}")
           end
