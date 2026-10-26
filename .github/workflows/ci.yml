@@ -229,7 +229,7 @@ jobs:
 
       - name: Validate website placement
         run: |
-          output="$(ruby scripts/resolve-workload-target.rb aiaiaiai-site)"
+          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb aiaiaiai-site)"
           grep -Fxq 'target=edge-prod-2' <<< "$output"
           grep -Fxq 'network=aiaiaiai-edge' <<< "$output"
           grep -Fxq 'alias=aiaiaiai-site' <<< "$output"
