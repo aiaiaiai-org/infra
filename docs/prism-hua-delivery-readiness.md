@@ -32,6 +32,22 @@ of the Hub's `PRISM_BOT_DELIVERY_SECRET` and bot producer's
 does not change running containers; both services must be separately
 redeployed after a coordinated secret rotation.
 
+## Verify four source cursors (manual, read-only)
+
+From **infra → Actions → Verify h-ua source cursors → Run workflow**, inspect
+production's four configured Telegram channel cursors through pinned-host SSH
+and a fixed, read-only SQL query in `prism-postgres`. This check uses infra's
+existing `edge-prod-2` Environment SSH credentials. It does not expose
+subscriber or message contents or require Telegram credentials.
+
+It fails if any configured channel lacks a cursor, or if the production DB
+is unreachable. A cursor appears after the collector has persisted evidence.
+A **present cursor does not prove current collection**: sources may be quiet,
+or a scheduler may have stopped after the last successful poll. Review
+`signal_pass` and `signal_source_failed` in the Hub logs as a separate
+operational acceptance gate. Never manufacture a public threat report
+solely to advance a cursor.
+
 ## Next: controlled end-to-end verification
 
 A green handshake proves only routing and authentication between the Hub
