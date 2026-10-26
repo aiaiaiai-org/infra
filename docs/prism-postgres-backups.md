@@ -55,11 +55,69 @@ exists and has nonzero length.
    runner. `pg_dump` runs inside the existing database container under the
    database's established local authentication configuration.
 
-4. Merge the reviewed change after Full CI, then run
+4. With the backup workflow on `master`, run
    **Actions → Backup Prism PostgreSQL → Run workflow** manually on `master`.
    Check that the job succeeds, including its remote `pg_dump`, encrypted S3
    upload, and S3 object metadata validation. Until then, daily backups are
    **not confirmed active**. The scheduled job runs only from `master`.
+
+## Resolve the current missing-configuration blocker (October 2026)
+
+The production `Backup Prism PostgreSQL` workflow failed on both **25 and
+26 October 2026** before reading the database: the `edge-prod-2` Environment
+had no `BACKUP_S3_ENDPOINT`. Workflow logs also showed blank
+`BACKUP_S3_BUCKET`, `BACKUP_S3_REGION` and `BACKUP_AGE_RECIPIENT`.
+These are absent configuration, **not** failures in PostgreSQL.
+
+If using Hetzner Object Storage in the existing Hetzner account:
+
+1. In [Hetzner Console](https://console.hetzner.com), select the intended
+   project → **Object Storage → Create Bucket**. Select **Private**,
+   optionally enable object locking when creating the bucket (it cannot be
+   added afterward), and note the bucket's globally unique name and location.
+   Creating Object Storage has a monetary cost: check current pricing first.
+2. In **Security → S3 Credentials**, generate S3 keys for this purpose. A key
+   can access all buckets in the same project by default; prefer a dedicated
+   project or [restrict permissions](https://docs.hetzner.com/storage/object-storage/faq/s3-credentials/)
+   with a bucket policy. Store the generated secret securely: it is not
+   retrievable from Hetzner Console after closing its display.
+3. On a trusted device, generate a **new independent recovery keypair** as in
+   the "Before activation" section. Keep the private key off GitHub, off
+   `edge-prod-2` and outside the S3 bucket; store an independent encrypted
+   recovery copy. Only its *public* key belongs in the GitHub Variable.
+4. In **[infra → Settings → Environments → edge-prod-2](https://github.com/aiaiaiai-org/infra/settings/environments)**,
+   configure the following *Variables* (example for a bucket created in
+   Falkenstein; use the corresponding `nbg1` or `hel1` values otherwise):
+
+   | Variable | Value |
+   | --- | --- |
+   | `BACKUP_S3_ENDPOINT` | `https://fsn1.your-objectstorage.com` |
+   | `BACKUP_S3_BUCKET` | *The actual private bucket's name* |
+   | `BACKUP_S3_REGION` | `fsn1` |
+   | `BACKUP_AGE_RECIPIENT` | *Only the dedicated age/SSH public key* |
+
+   Configure these *Secrets* in that **same Environment**:
+
+   | Secret | Value |
+   | --- | --- |
+   | `BACKUP_S3_ACCESS_KEY_ID` | *The newly generated S3 access key* |
+   | `BACKUP_S3_SECRET_ACCESS_KEY` | *Its matching secret key* |
+
+   Do not paste credentials into PRs, issues, or chat. These are Environment
+   settings, **not** organization-wide secrets and **not** variables in the
+   `prism-hub` repository.
+
+5. Run **infra → Actions → Backup Prism PostgreSQL → Run workflow** on
+   `master`. The preflight now reports *all missing names* in a single failure
+   before installing dependencies, reading the database, or writing data.
+   A passing preflight alone does not mean any backup has occurred.
+6. Confirm the complete run, including a nonempty encrypted object in the
+   bucket, then perform the isolated **restore drill below**. Close the
+   incident only once both checks are recorded.
+
+**Do not use** the VPS deploy SSH key as an age recovery key, store an
+unencrypted SQL dump in GitHub artifacts, or disable the backup gate to
+declare the civilian-alert system production-ready.
 
 ## Restore drill — required before relying on backups
 
