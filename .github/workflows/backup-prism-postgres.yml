@@ -2,11 +2,10 @@
 
 name: Backup Prism PostgreSQL
 
-# Daily encrypted logical dump to independent S3-compatible storage.
-# No container mutation, no secrets in artifacts, and no plaintext dump on disk.
+# Optional encrypted logical dump to independent S3-compatible storage.
+# The initial h-ua-bot release does not require paid S3: no automatic schedule,
+# manual dispatch only. No container mutation, no secrets in artifacts.
 on:
-  schedule:
-    - cron: '17 3 * * *'
   workflow_dispatch:
 
 permissions:

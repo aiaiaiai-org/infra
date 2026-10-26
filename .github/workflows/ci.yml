@@ -88,7 +88,9 @@ jobs:
             require "yaml"
             workflow = YAML.load_file(".github/workflows/backup-prism-postgres.yml")
             abort "missing backup job" unless workflow.dig("jobs", "backup", "environment", "name") == "edge-prod-2"
-            abort "must be scheduled" unless File.read(".github/workflows/backup-prism-postgres.yml").include?("schedule:")
+            backup_source = File.read(".github/workflows/backup-prism-postgres.yml")
+            abort "backup must remain manual-only" unless backup_source.match?(/^on:\n  workflow_dispatch:/)
+            abort "paid S3 backup must not auto-run" if backup_source.match?(/^  schedule:/)
             abort "missing encryption" unless File.read("scripts/backup-prism-postgres.sh").include?("age -r")
             abort "must verify offsite object" unless File.read("scripts/backup-prism-postgres.sh").include?("s3api head-object")
           '

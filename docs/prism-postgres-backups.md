@@ -4,9 +4,12 @@ The production database is the `prism-postgres` container on `edge-prod-2`.
 Its durable Docker volume is `prism-postgres-data`. A second copy on the same
 VPS is **not** a disaster-recovery backup.
 
-`.github/workflows/backup-prism-postgres.yml` produces a consistent custom-format
-`pg_dump` once per day at **03:17 UTC** and on manual dispatch. A GitHub runner
-streams it directly over pinned-key SSH, encrypts it with **age**, and uploads it
+Paid S3 backups are **not activated** for the first h-ua-bot release, by the
+project owner's decision on 26 October 2026. No scheduled backup runs.
+The optional `.github/workflows/backup-prism-postgres.yml` workflow can
+produce a consistent custom-format `pg_dump` **only on manual dispatch**,
+after configuring an external destination and independent recovery keypair.
+A GitHub runner streams it directly over pinned-key SSH, encrypts it with **age**, and uploads it
 to an external S3-compatible bucket using TLS. No plaintext dump is persisted
 on the VPS or the runner. An S3 `head-object` confirms the encrypted object
 exists and has nonzero length.
@@ -55,11 +58,11 @@ exists and has nonzero length.
    runner. `pg_dump` runs inside the existing database container under the
    database's established local authentication configuration.
 
-4. Merge the reviewed change after Full CI, then run
+4. If the owner later opts in, run
    **Actions → Backup Prism PostgreSQL → Run workflow** manually on `master`.
    Check that the job succeeds, including its remote `pg_dump`, encrypted S3
    upload, and S3 object metadata validation. Until then, daily backups are
-   **not confirmed active**. The scheduled job runs only from `master`.
+   **not confirmed active**. The workflow has no schedule.
 
 ## Restore drill — required before relying on backups
 
@@ -95,11 +98,10 @@ confirms upload, not content validity or successful data restoration.
   drill. Avoid automatic deletion in the backup script itself.
 - **Security:** S3 credentials have no database login and no SSH access.
   The age recovery private key is never uploaded to S3, the VPS, or GitHub.
-- **Failure model:** daily logical backups offer a recovery point no newer than
+- **Failure model:** manually triggered logical backups offer a recovery point as old as
   the last successful run, not point-in-time recovery (PITR). More frequent
   backups/WAL archiving can be added if requirements justify them.
-- **Limitations:** GitHub-hosted runner and remote S3 are both required to be
-  available at scheduled time. A healthy GitHub Actions run is not a guarantee
-  of future successful schedules.
+- **Limitations:** GitHub-hosted runner and remote S3 are required for any manual run.
+  Nothing is automatically scheduled, and backup recoverability has not been verified.
 
 <!-- © 2026 aiaiaiai · aiaiaiai.org -->
