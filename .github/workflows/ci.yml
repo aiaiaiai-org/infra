@@ -46,6 +46,14 @@ jobs:
           abort 'Both service health routes are required' unless script.include?('/prism-hub/healthz') && script.include?('/hua-bot/health')
           RUBY
 
+      - name: Verify optional website and required Hub/Bot health semantics
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n deploy/edge-aiaiaiai/verify.sh
+          bash -n scripts/test-aiaiaiai-edge-verify.sh
+          bash scripts/test-aiaiaiai-edge-verify.sh
+
       - name: Validate public HUA edge routing coverage
         run: |
           set -Eeuo pipefail
