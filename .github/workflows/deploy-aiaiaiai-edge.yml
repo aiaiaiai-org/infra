@@ -112,15 +112,21 @@ jobs:
         if: ${{ inputs.verify_upstreams }}
         run: |
           set -Eeuo pipefail
-          url="https://${PRISM_API_DOMAIN}/prism-hub/healthz"
-          for _ in $(seq 1 18); do
-            if curl --fail --silent --show-error --connect-timeout 10 --max-time 30 "$url" >/dev/null; then
-              echo "public route answers: $url"
-              exit 0
-            fi
-            sleep 5
-          done
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 30 "$url" >/dev/null
+          verify_route() {
+            local url="$1"
+            for _ in $(seq 1 18); do
+              if curl --fail --silent --show-error --connect-timeout 10 --max-time 30 "$url" >/dev/null; then
+                echo "public route answers: $url"
+                return 0
+              fi
+              sleep 5
+            done
+            echo "::error::Public route did not become healthy: $url" >&2
+            return 1
+          }
+
+          verify_route "https://${PRISM_API_DOMAIN}/prism-hub/healthz"
+          verify_route "https://${PRISM_API_DOMAIN}/hua-bot/health"
 
       - name: Clean secret material
         if: always()
