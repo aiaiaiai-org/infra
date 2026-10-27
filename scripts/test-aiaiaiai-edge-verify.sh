@@ -16,12 +16,15 @@ if [[ "$1" == container && "$2" == inspect && "$3" == aiaiaiai-site ]]; then
 fi
 [[ "$1" == run && "$2" == --rm && "$3" == --network &&
    "$4" == aiaiaiai-edge && "$5" == alpine:3.22 &&
-   "$6" == wget && "$7" == -q && "$8" == -T &&
-   "$9" == 10 && "10" == -O && "11" == /dev/null ]] || {
-  echo "Unexpected docker invocation" >&2
+   "$6" == wget ]] || {
+  printf 'Unexpected docker invocation:' >&2
+  printf ' %q' "$@" >&2
+  echo >&2
   exit 91
 }
-url="12"
+# The final argument is the URL; avoid assumptions about wget option count.
+while (($# > 1)); do shift; done
+url="$1"
 printf '%s\n' "$url" >> "$MOCK_LOG"
 case "$url" in
   http://prism-hub:1927/healthz) [[ "$MOCK_HUB" == ok ]] ;;
