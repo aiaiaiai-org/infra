@@ -17,4 +17,5 @@ check_upstream() {
 }
 
 check_upstream prism-hub http://prism-hub:1927/healthz
+check_upstream h-ua-bot http://h-ua-bot:1927/health
 check_upstream aiaiaiai-site http://aiaiaiai-site:1927/healthz
