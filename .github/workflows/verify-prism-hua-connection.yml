@@ -1,7 +1,7 @@
 # © 2026 aiaiaiai · aiaiaiai.org
 #
-# Safe manual check; does not release, write to DB, or send a Telegram message.
-name: Verify h-ua delivery connection
+# Safe manual health check; product-owned delivery credential lives in prism-hub.
+name: Verify Prism Hub and h-ua-bot health
 
 on:
   workflow_dispatch:
@@ -15,18 +15,16 @@ concurrency:
 
 jobs:
   handshake:
-    name: Verify Hub and h-ua-bot routing and shared secret
+    name: Check Hub and h-ua-bot health without product secrets
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment:
       name: edge-prod-2
-    env:
-      PRISM_BOT_DELIVERY_SECRET: ${{ secrets.PRISM_BOT_DELIVERY_SECRET }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: Confirm configured transport without sending a message
+      - name: Check public service health without sending a message
         shell: bash
         run: bash scripts/check-prism-hua-handshake.sh
