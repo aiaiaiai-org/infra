@@ -46,6 +46,21 @@ jobs:
           abort 'Both service health routes are required' unless script.include?('/prism-hub/healthz') && script.include?('/hua-bot/health')
           RUBY
 
+      - name: Validate public HUA edge routing coverage
+        run: |
+          set -Eeuo pipefail
+          ruby <<'RUBY'
+          edge = File.read('deploy/edge-aiaiaiai/Caddyfile')
+          checks = File.read('deploy/edge-aiaiaiai/verify.sh')
+          deploy = File.read('.github/workflows/deploy-aiaiaiai-edge.yml')
+          abort 'Caddy must strip the canonical bot prefix' unless edge.include?('handle_path /hua-bot/*')
+          abort 'Bot upstream liveness must be checked' unless checks.include?('http://h-ua-bot:1927/health')
+          abort 'Hub upstream liveness must be checked' unless checks.include?('http://prism-hub:1927/healthz')
+          abort 'Bot public routing must be verified after activation' unless deploy.include?('https://${PRISM_API_DOMAIN}/hua-bot/health')
+          abort 'Hub public routing must remain verified' unless deploy.include?('https://${PRISM_API_DOMAIN}/prism-hub/healthz')
+          abort 'Deployment must stay manual' unless deploy.match?(/^  workflow_dispatch:/)
+          RUBY
+
       - name: Validate read-only four-source cursor diagnostic
         run: |
           set -Eeuo pipefail
