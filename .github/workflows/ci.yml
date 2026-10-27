@@ -33,22 +33,17 @@ jobs:
             bash -n "$script"
           done
 
-      - name: Validate read-only Prism/h-ua-bot check
+      - name: Validate infra-only Hub/h-ua-bot health check
         run: |
           set -Eeuo pipefail
           ruby <<'RUBY'
-          require 'yaml'
-          wf = YAML.safe_load(File.read('.github/workflows/verify-prism-hua-connection.yml'), aliases: false)
           source = File.read('.github/workflows/verify-prism-hua-connection.yml')
           script = File.read('scripts/check-prism-hua-handshake.sh')
-          job = wf.fetch('jobs').fetch('handshake')
-          abort 'handshake must use production edge Environment' unless job.dig('environment', 'name') == 'edge-prod-2'
-          abort 'handshake needs a dedicated manual trigger only' unless source.match?(/^on:\n  workflow_dispatch:\n\n/)
-          abort 'handshake must not be a deployment' if source.match?(/^  (push|schedule|repository_dispatch):/)
-          abort 'handshake must use Hub-owned secret' unless source.include?('secrets.PRISM_BOT_DELIVERY_SECRET')
-          abort 'unsafe payload changed' unless script.include?("--data-binary '{}'")
-          abort 'handshake must reject unauthorised/invalid responses' unless script.include?('"$status" != "400"') && script.include?('invalid_request')
-          abort 'handshake cannot provide recipient or message fields' if script.match?(/--data-binary\s+[^\n]*?(chat_id|idempotency_key|text)/)
+          abort 'Health check must be manual-only' unless source.match?(/^on:\n  workflow_dispatch:\n\n/)
+          abort 'Health check must use edge-prod-2' unless source.include?('name: edge-prod-2')
+          abort 'Health check must not require a product secret' if source.include?('PRISM_BOT_DELIVERY_SECRET') || script.include?('PRISM_BOT_DELIVERY_SECRET')
+          abort 'Health check must not make a delivery POST' if script.include?('--data-binary') || script.include?('/api/v1/delivery')
+          abort 'Both service health routes are required' unless script.include?('/prism-hub/healthz') && script.include?('/hua-bot/health')
           RUBY
 
       - name: Validate read-only four-source cursor diagnostic
