@@ -3,38 +3,40 @@
 name: Validate shared edge candidate
 
 on:
-  pull_request_target:
-    types:
-      - opened
-      - ready_for_review
-      - synchronize
-      - reopened
-    branches:
-      - master
+  # Runs only after the complete CI workflow finished; never starts a deployment.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
-  group: validate-shared-edge-pr-${{ github.event.pull_request.number }}
+  group: validate-shared-edge-ci-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 jobs:
   validate:
-    if: ${{ github.event.pull_request.draft == false }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
       name: edge-prod-1
+      # Retain server-scoped SSH secrets without publishing a fake deployment.
+      deployment: false
     env:
       CADDY_CONTAINER: edge-prod-1-caddy
       EDGE_NETWORK: nilx-edge
-      PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-      PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-      PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+      PR_HEAD_REF: ${{ github.event.workflow_run.head_branch }}
+      PR_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
 
     steps:
-      - name: Validate trusted context
+      - name: Resolve reviewed PR for successful CI commit
+        id: context
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           test "$PR_HEAD_REPO" = "$GITHUB_REPOSITORY"
@@ -43,7 +45,22 @@ jobs:
           [[ "$CADDY_CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
           [[ "$EDGE_NETWORK" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
 
+          # The CI workflow's exact head commit must still belong to an open,
+          # non-draft, same-repository PR targeting master. Never run for forks
+          # or a superseded commit.
+          prs="$(gh api "/repos/$GITHUB_REPOSITORY/commits/$PR_HEAD_SHA/pulls" --paginate)"
+          matched="$(jq -s --arg sha "$PR_HEAD_SHA" --arg repo "$GITHUB_REPOSITORY" \
+            '[.[][] | select(.state == "open" and .draft == false and .base.ref == "master" and .head.sha == $sha and .head.repo.full_name == $repo)] | length' <<< "$prs")"
+          if [ "$matched" = 0 ]; then
+            echo "No current eligible PR for successful CI commit; validation not required."
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          test "$matched" = 1
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+
       - name: Fetch candidate edge build inputs only
+        if: ${{ steps.context.outputs.eligible == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -73,6 +90,7 @@ jobs:
           fetch_file deploy/edge/Dockerfile candidate/Dockerfile
 
       - name: Validate candidate with its production Caddy build
+        if: ${{ steps.context.outputs.eligible == 'true' }}
         run: |
           set -Eeuo pipefail
           docker build --file candidate/Dockerfile --tag infra-edge-caddy:candidate candidate
@@ -89,6 +107,7 @@ jobs:
             caddy validate --config /etc/caddy/Caddyfile
 
       - name: Configure and verify SSH
+        if: ${{ steps.context.outputs.eligible == 'true' }}
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -119,6 +138,7 @@ jobs:
             "$SSH_USER@$SSH_HOST" true
 
       - name: Validate live cutover prerequisites without mutation
+        if: ${{ steps.context.outputs.eligible == 'true' }}
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -163,10 +183,10 @@ jobs:
           {
             echo "### Shared edge candidate validation"
             echo
-            echo "- trigger: \`${{ github.event.action }}\`"
-            echo "- PR: \`#${{ github.event.pull_request.number }}\`"
+            echo "- trigger: successful CI workflow_run \`#${{ github.event.workflow_run.id }}\`"
             echo "- source: \`$PR_HEAD_REF\`"
             echo "- commit: \`$PR_HEAD_SHA\`"
+            echo "- eligible: \`${{ steps.context.outputs.eligible }}\`"
             echo "- live Caddy: \`$CADDY_CONTAINER\`"
             echo "- result: \`${{ job.status }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
