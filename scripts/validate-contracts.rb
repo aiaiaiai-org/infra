@@ -11,6 +11,11 @@ SERVICE_GLOB = File.join(ROOT, "contracts", "services", "*.yaml")
 # The image references deploy/workload/deploy.sh accepts.
 IMAGE_PATTERN = %r{\A[a-z0-9.-]+(/[a-z0-9._-]+)*(:[A-Za-z0-9_.-]+|@sha256:[0-9a-f]{64})\z}
 SECRET_MAPPING_PATTERN = /\A([A-Z][A-Z0-9_]*)=([A-Z][A-Z0-9_]*)\z/
+# These infrastructure-owned databases are exceptions to product repository ownership.
+INFRA_OWNED_PLACEMENTS = {
+  "market-postgres-production" => "edge-prod-1",
+  "prism-postgres" => "edge-prod-2",
+}.freeze
 
 
 def load_yaml(path)
@@ -180,14 +185,37 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
   services[name] = contract
 end
 
+# Infrastructure owns both edges; products do not cross between them.
+# Only explicit infrastructure-owned and legacy product repository exceptions are allowed.
+def expected_target_for(owner, workload)
+  return "edge-prod-1" if owner.start_with?("nilx-one/", "0xda-market/")
+  return "edge-prod-2" if owner.start_with?("aiaiaiai-org/") && owner != "aiaiaiai-org/infra"
+  return "edge-prod-2" if owner == "0x0sky/h-ua-bot"
+  return "edge-prod-1" if owner == "0x0sky/trading-lab"
+
+  if owner == "aiaiaiai-org/infra"
+    return INFRA_OWNED_PLACEMENTS.fetch(workload) do
+      abort("workload #{workload}: undeclared infrastructure-owned placement")
+    end
+  end
+
+  abort("workload #{workload}: unknown product owner #{owner}")
+end
+
 # Where each workload runs: exactly one server places it.
 placed_on = {}
 servers.each do |server_name, server|
   Array(server.dig("spec", "workloads")).each do |workload|
     abort("server #{server_name}: unknown workload #{workload}") unless services.key?(workload)
     abort("workload #{workload} is placed on more than one server") if placed_on.key?(workload)
+    owner = services.fetch(workload).dig("metadata", "owner")
+    expected_target = expected_target_for(owner, workload)
+    abort("workload #{workload} (#{owner}) belongs on #{expected_target}, not #{server_name}") unless server_name == expected_target
     placed_on[workload] = server_name
   end
+end
+services.each_key do |workload|
+  abort("workload #{workload} is not placed on any server") unless placed_on.key?(workload)
 end
 
 edge_on_server = {}
