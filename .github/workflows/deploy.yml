@@ -13,7 +13,6 @@ on:
           - nilx-web
           - market
           - market-development
-          - prism
 permissions:
   contents: read
 concurrency:
@@ -43,7 +42,6 @@ jobs:
           set -Eeuo pipefail
           case "$TARGET" in
             nilx-web|market|market-development) test -n "$CF_API_TOKEN" ;;
-            prism) ;;
             *) exit 1 ;;
           esac
           test -n "$SSH_HOST"
@@ -53,7 +51,6 @@ jobs:
           (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
 
       - name: Checkout infra
-        if: ${{ inputs.target != 'prism' }}
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
@@ -74,7 +71,6 @@ jobs:
           ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" true
 
       - name: Prepare edge environment
-        if: ${{ inputs.target != 'prism' }}
         env:
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
@@ -102,7 +98,6 @@ jobs:
           } > "$RUNNER_TEMP/edge.env"
 
       - name: Upload edge release
-        if: ${{ inputs.target != 'prism' }}
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -114,7 +109,6 @@ jobs:
           scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "$RUNNER_TEMP/edge.env" "$SSH_USER@$SSH_HOST:$REMOTE_EDGE_DIR/.env"
 
       - name: Activate edge
-        if: ${{ inputs.target != 'prism' }}
         id: apply_edge
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -130,82 +124,14 @@ jobs:
         run: bash deploy/edge/cloudflare-wildcard.sh ensure "$CF_WILDCARD_STATE_FILE"
 
       - name: Verify edge
-        if: ${{ inputs.target != 'prism' }}
         env:
           HEALTH_RETRY: 18
           HEALTH_RETRY_DELAY: 5
         run: bash deploy/edge/check-public.sh post-activation "$TARGET"
 
-      - name: Checkout Prism
-        if: ${{ inputs.target == 'prism' }}
-        uses: actions/checkout@v7
-        with:
-          repository: aiaiaiai-org/prism-hubot
-          ref: ${{ github.ref_name }}
-          path: source
-          persist-credentials: false
-
-      - name: Resolve Prism commit
-        if: ${{ inputs.target == 'prism' }}
-        id: prism_source
-        working-directory: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Prepare Prism release archive
-        if: ${{ inputs.target == 'prism' }}
-        run: |
-          set -Eeuo pipefail
-          install -m 0700 -d "$RUNNER_TEMP/release"
-          git -C source archive --format=tar.gz --output="$RUNNER_TEMP/release/release.tar.gz" HEAD
-          test -s "$RUNNER_TEMP/release/release.tar.gz"
-
-      - name: Checkout Prism deployment tooling
-        if: ${{ inputs.target == 'prism' }}
-        uses: actions/checkout@v7
-        with:
-          path: infra
-          sparse-checkout: |
-            deploy/workload/systemd-release.sh
-          sparse-checkout-cone-mode: false
-
-      - name: Upload Prism release
-        if: ${{ inputs.target == 'prism' }}
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-        run: |
-          set -Eeuo pipefail
-          deployment_path=/opt/prism-hubot
-          release_id="${{ steps.prism_source.outputs.sha }}"
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$deployment_path/.deploy' && chmod 700 '$deployment_path/.deploy'"
-          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" infra/deploy/workload/systemd-release.sh "$SSH_USER@$SSH_HOST:$deployment_path/.deploy/systemd-release.sh"
-          scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "$RUNNER_TEMP/release/release.tar.gz" "$SSH_USER@$SSH_HOST:$deployment_path/.deploy/$release_id.tar.gz"
-
-      - name: Validate Prism release
-        if: ${{ inputs.target == 'prism' }}
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-        run: |
-          set -Eeuo pipefail
-          deployment_path=/opt/prism-hubot
-          release_id="${{ steps.prism_source.outputs.sha }}"
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "DEPLOY_MODE=validate DEPLOY_PATH='$deployment_path' SERVICE_NAME='prism-hubot.service' RELEASE_ID='$release_id' KEEP_RELEASES='5' POST_ACTIVATE_COMMAND='bundle exec rake telegram:commands' RELEASE_ARCHIVE='$deployment_path/.deploy/$release_id.tar.gz' bash '$deployment_path/.deploy/systemd-release.sh'"
-
-      - name: Activate Prism release
-        if: ${{ inputs.target == 'prism' }}
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-        run: |
-          set -Eeuo pipefail
-          deployment_path=/opt/prism-hubot
-          release_id="${{ steps.prism_source.outputs.sha }}"
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "DEPLOY_MODE=activate DEPLOY_PATH='$deployment_path' SERVICE_NAME='prism-hubot.service' RELEASE_ID='$release_id' KEEP_RELEASES='5' POST_ACTIVATE_COMMAND='bundle exec rake telegram:commands' RELEASE_ARCHIVE='$deployment_path/.deploy/$release_id.tar.gz' bash '$deployment_path/.deploy/systemd-release.sh'"
-
       - name: Clean secret material
         if: always()
-        run: rm -rf "$RUNNER_TEMP/release" "$RUNNER_TEMP/edge.env" "$HOME/.ssh/id_ed25519" "$RUNNER_TEMP/nilx-wildcard-state.json"
+        run: rm -rf "$RUNNER_TEMP/edge.env" "$HOME/.ssh/id_ed25519" "$RUNNER_TEMP/nilx-wildcard-state.json"
 
       - name: Publish summary
         if: always()
