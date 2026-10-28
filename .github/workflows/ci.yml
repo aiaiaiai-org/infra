@@ -25,6 +25,9 @@ jobs:
       - name: Validate YAML contracts
         run: ruby scripts/validate-contracts.rb
 
+      - name: Test product placement boundary
+        run: ruby scripts/test-workload-placement-policy.rb
+
       - name: Validate shell syntax
         # bash -n checks only its first file; the others would be arguments to it.
         run: |
@@ -185,7 +188,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb prism-hubot)"
-          grep -Fxq 'target=edge-prod-1' <<< "$output"
+          grep -Fxq 'target=edge-prod-2' <<< "$output"
           grep -Fxq 'runtime=systemd-release' <<< "$output"
           grep -Fxq 'repository=aiaiaiai-org/prism-hubot' <<< "$output"
           grep -Fxq 'deployment_path=/opt/prism-hubot' <<< "$output"
