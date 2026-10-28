@@ -168,6 +168,7 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
   else
     repository = fetch!(spec, "repository", path)
     abort("#{path}: repository must be owner/name") unless repository.is_a?(String) && repository.match?(/\A[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\z/)
+    abort("#{path}: release repository must match metadata.owner") unless repository == owner
 
     deployment_path = fetch!(runtime, "deploymentPath", path)
     abort("#{path}: deploymentPath must be absolute") unless deployment_path.is_a?(String) && deployment_path.start_with?("/")
