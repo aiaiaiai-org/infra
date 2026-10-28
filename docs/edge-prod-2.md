@@ -23,6 +23,7 @@ Docker network: aiaiaiai-edge
 | `contracts/edges/aiaiaiai-edge.yaml` | the edge: network `aiaiaiai-edge`, Caddy, the routes |
 | `contracts/services/prism-postgres.yaml` | PostgreSQL 18, image pinned by digest, data on the `prism-postgres-data` volume |
 | `contracts/services/prism-hub.yaml` | prism-hub, image `ghcr.io/aiaiaiai-org/prism-hub:<commit>` from its release |
+| `contracts/services/prism-hubot.yaml` | prism-hubot, a `systemd-release` service under `/opt/prism-hubot` (not a Docker upstream) |
 
 ## Before the first deployment
 
@@ -96,6 +97,23 @@ A secret a contract names but the Environment lacks stops the deployment before 
 
 After that, each step is repeated only for what changed. A database image changes only through a
 reviewed change to its contract.
+
+## Prism Hubot placement and migration
+
+`prism-hubot` is hosted exclusively on `edge-prod-2`. Its product workflow dispatches
+`deploy-workload` to infra; the server contract selects the `edge-prod-2` GitHub
+Environment. The legacy Prism option in the `edge-prod-1` Deploy workflow has
+been removed to prevent accidental cross-edge releases.
+
+Before the first deployment on `edge-prod-2`, provision Ruby/Bundler, the systemd
+unit and `/opt/prism-hubot/shared/.env` on that server, with the correct owner,
+permissions and runtime variables. If the service was previously active on
+`edge-prod-1`, migrate its required `shared/` state securely, stop the old
+service, and switch the public webhook/origin to the new server during an
+explicitly authorised cutover. Do not start two live consumers of the same
+Telegram bot token or assume that changing a GitHub contract moves any runtime
+files. Verify `/healthz`, Telegram webhook status and Prism delivery after cutover.
+The contract/PR alone does **not** deploy or stop a service.
 
 ## Backups and recovery
 

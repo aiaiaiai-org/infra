@@ -25,7 +25,9 @@ the network of the edge on the server it is placed on, and an edge routes only t
 | Edge | Server | Network | Serves | Contract |
 | --- | --- | --- | --- | --- |
 | 0x1 | `edge-prod-1` | `nilx-edge` | `nilx.one`, `0xda-market.nilx.one` | [`contracts/edges/nilx-edge.yaml`](contracts/edges/nilx-edge.yaml) |
-| aiaiaiai | `edge-prod-2` | `aiaiaiai-edge` | `api.aiaiaiai.org`: `prism-*` and other aiaiaiai services | [`contracts/edges/aiaiaiai-edge.yaml`](contracts/edges/aiaiaiai-edge.yaml) |
+| aiaiaiai | `edge-prod-2` | `aiaiaiai-edge` | `aiaiaiai.org`, `api.aiaiaiai.org`, Prism services, `h-ua-bot` | [`contracts/edges/aiaiaiai-edge.yaml`](contracts/edges/aiaiaiai-edge.yaml) |
+
+**Product placement policy:** workloads from `nilx-one/*` and `0xda-market/*` run only on `edge-prod-1`; workloads from `aiaiaiai-org/*` and `0x0sky/h-ua-bot` run only on `edge-prod-2`. The explicitly contracted `0x0sky/trading-lab` is a Market workload on `edge-prod-1`; infrastructure-owned PostgreSQL workloads follow their product (`market-postgres-production` on `edge-prod-1`, `prism-postgres` on `edge-prod-2`). `aiaiaiai-org/infra` orchestrates both edges but is not itself an application workload. CI enforces these boundaries.
 
 The sections below up to **Workload deployment** describe the 0x1 edge. The aiaiaiai edge, and how
 to bring `edge-prod-2` up, is [`docs/edge-prod-2.md`](docs/edge-prod-2.md).
@@ -162,9 +164,8 @@ The deployment workflow uses `1927` when `SSH_PORT` is not set. A dedicated test
 
 - `nilx-web` — deploys and verifies only the `nilx-web` edge surface and owns the nilx wildcard DNS lifecycle;
 - `market` — deploys and verifies only the `market` edge surface;
-- `prism` — deploys the contracted `prism-hubot` systemd release and does not depend on market or nilx.web upstreams.
 
-The selected ref is the infra ref for edge surfaces and the `prism-hubot` ref for Prism. Separate conditional steps keep the three deployment paths isolated while preserving a single operator entry point and independent concurrency.
+The selected ref is the infra ref for the 0x1/Market edge surfaces only. Prism Hubot deploys independently via `aiaiaiai-org/prism-hubot` → `repository_dispatch` → `deploy-workload.yml`, which resolves the target `edge-prod-2` from the server contracts. The edge deployment workflow cannot deploy Prism to `edge-prod-1`.
 
 
 ## Rollout dependency
@@ -260,7 +261,7 @@ managed by systemd.
 The `prism-hubot` contract is the first such workload:
 
 - repository: `aiaiaiai-org/prism-hubot`;
-- target: resolved from server placement, currently `edge-prod-1`;
+- target: resolved from server placement, `edge-prod-2`;
 - deployment path: `/opt/prism-hubot`;
 - service: `prism-hubot.service`;
 - release retention: `5`.

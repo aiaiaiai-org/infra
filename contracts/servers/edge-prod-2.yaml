@@ -16,4 +16,5 @@ spec:
     - aiaiaiai-site
     - prism-postgres
     - prism-hub
+    - prism-hubot
     - h-ua-bot
