@@ -283,3 +283,13 @@ The caller still needs a GitHub credential capable of creating
 `repository_dispatch` events in this repository. That credential is a GitHub
 API credential, not a machine credential; it never grants SSH access to the
 target.
+
+The Market browser session, Special offers/orders and `/issuer/v1/orders` share
+`market-api-development` in the current edge route. CI exercises order reads,
+cancellation and claim/fulfil/reject paths as well as handoff/session routes.
+Other payment/operator/bot APIs keep their existing destinations. This routing
+change does not enable checkout, start the Identity worker, activate products or
+credit wallets. Do not enable a production Identity wallet against this test
+Market database: live activation must first use one reviewed environment for
+both authorities and the same handoff secret. All nilx-one/Market workloads stay
+on edge-prod-1. The disabled flags and catalog preflight remain release gates.
