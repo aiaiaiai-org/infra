@@ -464,7 +464,7 @@ jobs:
           # Production-sensitive APIs must not be routed to the development service.
           docker exec infra-ci-market-api sh -ec 'mkdir -p /srv/v1; printf market-api-production > /srv/v1/issuer-orders'
           start_fixture infra-ci-market-api-development market-api-development 10000 market-api-development
-          docker exec infra-ci-market-api-development sh -ec 'mkdir -p /srv/nilx-browser /srv/v1/webapp; for endpoint in handoffs exchange session; do printf market-api-development > "/srv/nilx-browser/$endpoint"; done; printf market-api-development > /srv/v1/webapp/bootstrap; mkdir -p /srv/v1; printf market-api-development > /srv/v1/issuer-orders'
+          docker exec infra-ci-market-api-development sh -ec 'mkdir -p /srv/nilx-browser /srv/v1/webapp; for endpoint in handoffs exchange session offers; do printf market-api-development > "/srv/nilx-browser/$endpoint"; done; printf market-api-development > /srv/v1/webapp/bootstrap; mkdir -p /srv/v1; printf market-api-development > /srv/v1/issuer-orders; mkdir -p /srv/nilx-browser/orders/example /srv/issuer/v1/orders/example; for directory in /srv/nilx-browser/orders /srv/nilx-browser/orders/example /srv/issuer/v1/orders /srv/issuer/v1/orders/example; do printf market-api-development > "$directory/index.html"; done; for action in cancel; do printf market-api-development > "/srv/nilx-browser/orders/example/$action"; done; for action in claim fulfil reject; do printf market-api-development > "/srv/issuer/v1/orders/example/$action"; done'
           start_fixture infra-ci-market-bot market-bot-production 10000 market-bot-production
           start_fixture infra-ci-market-bot-test market-bot-development 10000 market-bot-development
           start_fixture infra-ci-nilxone-web nilxone-web 1927 nilxone-web
@@ -525,6 +525,10 @@ jobs:
           check_route market.localhost /nilx-browser/handoffs market-api-development
           check_route market.localhost /nilx-browser/exchange market-api-development
           check_route market.localhost /nilx-browser/session market-api-development
+          check_route market.localhost /nilx-browser/offers market-api-development
+          for path in /nilx-browser/orders/ /nilx-browser/orders/example/ /nilx-browser/orders/example/cancel /issuer/v1/orders/ /issuer/v1/orders/example/ /issuer/v1/orders/example/claim /issuer/v1/orders/example/fulfil /issuer/v1/orders/example/reject; do
+            check_route market.localhost "$path" market-api-development
+          done
           check_route market.localhost /v1/webapp/bootstrap market-api-development
           check_route market.localhost /v1/issuer-orders market-api-production
           check_route market.localhost /bot/health market-bot-production
