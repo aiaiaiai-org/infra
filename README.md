@@ -284,7 +284,8 @@ The caller still needs a GitHub credential capable of creating
 API credential, not a machine credential; it never grants SSH access to the
 target.
 
-The Market browser session, Special offers/orders and `/issuer/v1/orders` share
+The Market browser session, point addresses (`/nilx-browser/points*`), Special
+offers/orders and `/issuer/v1/orders` share
 `market-api-development` in the current edge route. CI exercises order reads,
 cancellation and claim/fulfil/reject paths as well as handoff/session routes.
 Other payment/operator/bot APIs keep their existing destinations. This routing
