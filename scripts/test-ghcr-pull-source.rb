@@ -27,7 +27,7 @@ Dir.mktmpdir("ghcr-pull-source") do |dir|
     "GITHUB_REPOSITORY_OWNER" => "aiaiaiai-org",
     "GHCR_PULL_USER" => "pull-user",
     "GHCR_PULL_TOKEN" => "infra-token-value",
-    "GHCR_PULL_USER_SOURCE" => "vars.GHCR_PULL_USER",
+    "GHCR_PULL_USER_SOURCE" => "github.actor",
     "GHCR_PULL_TOKEN_SOURCE" => "secrets.INFRA_DEPLOY_TOKEN",
     "IMAGE_REF" => "ghcr.io/0xda-market/core@sha256:#{'a' * 64}"
   }
@@ -35,7 +35,7 @@ Dir.mktmpdir("ghcr-pull-source") do |dir|
 
   output, status = run.call
   abort("login step failed: #{output}") unless status.success?
-  abort("token source not logged: #{output}") unless output.include?("token from secrets.INFRA_DEPLOY_TOKEN, user pull-user from vars.GHCR_PULL_USER")
+  abort("token source not logged: #{output}") unless output.include?("token from secrets.INFRA_DEPLOY_TOKEN, user pull-user from github.actor")
   abort("token value leaked") if output.include?("infra-token-value")
   abort("unexpected fallback warning") if output.include?("::warning::")
 

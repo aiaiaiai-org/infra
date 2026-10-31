@@ -326,11 +326,11 @@ jobs:
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
-          GHCR_PULL_USER: ${{ vars.GHCR_PULL_USER || github.actor }}
-          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN || secrets.INFRA_DEPLOY_TOKEN || github.token }}
+          GHCR_PULL_USER: ${{ github.actor }}
+          GHCR_PULL_TOKEN: ${{ secrets.INFRA_DEPLOY_TOKEN || github.token }}
           # Names, never values, of where the pair above came from.
-          GHCR_PULL_USER_SOURCE: ${{ vars.GHCR_PULL_USER != '' && 'vars.GHCR_PULL_USER' || 'github.actor' }}
-          GHCR_PULL_TOKEN_SOURCE: ${{ secrets.GHCR_PULL_TOKEN != '' && 'secrets.GHCR_PULL_TOKEN' || secrets.INFRA_DEPLOY_TOKEN != '' && 'secrets.INFRA_DEPLOY_TOKEN' || 'github.token' }}
+          GHCR_PULL_USER_SOURCE: github.actor
+          GHCR_PULL_TOKEN_SOURCE: ${{ secrets.INFRA_DEPLOY_TOKEN != '' && 'secrets.INFRA_DEPLOY_TOKEN' || 'github.token' }}
         run: |
           set -Eeuo pipefail
           # Registry credentials belong to infra; the runtime envelope need not
