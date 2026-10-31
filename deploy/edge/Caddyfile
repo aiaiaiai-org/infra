@@ -33,10 +33,10 @@
 		}
 	}
 
-	# Browser sessions, checkout and issuer orders share the isolated
-	# Market development API until a separately reviewed production rollout.
+	# Browser sessions, point addresses, checkout and issuer orders share the
+	# isolated Market development API until a separately reviewed production rollout.
 	# Keep all other APIs, payment/operator routes and bots on their existing paths.
-	@market_browser_development path /nilx-browser/handoffs /nilx-browser/exchange /nilx-browser/session /v1/webapp/bootstrap /nilx-browser/offers /nilx-browser/orders /nilx-browser/orders/* /issuer/v1/orders /issuer/v1/orders/*
+	@market_browser_development path /nilx-browser/handoffs /nilx-browser/exchange /nilx-browser/session /v1/webapp/bootstrap /nilx-browser/points /nilx-browser/points/* /nilx-browser/offers /nilx-browser/orders /nilx-browser/orders/* /issuer/v1/orders /issuer/v1/orders/*
 	handle @market_browser_development {
 		reverse_proxy market-api-development:10000 {
 			health_uri /health
