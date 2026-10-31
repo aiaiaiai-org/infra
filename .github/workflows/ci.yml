@@ -135,6 +135,9 @@ jobs:
       - name: Validate encrypted workload secret handoff
         run: ruby scripts/test-workload-secret-handoff.rb
 
+      - name: Validate GHCR pull credential source logging
+        run: ruby scripts/test-ghcr-pull-source.rb
+
       - name: Validate encrypted Identity provider handoff
         run: |
           ruby -c scripts/prepare-identity-provider-env.rb
