@@ -1,0 +1,75 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+# Pull-based delivery: infra finds each producer's verified branch-head image and deploys it.
+# Producers hold no credential for infra; see docs/automatic-delivery.md.
+name: Reconcile deliveries
+
+on:
+  schedule:
+    # Every 15 minutes. GitHub runs schedules on a best-effort basis.
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+    inputs:
+      workload:
+        description: 'Only this workload (default: every workload with automatic delivery)'
+        required: false
+        type: string
+      force:
+        description: Redeliver even if this image was already delivered or its delivery failed
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: read
+  deployments: write
+
+concurrency:
+  group: reconcile-deliveries
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan deliveries
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      deliveries: ${{ steps.plan.outputs.deliveries }}
+      count: ${{ steps.plan.outputs.count }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sign in to the container registry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Plan from contracts, registry and provenance
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKLOAD: ${{ inputs.workload }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -Eeuo pipefail
+          args=()
+          if [[ -n "$WORKLOAD" ]]; then args+=(--workload "$WORKLOAD"); fi
+          if [[ "$FORCE" == true ]]; then args+=(--force); fi
+          ruby scripts/plan-deliveries.rb "${args[@]}"
+
+  deliver:
+    name: Deliver ${{ matrix.delivery.workload }}
+    needs: plan
+    if: ${{ needs.plan.outputs.count != '0' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        delivery: ${{ fromJSON(needs.plan.outputs.deliveries) }}
+    uses: ./.github/workflows/deliver-workload.yml
+    with:
+      workload: ${{ matrix.delivery.workload }}
+      image: ${{ matrix.delivery.image }}
+      source_sha: ${{ matrix.delivery.source_sha }}
+    secrets: inherit

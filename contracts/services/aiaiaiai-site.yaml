@@ -17,3 +17,9 @@ spec:
   public:
     host: aiaiaiai.org
     pathPrefix: /
+  # Infra delivers each verified master build on its own (docs/automatic-delivery.md).
+  # The product holds no credential for infra.
+  delivery:
+    image: ghcr.io/aiaiaiai-org/aiaiaiai.org
+    branch: master
+    signerWorkflow: .github/workflows/publish-development.yml

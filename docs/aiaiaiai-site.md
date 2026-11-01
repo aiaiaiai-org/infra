@@ -9,8 +9,11 @@ to it; `api.aiaiaiai.org` and all existing Prism/HUA paths remain independent.
 There are no model services, databases, volumes or application secrets.
 
 The product's Full CI builds the static site. Validate packages and smoke-tests
-that output, then preserves the exact image artifact. The product's manual
-**Publish verified image** workflow publishes that artifact without rebuilding.
+that output, then preserves the exact image artifact. For each green `master`
+push, the product's **Publish development image** workflow publishes that
+artifact without rebuilding and attests its provenance. Infra then delivers it
+automatically (`docs/automatic-delivery.md`); the product holds no infra
+credential.
 
 ## First activation
 

@@ -1,0 +1,88 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+# One automatic delivery: record it, deploy through Deploy workload, settle the record.
+# Reconcile deliveries plans the inputs; nothing outside this repository calls it.
+name: Deliver workload
+
+on:
+  workflow_call:
+    inputs:
+      workload:
+        description: Workload identifier
+        required: true
+        type: string
+      image:
+        description: Verified immutable image reference (image@sha256:...)
+        required: true
+        type: string
+      source_sha:
+        description: Producer commit the image was built and attested from
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+  deployments: write
+
+jobs:
+  record:
+    name: Record delivery
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      id: ${{ steps.create.outputs.id }}
+    steps:
+      - name: Create deployment record
+        id: create
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKLOAD: ${{ inputs.workload }}
+          IMAGE_REF: ${{ inputs.image }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$WORKLOAD" =~ ^[a-z0-9][a-z0-9-]*$ ]]
+          [[ "$IMAGE_REF" =~ ^ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$ ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          jq -n --arg ref "$GITHUB_SHA" --arg environment "delivery/$WORKLOAD" \
+            --arg image "$IMAGE_REF" --arg sha "$SOURCE_SHA" --arg run "$run_url" \
+            '{ref: $ref, environment: $environment, auto_merge: false, required_contexts: [],
+              transient_environment: false, production_environment: false,
+              description: ("Automatic delivery of " + $sha[0:12]),
+              payload: {image: $image, source_sha: $sha, run: $run}}' > "$RUNNER_TEMP/deployment.json"
+          id="$(gh api -X POST "repos/$GITHUB_REPOSITORY/deployments" --input "$RUNNER_TEMP/deployment.json" --jq .id)"
+          [[ "$id" =~ ^[0-9]+$ ]]
+          gh api -X POST "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
+            -f state=in_progress -f log_url="$run_url" > /dev/null
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Deploy
+    needs: record
+    uses: ./.github/workflows/deploy-workload.yml
+    with:
+      workload: ${{ inputs.workload }}
+      image: ${{ inputs.image }}
+    secrets: inherit
+
+  settle:
+    name: Settle delivery record
+    needs: [record, deploy]
+    if: ${{ always() && needs.record.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Set final deployment status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ needs.record.outputs.id }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+        run: |
+          set -Eeuo pipefail
+          state=failure
+          [[ "$DEPLOY_RESULT" == success ]] && state=success
+          gh api -X POST "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses" \
+            -f state="$state" -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > /dev/null
+          echo "Delivery $DEPLOYMENT_ID: $state"

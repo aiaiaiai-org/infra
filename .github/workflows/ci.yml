@@ -43,6 +43,12 @@ jobs:
       - name: Validate YAML contracts
         run: ruby scripts/validate-contracts.rb
 
+      - name: Test delivery planner
+        run: ruby scripts/test-plan-deliveries.rb
+
+      - name: Validate delivery workflow wiring
+        run: ruby scripts/validate-delivery-workflows.rb
+
       - name: Test product placement boundary
         run: ruby scripts/test-workload-placement-policy.rb
 
