@@ -123,6 +123,6 @@ Dir.mktmpdir do |dir|
   wanted = latest ? 'HEAD' : ref
   resolved = source_dir ? 'local-checkout' : fetch_canonical(source, wanted, dir)
   problems = SHARED_FILES.filter_map { |path| mismatch(path, source_dir || dir) }
-  puts "Pinned ref #{ref[0, 12]} differs from latest #{resolved[0, 12]}" if latest && ref != resolved
+  puts "Pin #{ref[0, 12]} differs from latest #{resolved[0, 12]}" if latest && ref != resolved
   report(problems, source, resolved, latest)
 end
