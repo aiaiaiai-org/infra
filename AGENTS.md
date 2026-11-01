@@ -5,6 +5,13 @@ OpenAI Codex and others). This file is the single source of agent instructions.
 Do not add a `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md`: Claude Code
 reads `AGENTS.md` only when none of those exist.
 
+This file and the scripts listed in `scripts/check-shared-sync.rb` are shared
+across aiaiaiai-org repositories. Everything outside `<!-- project-specific -->`
+blocks must match the canonical source named in `.github/shared-sync.yml`, and
+CI enforces it. Change shared text in the canonical source first, then sync each
+repository and update its pinned `ref`. Keep repository-specific rules inside
+project-specific blocks.
+
 ## GitHub delivery
 
 Apply this section whenever a task touches GitHub repositories, branches, commits,

@@ -34,6 +34,12 @@ jobs:
       - name: Test commit attribution checker
         run: ruby scripts/test-commit-attribution.rb
 
+      - name: Check shared files against the canonical source
+        run: ruby scripts/check-shared-sync.rb
+
+      - name: Test shared sync checker
+        run: ruby scripts/test-shared-sync.rb
+
       - name: Validate YAML contracts
         run: ruby scripts/validate-contracts.rb
 

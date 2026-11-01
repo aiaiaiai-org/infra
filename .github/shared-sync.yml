@@ -1,0 +1,4 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+# Canonical source of the shared agent rules and scripts (see AGENTS.md).
+# Consumers also pin `ref` to a full commit SHA of the source; the source has none.
+source: aiaiaiai-org/infra
