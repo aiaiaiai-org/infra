@@ -31,6 +31,7 @@ jobs:
       EDGE_TARGET: edge-prod-2
       EDGE_NETWORK: aiaiaiai-edge
       PRISM_API_DOMAIN: api.aiaiaiai.org
+      AIAIAIAI_SITE_BETA_DOMAIN: beta.aiaiaiai.org
       REMOTE_EDGE_DIR: .local/share/aiaiaiai-infra/edge-aiaiaiai
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
 
@@ -125,6 +126,7 @@ jobs:
             return 1
           }
 
+          verify_route "https://${AIAIAIAI_SITE_BETA_DOMAIN}/healthz"
           verify_route "https://${PRISM_API_DOMAIN}/prism-hub/healthz"
           verify_route "https://${PRISM_API_DOMAIN}/hua-bot/health"
 
