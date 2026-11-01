@@ -26,6 +26,14 @@ spec:
       service: aiaiaiai-site
       upstream: aiaiaiai-site:1927
       health: /healthz
+    # Development hostname; reuses the existing site workload until
+    # immutable snapshot routing is implemented separately.
+    - id: aiaiaiai-site-beta
+      host: beta.aiaiaiai.org
+      pathPrefix: /
+      service: aiaiaiai-site
+      upstream: aiaiaiai-site:1927
+      health: /healthz
     - id: prism-hub
       host: ${PRISM_API_DOMAIN}
       pathPrefix: /prism-hub/
