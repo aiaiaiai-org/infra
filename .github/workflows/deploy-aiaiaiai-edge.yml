@@ -83,6 +83,7 @@ jobs:
             printf 'EDGE_TARGET=%s\n' "$EDGE_TARGET"
             printf 'EDGE_NETWORK=%s\n' "$EDGE_NETWORK"
             printf 'PRISM_API_DOMAIN=%s\n' "$PRISM_API_DOMAIN"
+            printf 'AIAIAIAI_SITE_BETA_DOMAIN=%s\n' "$AIAIAIAI_SITE_BETA_DOMAIN"
             printf 'CADDY_IMAGE=caddy:2-alpine\n'
           } > "$RUNNER_TEMP/edge.env"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$REMOTE_EDGE_DIR' && chmod 700 '$REMOTE_EDGE_DIR'"
