@@ -31,6 +31,7 @@ jobs:
       EDGE_TARGET: edge-prod-2
       EDGE_NETWORK: aiaiaiai-edge
       PRISM_API_DOMAIN: api.aiaiaiai.org
+      AIAIAIAI_SITE_BETA_DOMAIN: beta.aiaiaiai.org
       REMOTE_EDGE_DIR: .local/share/aiaiaiai-infra/edge-aiaiaiai
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
 
@@ -82,6 +83,7 @@ jobs:
             printf 'EDGE_TARGET=%s\n' "$EDGE_TARGET"
             printf 'EDGE_NETWORK=%s\n' "$EDGE_NETWORK"
             printf 'PRISM_API_DOMAIN=%s\n' "$PRISM_API_DOMAIN"
+            printf 'AIAIAIAI_SITE_BETA_DOMAIN=%s\n' "$AIAIAIAI_SITE_BETA_DOMAIN"
             printf 'CADDY_IMAGE=caddy:2-alpine\n'
           } > "$RUNNER_TEMP/edge.env"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$REMOTE_EDGE_DIR' && chmod 700 '$REMOTE_EDGE_DIR'"
@@ -125,6 +127,7 @@ jobs:
             return 1
           }
 
+          verify_route "https://${AIAIAIAI_SITE_BETA_DOMAIN}/healthz"
           verify_route "https://${PRISM_API_DOMAIN}/prism-hub/healthz"
           verify_route "https://${PRISM_API_DOMAIN}/hua-bot/health"
 

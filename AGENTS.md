@@ -1,6 +1,9 @@
 # AGENTS.md
 
-Instructions for OpenAI coding agents working in this repository.
+Instructions for every coding agent working in this repository (Claude Code,
+OpenAI Codex and others). This file is the single source of agent instructions.
+Do not add a `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md`: Claude Code
+reads `AGENTS.md` only when none of those exist.
 
 ## GitHub delivery
 
