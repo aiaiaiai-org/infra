@@ -18,7 +18,8 @@ Inspect actual state before reporting an access limitation.
 Proceed without additional confirmation for authorized reversible repository
 actions, including branches, commits, pull request preparation and technical
 reviews. Creating a pull request under a human identity requires that human's
-authorization. Merge requires explicit authorization for the specific change.
+authorization, single-use unless an explicit scope and duration are granted.
+Merge requires explicit authorization for the specific change.
 
 Always obtain explicit user authorization before deployment or release
 activation, repository deletion or transfer, destructive data operations, or
@@ -51,7 +52,11 @@ email addresses or tool-specific identities here.
 - **Development tool:** model, IDE or service used by an actor.
 
 A commit must use the actual implementation author's Git identity. Agent-authored
-commits use the configured agent identity, not the human contributor's identity.
+commits use the identity configured for their execution environment, not the
+human contributor's identity. Allowed identities and roles are declared in
+`.github/contributors.yml`; CI validates commits against that allowlist.
+Agents must not override their environment's author identity in-session.
+If the environment identity is not allowed, stop before writing.
 Preserve real human authorship and use `Co-authored-by: Name <email>` only for
 people or agents who materially co-authored the change. Record the actual tool
 separately using `Assisted-by: Tool Name`; this is an informational trailer,
@@ -75,8 +80,9 @@ and development tools. Preserve commit history, original authorship and
 repository-required merge method; do not rewrite protected history just to
 change attribution. Do not credit noncontributors as co-authors.
 
-Before each GitHub write, verify the authenticated account, intended actor,
-repository, branch, author and attribution. Stop on mismatch. Before merge,
+Before the first write in a task, verify the authenticated account, intended
+actor, repository, branch, author and attribution. Recheck when the session,
+credential, repository or identity context changes. Stop on mismatch. Before merge,
 verify the exact head CI, required approvals, resolved review threads and
 explicit merge authorization.
 
@@ -105,7 +111,7 @@ inspect
 → latest base
 → task branch
 → smallest complete implementation
-→ human-owned pull request
+→ draft pull request (human-owned)
 → targeted checks
 → full CI
 → deploy validation when applicable
@@ -133,7 +139,8 @@ Once the exact head revision is verified, required CI is green, applicable
 deploy validation is green, the requested scope is complete, and no known
 blocker remains, mark the pull request ready without asking the user again.
 
-Merge only with explicit human authorization and when all of the following are true:
+Merge only with explicit human authorization and when all of the
+following are true:
 
 - the requested task is complete;
 - the final diff matches the intended scope;
@@ -233,6 +240,6 @@ verified, the current delivery stage, any remaining blocker or material risk,
 and whether a protected action such as deployment still requires authorization.
 
 Do not ask for confirmation when this policy already grants authority to
-continue; obtain explicit authorization for identity use, merge and deploy. If the task cannot be completed, identify the concrete blocker and
-the exact state reached instead of giving a generic access or tooling
-disclaimer.
+continue. Identity-use authorization is single-use by default; durable
+permission requires explicit scope and duration. Obtain explicit authorization
+for merge and deploy. If blocked, report the exact state reached.
