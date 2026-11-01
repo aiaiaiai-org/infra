@@ -53,10 +53,11 @@ email addresses or tool-specific identities here.
 
 A commit must use the actual implementation author's Git identity. Agent-authored
 commits use the identity configured for their execution environment, not the
-human contributor's identity. Allowed identities and roles are declared in
-`.github/contributors.yml`; CI validates commits against that allowlist.
-Agents must not override their environment's author identity in-session.
-If the environment identity is not allowed, stop before writing.
+human contributor's identity. Agent identity is configured in project-specific instructions and verified
+against the authenticated GitHub connection and execution environment.
+Git author metadata alone does not authenticate an actor. Do not silently
+override the configured identity or impersonate another contributor.
+CI validates attribution trailer syntax without restricting contributors.
 Preserve real human authorship and use `Co-authored-by: Name <email>` only for
 people or agents who materially co-authored the change. Record the actual tool
 separately using `Assisted-by: Tool Name`; this is an informational trailer,
