@@ -64,9 +64,10 @@ These are done once, by hand, outside this repository.
    | secret | `PRISM_POSTGRES_PASSWORD` | a long random string; the database is created with it and prism-hub connects with it |
    | secret | `PRISM_HUB_SECRET_KEY_BASE` | 64+ random characters |
 
-   The container registry login the workload deployment uses (the organization secret
-   `INFRA_DEPLOY_TOKEN`, a classic token with `read:packages`) must also reach this
-   repository, as it does for `edge-prod-1`.
+   The container registry login the workload deployment uses is infra's own
+   `github.token`. Every private package it deploys must grant `aiaiaiai-org/infra`
+   **Read** in its package settings (**Manage Actions access**). No personal access
+   token is involved.
 
    With the GitHub CLI, the generated values go straight into the Environment and are never shown:
 
