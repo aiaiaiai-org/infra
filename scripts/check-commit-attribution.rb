@@ -1,41 +1,50 @@
 #!/usr/bin/env ruby
-# Validate attribution trailer syntax without restricting contributor identities.
+# frozen_string_literal: true
+
+# © 2026 aiaiaiai · aiaiaiai.org
+# Validates attribution trailer syntax without restricting contributor identities.
+# Shared file: keep it identical to the canonical source (scripts/check-shared-sync.rb).
+
 require 'open3'
+
+Encoding.default_external = Encoding::UTF_8
+
+SHA = /\A[0-9a-f]{40}\z/
+TRAILER = /\A[A-Za-z][A-Za-z-]*: /
+# Git trailer keys are case-insensitive, so every spelling is validated.
+ATTRIBUTION = /\A(?:assisted-by|co-authored-by):/i
+VALID = [
+  /\AAssisted-by: \S(?:.*\S)?\z/i,
+  /\ACo-authored-by: [^<>\n]+ <[^<>\s]+@[^<>\s]+>\z/i
+].freeze
+
+def git(*args)
+  out, status = Open3.capture2('git', *args)
+  abort "git #{args.first} failed" unless status.success?
+  out
+end
+
+# Only the final paragraph of a commit message holds trailers.
+def trailers(message)
+  lines = message.lines.map(&:chomp).reverse.drop_while { |line| line.strip.empty? }
+  lines.take_while { |line| line.match?(TRAILER) }
+end
+
+def invalid_trailer(message)
+  trailers(message).find do |line|
+    line.match?(ATTRIBUTION) && VALID.none? { |pattern| line.match?(pattern) }
+  end
+end
 
 base = ENV.fetch('BASE_SHA')
 head = ENV.fetch('HEAD_SHA')
-abort 'Invalid commit SHA' unless [base, head].all? { |s| s.match?(/\A[0-9a-f]{40}\z/) }
+abort 'Invalid commit SHA' unless [base, head].all? { |sha| sha.match?(SHA) }
 
-out, status = Open3.capture2('git', 'rev-list', '--reverse', "#{base}..#{head}")
-abort 'Cannot enumerate PR commits' unless status.success?
-commits = out.lines.map(&:strip)
+commits = git('rev-list', '--reverse', "#{base}..#{head}").lines.map(&:strip)
 abort 'No PR commits to validate' if commits.empty?
 
 commits.each do |sha|
-  message, ok = Open3.capture2('git', 'show', '-s', '--format=%B', sha)
-  abort "Cannot inspect #{sha}" unless ok.success?
-  # Only recognize attribution in the final trailer block.
-  lines = message.lines.map(&:chomp)
-  trailers = []
-  lines.reverse_each do |line|
-    if line.strip.empty?
-      break unless trailers.empty?
-    elsif line.match?(/\A[A-Za-z][A-Za-z-]*: /)
-      trailers << line
-    else
-      break
-    end
-  end
-  trailers.each do |line|
-    case line
-    # Git trailer keys are case-insensitive, so validate every spelling.
-    when /\AAssisted-by: \S(?:.*\S)?\z/i
-      next
-    when /\ACo-authored-by: [^<>\n]+ <[^<>\s]+@[^<>\s]+>\z/i
-      next
-    when /\A(?:Assisted-by|Co-authored-by):/i
-      abort "Invalid attribution trailer on #{sha}: #{line}"
-    end
-  end
+  line = invalid_trailer(git('show', '-s', '--format=%B', sha))
+  abort "Invalid attribution trailer on #{sha}: #{line}" if line
 end
 puts "Validated attribution syntax for #{commits.length} PR commit(s)"
