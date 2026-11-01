@@ -1,8 +1,0 @@
-# Allowed Git commit identities. Extend via reviewed PRs.
-identities:
-  - role: human
-    name: Sasha Lohozinskyy
-    email: 0x0sky@proton.me
-  - role: agent
-    name: x0skai
-    email: x0skai@aiaiaiai.org
