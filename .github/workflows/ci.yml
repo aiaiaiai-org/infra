@@ -57,6 +57,23 @@ jobs:
           bash -n scripts/test-aiaiaiai-edge-verify.sh
           bash scripts/test-aiaiaiai-edge-verify.sh
 
+      - name: Validate beta website edge routing coverage
+        run: |
+          set -Eeuo pipefail
+          ruby <<'RUBY'
+          edge = File.read('deploy/edge-aiaiaiai/Caddyfile')
+          compose = File.read('deploy/edge-aiaiaiai/compose.yaml')
+          contract = File.read('contracts/edges/aiaiaiai-edge.yaml')
+          deploy = File.read('.github/workflows/deploy-aiaiaiai-edge.yml')
+          env = File.read('deploy/edge-aiaiaiai/env.example')
+          abort 'missing beta Caddy site block' unless edge.scan(/\{\$AIAIAIAI_SITE_BETA_DOMAIN:beta\.aiaiaiai\.org\} \{/).length == 1
+          abort 'missing beta upstream' unless edge.include?('reverse_proxy aiaiaiai-site:1927')
+          abort 'missing beta contract host' unless contract.include?('host: ${AIAIAIAI_SITE_BETA_DOMAIN}')
+          abort 'missing beta compose variable' unless compose.include?('AIAIAIAI_SITE_BETA_DOMAIN:')
+          abort 'missing beta example variable' unless env.include?('AIAIAIAI_SITE_BETA_DOMAIN=beta.aiaiaiai.org')
+          abort 'missing beta public health verification' unless deploy.include?('verify_route "https://${AIAIAIAI_SITE_BETA_DOMAIN}/healthz"')
+          RUBY
+
       - name: Validate public HUA edge routing coverage
         run: |
           set -Eeuo pipefail
