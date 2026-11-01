@@ -165,6 +165,19 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
     if secrets.any? && runtime["prepareEnv"]
       abort("#{path}: runtime.secrets and runtime.prepareEnv are mutually exclusive")
     end
+
+    # Automatic delivery: infra deploys the producer's verified branch head on its own.
+    delivery = spec["delivery"]
+    unless delivery.nil?
+      abort("#{path}: delivery must be a mapping") unless delivery.is_a?(Hash)
+      unknown = delivery.keys - %w[image branch signerWorkflow]
+      abort("#{path}: unknown delivery keys #{unknown.join(', ')}") unless unknown.empty?
+      abort("#{path}: delivery conflicts with a contract-pinned runtime.image") unless image.nil?
+      # The producer repository publishes under its own name; nothing else can sign for it.
+      abort("#{path}: delivery.image must be ghcr.io/#{owner.downcase}") unless delivery["image"] == "ghcr.io/#{owner.downcase}"
+      abort("#{path}: delivery.branch must be a branch name") unless delivery["branch"].is_a?(String) && delivery["branch"].match?(%r{\A[A-Za-z0-9._/-]+\z})
+      abort("#{path}: delivery.signerWorkflow must be .github/workflows/<file>.yml") unless delivery["signerWorkflow"].is_a?(String) && delivery["signerWorkflow"].match?(%r{\A\.github/workflows/[A-Za-z0-9._-]+\.ya?ml\z})
+    end
   else
     repository = fetch!(spec, "repository", path)
     abort("#{path}: repository must be owner/name") unless repository.is_a?(String) && repository.match?(/\A[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\z/)

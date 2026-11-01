@@ -202,6 +202,17 @@ the release.
 Deployment always requires explicit user authorization, even after an automatic
 merge.
 
+<!-- project-specific -->
+
+Repository exception: **Reconcile deliveries** deploys, without per-deploy
+authorization, the verified branch-head image of every workload whose contract
+declares `spec.delivery` (see `docs/automatic-delivery.md`). Adding or changing
+a `delivery` block is the authorization for that workload and needs explicit
+approval like any merge. Agents still need explicit user authorization to
+dispatch **Deploy workload** or to force a redelivery.
+
+<!-- /project-specific -->
+
 After authorization, deploy the already verified revision or artifact, perform
 the environment transition, activate the release, and verify minimal
 post-deploy health.
