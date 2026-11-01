@@ -28,11 +28,12 @@ commits.each do |sha|
   end
   trailers.each do |line|
     case line
-    when /\AAssisted-by: [^\s].*\S\z/
+    # Git trailer keys are case-insensitive, so validate every spelling.
+    when /\AAssisted-by: \S(?:.*\S)?\z/i
       next
-    when /\ACo-authored-by: [^<>\n]+ <[^<>\s]+@[^<>\s]+>\z/
+    when /\ACo-authored-by: [^<>\n]+ <[^<>\s]+@[^<>\s]+>\z/i
       next
-    when /\A(?:Assisted-by|Co-authored-by):/
+    when /\A(?:Assisted-by|Co-authored-by):/i
       abort "Invalid attribution trailer on #{sha}: #{line}"
     end
   end

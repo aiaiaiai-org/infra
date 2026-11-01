@@ -31,6 +31,9 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: ruby scripts/check-commit-attribution.rb
 
+      - name: Test commit attribution checker
+        run: ruby scripts/test-commit-attribution.rb
+
       - name: Validate YAML contracts
         run: ruby scripts/validate-contracts.rb
 
