@@ -63,6 +63,7 @@ These are done once, by hand, outside this repository.
    | variable | `SSH_PORT` | the SSH port, if not 22022 |
    | secret | `PRISM_POSTGRES_PASSWORD` | a long random string; the database is created with it and prism-hub connects with it |
    | secret | `PRISM_HUB_SECRET_KEY_BASE` | 64+ random characters |
+   | secret | `PRISM_BOT_DELIVERY_SECRET` | exactly `0x0sky/h-ua-bot` → `production` → `HUA_DELIVERY_SECRET` |
 
    The container registry login the workload deployment uses is infra's own
    `github.token`. Every private package it deploys must grant `aiaiaiai-org/infra`
@@ -92,8 +93,10 @@ A secret a contract names but the Environment lacks stops the deployment before 
    `aiaiaiai-edge` network and starts Caddy. Nothing is routed yet, so nothing is verified.
 2. **Database:** Actions → *Deploy workload*, workload `prism-postgres`, no image (the contract
    pins it). Healthy when its port accepts connections.
-3. **prism-hub:** from prism-hub, *Deploy production* with the commit to release. It migrates the
-   database before it serves.
+3. **prism-hub:** automatic. prism-hub's *Publish image* attests each verified `master` head and
+   *Reconcile deliveries* deploys it ([automatic-delivery.md](automatic-delivery.md)); dispatch
+   *Reconcile deliveries* with workload `prism-hub` to deliver at once. It migrates the database
+   before it serves.
 4. **Edge again,** with *verify upstreams* **on**: prism-hub answers inside the network, and
    `https://api.aiaiaiai.org/prism-hub/healthz` answers from outside.
 
@@ -138,10 +141,9 @@ No new DNS record is needed. Existing `/api/v1/delivery` and
 `/h-ua-bot/` routes remain compatible during rollout.
 
 Hub's workload contract supplies the origin and prefix and maps
-`PRISM_BOT_DELIVERY_SECRET` from the encrypted producer envelope. Configure
-that secret in **aiaiaiai-org/prism-hub → production**, matching
-**0x0sky/h-ua-bot → production → HUA_DELIVERY_SECRET**.
-Use the Hub workflow version that encrypts this additional secret.
+`PRISM_BOT_DELIVERY_SECRET` from this repository's `edge-prod-2` Environment,
+matching **0x0sky/h-ua-bot → production → HUA_DELIVERY_SECRET**. prism-hub keeps
+its own copy only for its manual h-ua handshake.
 Activate the reviewed edge route before the new Hub workload; neither merge
 activates production. Porter still renders before the bot receives the request.
 
