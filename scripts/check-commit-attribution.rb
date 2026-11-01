@@ -4,9 +4,10 @@ require 'yaml'
 require 'open3'
 
 policy = YAML.safe_load_file('.github/contributors.yml')
-identities = policy.fetch('identities').map do |entry|
-  [entry.fetch('name'), entry.fetch('email')]
-end
+entries = policy.fetch('identities')
+identities = entries.map { |entry| [entry.fetch('name'), entry.fetch('email')] }
+agent_identities = entries.select { |entry| entry.fetch('role') == 'agent' }
+                          .map { |entry| [entry.fetch('name'), entry.fetch('email')] }
 abort 'Empty contributor identity allowlist' if identities.empty?
 
 base = ENV.fetch('BASE_SHA')
@@ -23,7 +24,7 @@ commits.each do |sha|
   author, email, committer, committer_email, message = raw.split("\0", 5)
   abort "Unrecognized author on #{sha}: #{author} <#{email}>" unless identities.include?([author, email])
   abort "Unrecognized committer on #{sha}: #{committer} <#{committer_email}>" unless identities.include?([committer, committer_email])
-  trailers = message.to_s.lines.grep(/\A(?:Assisted-by|Co-authored-by):/)
+  trailers = message.to_s.lines.map(&:strip).grep(/\A(?:Assisted-by|Co-authored-by):/)
   trailers.each do |line|
     case line
     when /\AAssisted-by: [^\s].+\z/
@@ -33,6 +34,6 @@ commits.each do |sha|
     end
     abort "Invalid attribution trailer on #{sha}: #{line.strip}"
   end
-  abort "Missing Assisted-by trailer on agent commit #{sha}" if author == 'x0skai' && trailers.none? { |line| line.start_with?('Assisted-by: ') }
+  abort "Missing Assisted-by trailer on agent commit #{sha}" if agent_identities.include?([author, email]) && trailers.none? { |line| line.start_with?('Assisted-by: ') }
 end
 puts "Validated #{commits.length} commit(s)"
