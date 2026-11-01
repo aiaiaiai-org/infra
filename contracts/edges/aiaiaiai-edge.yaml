@@ -29,7 +29,7 @@ spec:
     # Development hostname; reuses the existing site workload until
     # immutable snapshot routing is implemented separately.
     - id: aiaiaiai-site-beta
-      host: beta.aiaiaiai.org
+      host: ${AIAIAIAI_SITE_BETA_DOMAIN}
       pathPrefix: /
       service: aiaiaiai-site
       upstream: aiaiaiai-site:1927
