@@ -327,10 +327,12 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           GHCR_PULL_USER: ${{ github.actor }}
-          GHCR_PULL_TOKEN: ${{ secrets.INFRA_DEPLOY_TOKEN || github.token }}
+          # Infra's own short-lived token; each private package grants this repository Read
+          # (Package settings -> Manage Actions access). No personal access token is involved.
+          GHCR_PULL_TOKEN: ${{ github.token }}
           # Names, never values, of where the pair above came from.
           GHCR_PULL_USER_SOURCE: github.actor
-          GHCR_PULL_TOKEN_SOURCE: ${{ secrets.INFRA_DEPLOY_TOKEN != '' && 'secrets.INFRA_DEPLOY_TOKEN' || 'github.token' }}
+          GHCR_PULL_TOKEN_SOURCE: github.token
         run: |
           set -Eeuo pipefail
           # Registry credentials belong to infra; the runtime envelope need not
