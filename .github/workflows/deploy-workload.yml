@@ -59,6 +59,8 @@ on:
 permissions:
   contents: read
   packages: read
+  # Reads the delivery record of a runtime.secretsFrom producer; never writes one.
+  deployments: read
 
 concurrency:
   group: deploy-workload-${{ inputs.workload || github.event.client_payload.workload }}
@@ -80,6 +82,7 @@ jobs:
       health_kind: ${{ steps.resolve.outputs.health_kind }}
       command: ${{ steps.resolve.outputs.command }}
       secrets: ${{ steps.resolve.outputs.secrets }}
+      secrets_from: ${{ steps.resolve.outputs.secrets_from }}
       environment: ${{ steps.resolve.outputs.environment }}
       producer_environment: ${{ steps.resolve.outputs.producer_environment }}
       labels: ${{ steps.resolve.outputs.labels }}
@@ -157,6 +160,7 @@ jobs:
       WORKLOAD_HEALTH_KIND: ${{ needs.resolve.outputs.health_kind }}
       WORKLOAD_COMMAND: ${{ needs.resolve.outputs.command }}
       WORKLOAD_SECRETS: ${{ needs.resolve.outputs.secrets }}
+      WORKLOAD_SECRETS_FROM: ${{ needs.resolve.outputs.secrets_from }}
       WORKLOAD_ENVIRONMENT: ${{ needs.resolve.outputs.environment }}
       WORKLOAD_PRODUCER_ENVIRONMENT: ${{ needs.resolve.outputs.producer_environment }}
       WORKLOAD_LABELS: ${{ needs.resolve.outputs.labels }}
@@ -203,10 +207,35 @@ jobs:
       # public key. Only the job holding SSH_PRIVATE_KEY can decrypt them, and infra
       # stores none of them: they arrive either in a legacy dispatch payload or as
       # the producer's attested envelope image, `<image>:<sha>.secrets`.
-      - name: Fetch secret envelope
-        if: ${{ inputs.secrets_image != '' }}
+      # A contract with runtime.secretsFrom takes the envelope infra last delivered, after
+      # verifying its provenance, to that producer workload; nothing is read from this Environment.
+      - name: Resolve producer secret envelope
+        id: producer
+        if: ${{ inputs.secrets_image == '' && needs.resolve.outputs.secrets_from != '' }}
         env:
-          SECRETS_REF: ${{ inputs.secrets_image }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$WORKLOAD_SECRETS_FROM" =~ ^[a-z0-9][a-z0-9-]*$ ]]
+          ref=""
+          for id in $(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=delivery/$WORKLOAD_SECRETS_FROM&per_page=20" --jq '.[].id'); do
+            state="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses?per_page=1" --jq '.[0].state // ""')"
+            if [[ "$state" == success ]]; then
+              ref="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$id" --jq '.payload.secrets // ""')"
+              break
+            fi
+          done
+          [[ "$ref" =~ ^ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$ ]] || {
+            echo "::error::$WORKLOAD_SECRETS_FROM has no successful delivery with a secret envelope yet" >&2
+            exit 1
+          }
+          echo "Using $WORKLOAD_SECRETS_FROM's delivered envelope $ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch secret envelope
+        if: ${{ inputs.secrets_image != '' || steps.producer.outputs.ref != '' }}
+        env:
+          SECRETS_REF: ${{ inputs.secrets_image || steps.producer.outputs.ref }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
@@ -223,7 +252,7 @@ jobs:
           test -s "$RUNNER_TEMP/workload-secrets.age"
 
       - name: Decrypt workload-scoped credentials
-        if: ${{ inputs.secrets_image != '' || (github.event_name == 'repository_dispatch' && github.event.client_payload.secrets_age != '') }}
+        if: ${{ inputs.secrets_image != '' || steps.producer.outputs.ref != '' || (github.event_name == 'repository_dispatch' && github.event.client_payload.secrets_age != '') }}
         env:
           WORKLOAD_SECRET_ENVELOPE: ${{ github.event.client_payload.secrets_age }}
         run: |
@@ -337,6 +366,9 @@ jobs:
           set -Eeuo pipefail
           if [[ -f "$RUNNER_TEMP/source-credentials.env" ]]; then
             export WORKLOAD_SECRET_SOURCE_FILE="$RUNNER_TEMP/source-credentials.env"
+          elif [[ -n "$WORKLOAD_SECRETS_FROM" ]]; then
+            echo "::error::$WORKLOAD takes its secrets from $WORKLOAD_SECRETS_FROM's envelope, never from this Environment" >&2
+            exit 1
           fi
           secret_env="$(ruby infra/scripts/workload-secret-env.rb)"
           printf 'WORKLOAD_SECRET_ENV=%s\n' "$secret_env" >> "$RUNNER_TEMP/workload.env"

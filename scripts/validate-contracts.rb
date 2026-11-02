@@ -251,6 +251,22 @@ services.each do |workload, service|
   abort("workload #{workload}: delivered with secrets, but server #{server} has no encryptionRecipient")
 end
 
+# runtime.secretsFrom: a workload without a producer of its own (a database pinned by digest)
+# takes a subset of another workload's envelope, so its secrets still never live in infra.
+services.each do |workload, service|
+  from = service.dig("spec", "runtime", "secretsFrom")
+  next if from.nil?
+
+  mapped = Array(service.dig("spec", "runtime", "secrets")).map { |entry| entry.split("=", 2).last }
+  abort("workload #{workload}: secretsFrom needs runtime.secrets") if mapped.empty?
+  producer = services[from] || abort("workload #{workload}: secretsFrom names unknown workload #{from}")
+  abort("workload #{workload}: secretsFrom #{from} must be delivered automatically") if producer.dig("spec", "delivery").nil?
+  abort("workload #{workload}: secretsFrom #{from} must run on the same server") unless placed_on.fetch(from) == placed_on.fetch(workload)
+  offered = Array(producer.dig("spec", "runtime", "secrets")).map { |entry| entry.split("=", 2).last }
+  missing = mapped - offered
+  abort("workload #{workload}: #{from}'s envelope does not carry #{missing.join(', ')}") unless missing.empty?
+end
+
 edge_on_server = {}
 route_count = 0
 edges.each do |edge_name, edge|

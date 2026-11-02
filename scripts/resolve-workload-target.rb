@@ -95,6 +95,7 @@ if runtime_kind == "container"
     "command" => command.empty? ? "" : Base64.strict_encode64(command.join("\n") + "\n"),
     "contract_image" => runtime["image"].to_s,
     "secrets" => secret_mappings.empty? ? "" : Base64.strict_encode64(secret_mappings.join("\n") + "\n"),
+    "secrets_from" => runtime["secretsFrom"].to_s,
     "environment" => Base64.strict_encode64(environment.join("\n") + "\n"),
     "producer_environment" => producer_environment.empty? ? "" : Base64.strict_encode64(producer_environment.join("\n") + "\n"),
     "labels" => Base64.strict_encode64(labels.join("\n") + "\n"),

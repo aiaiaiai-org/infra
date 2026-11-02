@@ -41,6 +41,25 @@ Dir.mktmpdir("scoped-secrets") do |directory|
     abort("secret content leaked into diagnostics") if "#{out}#{err}".include?("short-lived")
   end
 
+  # runtime.secretsFrom: a subset of another workload's envelope, and nothing else, reaches runtime.
+  File.write(path, SOURCE + "OTHER_PRODUCT_SECRET=not-for-this-workload\n")
+  out, err, result = Open3.capture3(
+    {
+      "WORKLOAD_SECRETS" => Base64.strict_encode64("TOKEN=HUA_HUB_TOKEN\n"),
+      "WORKLOAD_SECRETS_FROM" => "producer",
+      "WORKLOAD_SECRET_SOURCE_FILE" => path
+    },
+    "ruby", SCRIPT
+  )
+  abort("secretsFrom subset rejected: #{err}") unless result.success?
+  abort("secretsFrom passed more than its mapping") unless Base64.strict_decode64(out) == "TOKEN=prism_client_v1_#{'a' * 43}\n"
+  File.write(path, SOURCE + "OTHER_PRODUCT_SECRET=not-for-this-workload\n")
+  _out, _err, result = Open3.capture3(
+    { "WORKLOAD_SECRETS" => Base64.strict_encode64("TOKEN=HUA_HUB_TOKEN\n"), "WORKLOAD_SECRET_SOURCE_FILE" => path },
+    "ruby", SCRIPT
+  )
+  abort("a superset was accepted without secretsFrom") if result.success?
+
   # Workloads without runtime.secrets must still enforce the registry-only allowlist.
   run_unmapped = lambda do |data, workload|
     File.write(path, data)

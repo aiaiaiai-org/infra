@@ -84,6 +84,12 @@ publishes next to its image:
    environment and are kept nowhere in infra. The deployment record holds the
    envelope's digest, never its content.
 
+A workload with no producer of its own, such as a database pinned by digest,
+names one with `runtime.secretsFrom`. Deploy workload then takes the envelope
+of that workload's last successful delivery and passes only the names this
+contract maps. Without such an envelope it stops; it never falls back to the
+Environment's secrets.
+
 To rotate a secret, change it in the producer's Environment and re-run its
 publish workflow for the head commit. The new envelope digest is a new delivery.
 `scripts/validate-contracts.rb` rejects a delivered workload with secrets whose
