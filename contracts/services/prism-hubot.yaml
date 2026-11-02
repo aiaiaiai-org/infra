@@ -33,3 +33,9 @@ spec:
   public:
     host: api.aiaiaiai.org
     pathPrefix: /prism-hubot/
+  # Infra delivers each verified master build on its own (docs/automatic-delivery.md). Its
+  # secrets arrive only in prism-hubot's attested envelope; infra stores none of them.
+  delivery:
+    image: ghcr.io/aiaiaiai-org/prism-hubot
+    branch: master
+    signerWorkflow: .github/workflows/publish.yml
