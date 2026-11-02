@@ -23,7 +23,7 @@ Docker network: aiaiaiai-edge
 | `contracts/edges/aiaiaiai-edge.yaml` | the edge: network `aiaiaiai-edge`, Caddy, the routes |
 | `contracts/services/prism-postgres.yaml` | PostgreSQL 18, image pinned by digest, data on the `prism-postgres-data` volume |
 | `contracts/services/prism-hub.yaml` | prism-hub, image `ghcr.io/aiaiaiai-org/prism-hub:<commit>` from its release |
-| `contracts/services/prism-hubot.yaml` | prism-hubot, a `systemd-release` service under `/opt/prism-hubot` (not a Docker upstream) |
+| `contracts/services/prism-hubot.yaml` | prism-hubot, a container workload behind `/prism-hubot/` |
 
 ## Before the first deployment
 
