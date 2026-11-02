@@ -47,6 +47,17 @@ spec:
       service: nilxone-identity
       upstream: nilxone-identity:1927
       health: /health
+    # The aiaiaiai Identity issuer (docs/unified-auth.md in nilx-one/web): one
+    # origin for every product's sign-in. The whole host goes to the identity
+    # workload, because its OIDC paths (/authorize, /token, /.well-known/*) are
+    # not under /api/v1/.
+    - id: aiaiaiai-auth
+      host: ${AIAIAIAI_AUTH_DOMAIN}
+      pathPrefix: /
+      stripPrefix: false
+      service: nilxone-identity
+      upstream: nilxone-identity:1927
+      health: /health
     - id: nilxone-telegram
       host: ${NILX_WEB_DOMAIN}
       pathPrefix: /telegram/
