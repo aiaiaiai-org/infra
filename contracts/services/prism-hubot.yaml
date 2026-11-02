@@ -5,10 +5,30 @@ metadata:
   name: prism-hubot
   owner: aiaiaiai-org/prism-hubot
 spec:
-  repository: aiaiaiai-org/prism-hubot
+  deployment: production
+  network: aiaiaiai-edge
+  aliases:
+    - prism-hubot
+  protocol: http
+  port: 1927
+  health: /healthz
   runtime:
-    kind: systemd-release
-    deploymentPath: /opt/prism-hubot
-    service: prism-hubot.service
-    releaseRetention: 5
-    postActivateCommand: bundle exec rake telegram:commands
+    kind: container
+    environment:
+      - PRISM_BOT_INSTANCE_ID=prism-hubot
+      - PRISM_HUB_BASE_URL=https://api.aiaiaiai.org/prism-hub
+      - PRISM_HUBOT_WEBHOOK_URL=https://api.aiaiaiai.org/prism-hubot/telegram/webhook
+      - PRISM_HUBOT_INTERACTION_STATE_DIR=/data/interaction-state
+    # Values are prism-hubot's and reach the container only in its sealed envelope.
+    secrets:
+      - PRISM_BOT_TELEGRAM_TOKEN=PRISM_BOT_TELEGRAM_TOKEN
+      - PRISM_BOT_TELEGRAM_WEBHOOK_SECRET=PRISM_BOT_TELEGRAM_WEBHOOK_SECRET
+      - PRISM_HUB_API_TOKEN=PRISM_HUB_API_TOKEN
+    labels:
+      - org.aiaiaiai.product=prism
+      - org.aiaiaiai.service=prism-hubot
+    volumes:
+      - prism-hubot-state:/data
+  public:
+    host: api.aiaiaiai.org
+    pathPrefix: /prism-hubot/

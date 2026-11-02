@@ -228,17 +228,25 @@ jobs:
           grep -Fxq 'prepare_env=services/identity/deploy/prepare-runtime-env.sh' <<< "$output"
           grep -Fxq 'repository=nilx-one/web' <<< "$output"
 
-      - name: Validate systemd release workload contract
+      - name: Validate prism-hubot container contract
         run: |
           set -Eeuo pipefail
           output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb prism-hubot)"
           grep -Fxq 'target=edge-prod-2' <<< "$output"
-          grep -Fxq 'runtime=systemd-release' <<< "$output"
-          grep -Fxq 'repository=aiaiaiai-org/prism-hubot' <<< "$output"
-          grep -Fxq 'deployment_path=/opt/prism-hubot' <<< "$output"
-          grep -Fxq 'service=prism-hubot.service' <<< "$output"
-          grep -Fxq 'release_retention=5' <<< "$output"
-          grep -Fxq 'post_activate_command=bundle exec rake telegram:commands' <<< "$output"
+          grep -Fxq 'runtime=container' <<< "$output"
+          grep -Fxq 'alias=prism-hubot' <<< "$output"
+          grep -Fxq 'port=1927' <<< "$output"
+          grep -Fxq 'health=/healthz' <<< "$output"
+          grep -Fxq 'secrets_from=' <<< "$output"
+          # Its secrets are prism-hubot's and arrive only in its envelope; the names alone are here.
+          secrets="$(sed -n 's/^secrets=//p' <<< "$output" | base64 --decode)"
+          grep -Fxq 'PRISM_BOT_TELEGRAM_TOKEN=PRISM_BOT_TELEGRAM_TOKEN' <<< "$secrets"
+          grep -Fxq 'PRISM_BOT_TELEGRAM_WEBHOOK_SECRET=PRISM_BOT_TELEGRAM_WEBHOOK_SECRET' <<< "$secrets"
+          grep -Fxq 'PRISM_HUB_API_TOKEN=PRISM_HUB_API_TOKEN' <<< "$secrets"
+          environment="$(sed -n 's/^environment=//p' <<< "$output" | base64 --decode)"
+          grep -Fxq 'PRISM_HUBOT_WEBHOOK_URL=https://api.aiaiaiai.org/prism-hubot/telegram/webhook' <<< "$environment"
+          volumes="$(sed -n 's/^volumes=//p' <<< "$output" | base64 --decode)"
+          grep -Fxq 'prism-hubot-state:/data' <<< "$volumes"
 
       - name: Validate aiaiaiai edge workload contracts
         run: |
@@ -599,7 +607,7 @@ jobs:
           set -Eeuo pipefail
           cleanup() {
             docker logs infra-ci-aiaiaiai-caddy >&2 || true
-            docker rm --force infra-ci-aiaiaiai-caddy infra-ci-prism-hub infra-ci-h-ua-bot infra-ci-aiaiaiai-site >/dev/null 2>&1 || true
+            docker rm --force infra-ci-aiaiaiai-caddy infra-ci-prism-hub infra-ci-h-ua-bot infra-ci-prism-hubot infra-ci-aiaiaiai-site >/dev/null 2>&1 || true
             docker network rm infra-ci-aiaiaiai-edge >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
@@ -614,6 +622,11 @@ jobs:
             --network infra-ci-aiaiaiai-edge --network-alias h-ua-bot \
             python:3.13-alpine sh -ec \
             "mkdir -p /srv/api/v1; printf h-ua-bot > /srv/health; printf delivered > /srv/api/v1/delivery; python3 -m http.server 1927 --bind 0.0.0.0 --directory /srv" >/dev/null
+
+          docker run --detach --name infra-ci-prism-hubot \
+            --network infra-ci-aiaiaiai-edge --network-alias prism-hubot \
+            python:3.13-alpine sh -ec \
+            "mkdir -p /srv/telegram; printf prism-hubot > /srv/healthz; printf webhook > /srv/telegram/webhook; python3 -m http.server 1927 --bind 0.0.0.0 --directory /srv" >/dev/null
 
           for _ in $(seq 1 30); do
             docker exec infra-ci-prism-hub wget -q -T 1 -O- http://127.0.0.1:1927/healthz | grep -qx prism-hub && break
@@ -651,6 +664,10 @@ jobs:
           test "$(request /prism-hub/healthz)" = 200 && grep -qx prism-hub /tmp/body
           test "$(request /prism-hub/api/v1/channels)" = 200 && grep -qx channels /tmp/body
           test "$(request /prism-hub)" = 308
+          test "$(request /prism-hubot/healthz)" = 200 && grep -qx prism-hubot /tmp/body
+          test "$(request /prism-hubot/telegram/webhook)" = 200 && grep -qx webhook /tmp/body
+          test "$(request /prism-hubot)" = 308
+          test "$(request /prism-hubot-other/healthz)" = 404
           test "$(request /hua-bot/health)" = 200 && grep -qx h-ua-bot /tmp/body
           test "$(request /hua-bot/api/v1/delivery)" = 200 && grep -qx delivered /tmp/body
           test "$(request /hua-bot)" = 308
