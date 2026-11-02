@@ -10,7 +10,12 @@
 #   3. verifies the image's build provenance: signed by the declared workflow
 #      of the producer repository, from that branch and that commit, on a
 #      GitHub-hosted runner,
-#   4. compares it with the last delivery this repository recorded.
+#   4. for a workload whose contract names runtime secrets, resolves and verifies
+#      the same way the producer's encrypted secret envelope, `<image>:<sha>.secrets`,
+#   5. compares both with the last delivery this repository recorded.
+#
+# Infra holds no product secret: the envelope is encrypted by the producer to the
+# target server's public key and decrypted only inside Deploy workload.
 #
 # Only the branch head is ever planned, so a late run for an older commit can
 # never roll a workload back. Infra reads public producer state with its own
@@ -56,12 +61,16 @@ end
 
 # The producer tags each published image with its full commit SHA. The tag only
 # locates the image; the digest and its provenance are what get trusted.
-def published_digest(image, sha)
-  out, err, ok = run("docker", "buildx", "imagetools", "inspect", "#{image}:#{sha}", "--format", "{{json .Manifest}}")
+def published_digest(image, tag)
+  out, err, ok = run("docker", "buildx", "imagetools", "inspect", "#{image}:#{tag}", "--format", "{{json .Manifest}}")
   return JSON.parse(out).fetch("digest") if ok
   return nil if err.match?(/not found|manifest unknown/i)
 
-  abort("#{image}:#{sha}: cannot read the registry (grant this repository read access to the package): #{err}")
+  abort("#{image}:#{tag}: cannot read the registry (grant this repository read access to the package): #{err}")
+end
+
+def secret_envelope_tag(sha)
+  "#{sha}.secrets"
 end
 
 def verify_provenance!(image, digest, repository, delivery, sha)
@@ -83,12 +92,14 @@ def last_delivery(workload)
   return nil unless deployment
 
   status = gh_json("repos/#{repository}/deployments/#{deployment.fetch('id')}/statuses?per_page=1").first
-  { image: deployment.dig("payload", "image"), state: status ? status.fetch("state") : "pending" }
+  { image: deployment.dig("payload", "image"), secrets: deployment.dig("payload", "secrets").to_s,
+    state: status ? status.fetch("state") : "pending" }
 end
 
-def decide(workload, image_ref, last, force)
+def decide(workload, image_ref, secrets_ref, last, force)
   return [true, "first delivery"] if last.nil?
   return [true, "new image"] unless last[:image] == image_ref
+  return [true, "new secret envelope"] unless last[:secrets] == secrets_ref.to_s
   return [true, "forced redelivery"] if force
   return [false, "already delivered"] if last[:state] == "success"
   return [false, "a delivery of this image is still running"] if IN_FLIGHT.include?(last[:state])
@@ -126,9 +137,25 @@ contracts(dir, option("--workload")).each do |contract|
 
   verify_provenance!(image, digest, repository, delivery, sha)
   image_ref = "#{image}@#{digest}"
-  deliver, reason = decide(workload, image_ref, last_delivery(workload), force)
+
+  secrets_ref = nil
+  unless Array(contract.dig("spec", "runtime", "secrets")).empty?
+    envelope = published_digest(image, secret_envelope_tag(sha))
+    if envelope.nil?
+      summary << "#{workload}: #{repository}@#{sha[0, 12]} has no published secret envelope yet"
+      next
+    end
+    verify_provenance!(image, envelope, repository, delivery, sha)
+    secrets_ref = "#{image}@#{envelope}"
+  end
+
+  deliver, reason = decide(workload, image_ref, secrets_ref, last_delivery(workload), force)
   summary << "#{workload}: #{repository}@#{sha[0, 12]} #{image_ref}: #{reason}"
-  deliveries << { "workload" => workload, "image" => image_ref, "source_sha" => sha } if deliver
+  next unless deliver
+
+  entry = { "workload" => workload, "image" => image_ref, "source_sha" => sha }
+  entry["secrets"] = secrets_ref if secrets_ref
+  deliveries << entry
 end
 
 puts summary

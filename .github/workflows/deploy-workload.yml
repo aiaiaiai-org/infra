@@ -22,6 +22,10 @@ on:
         description: Source release ref
         required: false
         type: string
+      secrets_image:
+        description: Producer's verified secret envelope (ghcr.io/...@sha256:...), for a workload whose contract names secrets
+        required: false
+        type: string
   workflow_call:
     inputs:
       workload:
@@ -38,6 +42,10 @@ on:
         type: string
       ref:
         description: Source release ref
+        required: false
+        type: string
+      secrets_image:
+        description: Producer's verified secret envelope (ghcr.io/...@sha256:...)
         required: false
         type: string
       telegram_oidc_client_id:
@@ -192,10 +200,30 @@ jobs:
           ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" true
 
       # The producer encrypts application credentials for this Environment's SSH
-      # public key. Only the job holding SSH_PRIVATE_KEY can decrypt this request.
-      # Neither repository_dispatch nor infra Secrets stores plaintext credentials.
+      # public key. Only the job holding SSH_PRIVATE_KEY can decrypt them, and infra
+      # stores none of them: they arrive either in a legacy dispatch payload or as
+      # the producer's attested envelope image, `<image>:<sha>.secrets`.
+      - name: Fetch secret envelope
+        if: ${{ inputs.secrets_image != '' }}
+        env:
+          SECRETS_REF: ${{ inputs.secrets_image }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$SECRETS_REF" =~ ^ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$ ]] || { echo "::error::invalid secret envelope reference"; exit 1; }
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin >/dev/null
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          docker pull --quiet "$SECRETS_REF" >/dev/null
+          # The envelope image has no command; one is named only so a container can be created.
+          cid="$(docker create "$SECRETS_REF" /envelope)"
+          umask 077
+          docker cp "$cid:/secrets.age" "$RUNNER_TEMP/workload-secrets.age"
+          docker rm "$cid" >/dev/null
+          docker image rm "$SECRETS_REF" >/dev/null
+          test -s "$RUNNER_TEMP/workload-secrets.age"
+
       - name: Decrypt workload-scoped credentials
-        if: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.secrets_age != '' }}
+        if: ${{ inputs.secrets_image != '' || (github.event_name == 'repository_dispatch' && github.event.client_payload.secrets_age != '') }}
         env:
           WORKLOAD_SECRET_ENVELOPE: ${{ github.event.client_payload.secrets_age }}
         run: |
@@ -203,7 +231,12 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq age
           umask 077
-          printf '%s' "$WORKLOAD_SECRET_ENVELOPE" | age --decrypt --identity "$HOME/.ssh/id_ed25519" > "$RUNNER_TEMP/source-credentials.env"
+          if [[ -s "$RUNNER_TEMP/workload-secrets.age" ]]; then
+            age --decrypt --identity "$HOME/.ssh/id_ed25519" --output "$RUNNER_TEMP/source-credentials.env" "$RUNNER_TEMP/workload-secrets.age"
+            rm -f "$RUNNER_TEMP/workload-secrets.age"
+          else
+            printf '%s' "$WORKLOAD_SECRET_ENVELOPE" | age --decrypt --identity "$HOME/.ssh/id_ed25519" > "$RUNNER_TEMP/source-credentials.env"
+          fi
           test -s "$RUNNER_TEMP/source-credentials.env"
 
       - name: Checkout source release

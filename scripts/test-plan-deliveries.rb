@@ -27,6 +27,11 @@ CONTRACT = <<~YAML
       branch: master
       signerWorkflow: .github/workflows/publish.yml
 YAML
+ENVELOPE_DIGEST = "sha256:#{'e' * 64}"
+SECRETS_REF = "#{IMAGE}@#{ENVELOPE_DIGEST}"
+# A workload that names secrets gets them only in the producer's envelope.
+SECRET_CONTRACT = CONTRACT.sub("\nspec:\n", "\nspec:\n  runtime:\n    kind: container\n    secrets:\n      - TOKEN=EXAMPLE_TOKEN\n")
+abort("SECRET_CONTRACT fixture did not apply") if SECRET_CONTRACT == CONTRACT
 
 # Stubs read the scenario from $STUB_STATE and log their arguments.
 GH_STUB = "#!#{RbConfig.ruby}\n" + <<~'RUBY'
@@ -43,7 +48,9 @@ GH_STUB = "#!#{RbConfig.ruby}\n" + <<~'RUBY'
     puts JSON.generate(state["last_state"] ? [{ "state" => state["last_state"] }] : [])
   elsif path.include?("/deployments?")
     last = state["last_image"]
-    puts JSON.generate(last ? [{ "id" => 7, "payload" => { "image" => last } }] : [])
+    payload = { "image" => last }
+    payload["secrets"] = state["last_secrets"] if state["last_secrets"]
+    puts JSON.generate(last ? [{ "id" => 7, "payload" => payload }] : [])
   else
     warn "unexpected gh api #{path}"
     exit 1
@@ -52,7 +59,14 @@ RUBY
 DOCKER_STUB = "#!#{RbConfig.ruby}\n" + <<~'RUBY'
   require "json"
   state = JSON.parse(File.read(ENV.fetch("STUB_STATE")))
-  if state["published"]
+  if ARGV[3].end_with?(".secrets")
+    if state["envelope"]
+      puts JSON.generate("digest" => state.fetch("envelope"))
+    else
+      warn "ERROR: #{ARGV[3]}: not found"
+      exit 1
+    end
+  elsif state["published"]
     puts JSON.generate("digest" => state.fetch("digest"))
   else
     warn "ERROR: #{ARGV[3]}: not found"
@@ -61,6 +75,7 @@ DOCKER_STUB = "#!#{RbConfig.ruby}\n" + <<~'RUBY'
 RUBY
 
 def plan(state, *args)
+  contract = state.delete("contract") || CONTRACT
   Dir.mktmpdir do |dir|
     bin = File.join(dir, "bin")
     contracts = File.join(dir, "contracts")
@@ -69,7 +84,7 @@ def plan(state, *args)
       File.write(File.join(bin, name), body)
       File.chmod(0o755, File.join(bin, name))
     end
-    File.write(File.join(contracts, "example-site.yaml"), CONTRACT)
+    File.write(File.join(contracts, "example-site.yaml"), contract)
     File.write(File.join(dir, "state.json"), JSON.generate({ "head" => SHA, "digest" => DIGEST }.merge(state)))
     output = File.join(dir, "output")
     env = {
@@ -114,4 +129,16 @@ expect("not published yet", plan("published" => false, "attested" => true), ok: 
 expect("provenance mismatch", plan("published" => true, "attested" => false), ok: false)
 expect("unknown workload", plan(attested, "--workload", "missing"), ok: false)
 expect("workload filter", plan(attested, "--workload", "example-site"), ok: true, count: 1)
-puts "Delivery planner: 10 cases passed"
+sealed = attested.merge("envelope" => ENVELOPE_DIGEST)
+with_secrets = plan(sealed.merge("contract" => SECRET_CONTRACT))
+expect("secret envelope", with_secrets, ok: true, count: 1)
+abort("secret envelope: wrong entry #{with_secrets[:deliveries]}") unless
+  with_secrets[:deliveries] == [{ "workload" => "example-site", "image" => IMAGE_REF, "source_sha" => SHA, "secrets" => SECRETS_REF }]
+abort("secret envelope: envelope provenance not verified") unless
+  with_secrets[:calls].lines.any? { |line| line.start_with?("attestation verify oci://#{SECRETS_REF}") && line.include?("--source-digest #{SHA}") }
+expect("secret envelope not published", plan(attested.merge("contract" => SECRET_CONTRACT)), ok: true, count: 0)
+expect("secret envelope unchanged", plan(sealed.merge("last_image" => IMAGE_REF, "last_secrets" => SECRETS_REF, "last_state" => "success").merge("contract" => SECRET_CONTRACT)), ok: true, count: 0)
+expect("secret envelope rotated", plan(sealed.merge("last_image" => IMAGE_REF, "last_secrets" => "#{IMAGE}@sha256:#{'f' * 64}", "last_state" => "success").merge("contract" => SECRET_CONTRACT)), ok: true, count: 1)
+expect("no envelope without secrets", plan(sealed), ok: true, count: 1)
+abort("no envelope without secrets: entry carries secrets") if plan(sealed)[:deliveries].first.key?("secrets")
+puts "Delivery planner: 15 cases passed"

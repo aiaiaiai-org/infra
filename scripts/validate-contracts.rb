@@ -76,6 +76,14 @@ Dir.glob(SERVER_GLOB).sort.each do |path|
   workloads = Array(fetch!(spec, "workloads", path))
   abort("#{path}: workloads must be non-empty strings") unless workloads.any? && workloads.all? { |value| value.is_a?(String) && !value.empty? }
 
+  # The public half of this server's SSH_PRIVATE_KEY. Producers encrypt their secret
+  # envelopes to it; it is public and is the only key material a contract may hold.
+  recipient = spec["encryptionRecipient"]
+  unless recipient.nil?
+    abort("#{path}: encryptionRecipient must be one ssh-ed25519 public key") unless
+      recipient.is_a?(String) && recipient.match?(%r{\Assh-ed25519 [A-Za-z0-9+/]{68}\z})
+  end
+
   servers[name] = contract
 end
 abort("server contracts: at least one server is required") if servers.empty?
@@ -230,6 +238,17 @@ servers.each do |server_name, server|
 end
 services.each_key do |workload|
   abort("workload #{workload} is not placed on any server") unless placed_on.key?(workload)
+end
+
+# Infra holds no product secret. A delivered workload that names secrets receives them only in
+# the producer's envelope, encrypted to its server's public key, so that server must publish one.
+services.each do |workload, service|
+  next if service.dig("spec", "delivery").nil? || Array(service.dig("spec", "runtime", "secrets")).empty?
+
+  server = placed_on.fetch(workload)
+  next if servers.fetch(server).dig("spec", "encryptionRecipient")
+
+  abort("workload #{workload}: delivered with secrets, but server #{server} has no encryptionRecipient")
 end
 
 edge_on_server = {}

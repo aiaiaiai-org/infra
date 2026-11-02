@@ -72,4 +72,5 @@ jobs:
       workload: ${{ matrix.delivery.workload }}
       image: ${{ matrix.delivery.image }}
       source_sha: ${{ matrix.delivery.source_sha }}
+      secrets_image: ${{ matrix.delivery.secrets }}
     secrets: inherit

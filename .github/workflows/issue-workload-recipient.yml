@@ -1,13 +1,23 @@
 # © 2026 aiaiaiai · aiaiaiai.org
 #
 # Publishes only the public SSH recipient for a workload's resolved target.
-# A dispatch caller cannot select a target or access the private SSH key.
+# A dispatch caller cannot select a target; an infra operator can print a server's key by hand.
+# The private SSH key never leaves the target Environment.
 name: Issue workload encryption recipient
-run-name: Recipient ${{ github.event.client_payload.workload }} / ${{ github.event.client_payload.request_id }}
+run-name: Recipient ${{ inputs.target || format('{0} / {1}', github.event.client_payload.workload, github.event.client_payload.request_id) }}
 
 on:
   repository_dispatch:
     types: [issue-workload-recipient]
+  # Prints a server's public recipient for its contract's spec.encryptionRecipient, which
+  # producers read without any credential. The key is public; the private half never leaves
+  # the target Environment.
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Server contract name (e.g. edge-prod-2)
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -25,10 +35,19 @@ jobs:
       - name: Validate and resolve request
         id: target
         env:
+          TARGET: ${{ inputs.target }}
           WORKLOAD: ${{ github.event.client_payload.workload }}
           REQUEST_ID: ${{ github.event.client_payload.request_id }}
         run: |
           set -Eeuo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            [[ "$TARGET" =~ ^[a-z0-9][a-z0-9-]*$ && -f "contracts/servers/$TARGET.yaml" ]] || {
+              echo "::error::Unknown server target." >&2
+              exit 1
+            }
+            echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           [[ "$WORKLOAD" =~ ^[a-z0-9][a-z0-9-]*$ ]] || {
             echo "::error::Invalid workload." >&2
             exit 1
@@ -60,7 +79,24 @@ jobs:
           [[ "$(wc -l < "$RUNNER_TEMP/recipient.pub")" -eq 1 ]]
           grep -Eq '^ssh-(ed25519|rsa) [A-Za-z0-9+/=]+( .*)?$' "$RUNNER_TEMP/recipient.pub"
           ssh-keygen -lf "$RUNNER_TEMP/recipient.pub" >/dev/null
+      - name: Print public recipient for the server contract
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          TARGET: ${{ needs.resolve.outputs.target }}
+        run: |
+          set -Eeuo pipefail
+          key="$(cut -d' ' -f1,2 "$RUNNER_TEMP/recipient.pub")"
+          [[ "$key" =~ ^ssh-ed25519\ [A-Za-z0-9+/]{68}$ ]] || { echo "::error::encryptionRecipient must be an ssh-ed25519 key" >&2; exit 1; }
+          echo "encryptionRecipient: $key"
+          {
+            echo "### contracts/servers/$TARGET.yaml"
+            echo
+            echo '```yaml'
+            echo "  encryptionRecipient: $key"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Publish short-lived public key artifact
+        if: ${{ github.event_name == 'repository_dispatch' }}
         uses: actions/upload-artifact@v4
         with:
           name: recipient-${{ github.event.client_payload.workload }}-${{ github.event.client_payload.request_id }}
