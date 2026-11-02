@@ -20,6 +20,8 @@ spec:
       - PGPORT=1927
       - POSTGRES_USER=prism_hub
       - POSTGRES_DB=prism_hub
+    # The password is prism-hub's: it comes from prism-hub's delivered envelope, never from infra.
+    secretsFrom: prism-hub
     secrets:
       - POSTGRES_PASSWORD=PRISM_POSTGRES_PASSWORD
     labels:

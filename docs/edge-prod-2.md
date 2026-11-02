@@ -92,9 +92,9 @@ A secret a contract names but the Environment lacks stops the deployment before 
 1. **Edge:** Actions → *Deploy aiaiaiai edge*, with *verify upstreams* **off**. This creates the
    `aiaiaiai-edge` network and starts Caddy. Nothing is routed yet, so nothing is verified.
 2. **Database:** Actions → *Deploy workload*, workload `prism-postgres`, no image (the contract
-   pins it). Healthy when its port accepts connections. Its contract still maps
-   `POSTGRES_PASSWORD` from this Environment; moving that onto prism-hub's envelope is a
-   separate, pending change, and until then this step cannot run without a product secret here.
+   pins it). Healthy when its port accepts connections. Its password is prism-hub's: the contract's
+   `secretsFrom: prism-hub` makes Deploy workload take `PRISM_POSTGRES_PASSWORD` from prism-hub's
+   last delivered envelope, so prism-hub must have been delivered once before.
 3. **prism-hub:** automatic. prism-hub's *Publish image* pushes and attests the image and its
    secret envelope for each verified `master` head, and *Reconcile deliveries* deploys them
    ([automatic-delivery.md](automatic-delivery.md)); dispatch it with workload `prism-hub` to

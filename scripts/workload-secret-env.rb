@@ -7,6 +7,7 @@
 #   ALL_SECRETS      the Environment's secrets as a JSON object (`toJSON(secrets)`)
 #   WORKLOAD_SECRETS base64 of the contract's `runtime.secrets` lines, `ENV_NAME=SECRET_NAME`
 #   WORKLOAD_PRODUCER_ENVIRONMENT base64 of allowlisted producer variable names
+#   WORKLOAD_SECRETS_FROM the workload whose envelope supplies a superset (runtime.secretsFrom)
 #
 # Prints base64 of `ENV_NAME=value` lines for deploy.sh's WORKLOAD_SECRET_ENV. A secret the
 # contract names but the Environment lacks, or leaves empty, stops the deployment: a workload
@@ -76,7 +77,10 @@ if !source_file.empty?
   provider_names = identity ? %w[TELOXIDE_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET NILX_BROWSER_HANDOFF_TOKEN] : []
   extras = secrets.keys - expected - producer_names - provider_names - %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
   missing = expected + producer_names + provider_names - secrets.keys
-  abort("unexpected source credential names") unless extras.empty?
+  # A workload that takes its secrets from another workload's envelope (runtime.secretsFrom)
+  # receives a superset; only the names its own contract maps ever reach its runtime.
+  subset = ENV.fetch("WORKLOAD_SECRETS_FROM", "") != ""
+  abort("unexpected source credential names") unless extras.empty? || subset
   abort("missing contract-specified source credentials") unless missing.empty?
   registry_names = %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
   provided = registry_names.count { |name| secrets.key?(name) }
