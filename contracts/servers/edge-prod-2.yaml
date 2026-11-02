@@ -12,6 +12,9 @@ spec:
     - 443/tcp
     - 443/udp
   runtimeRoot: /opt/infra/targets/edge-prod-2
+  # Public half of this Environment's SSH_PRIVATE_KEY, printed by Issue workload encryption
+  # recipient. Producers encrypt their secret envelopes to it (docs/automatic-delivery.md).
+  encryptionRecipient: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHLqRGs3btQfLFONwvvHVwZhn3VnGDaIioF0elfZbU6d
   workloads:
     - aiaiaiai-site
     - prism-postgres
