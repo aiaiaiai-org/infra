@@ -48,3 +48,10 @@ spec:
       service: h-ua-bot
       upstream: h-ua-bot:1927
       health: /health
+    - id: prism-hubot
+      host: ${PRISM_API_DOMAIN}
+      pathPrefix: /prism-hubot/
+      stripPrefix: true
+      service: prism-hubot
+      upstream: prism-hubot:1927
+      health: /healthz

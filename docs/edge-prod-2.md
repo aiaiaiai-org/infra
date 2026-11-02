@@ -105,22 +105,20 @@ A secret a contract names but the Environment lacks stops the deployment before 
 After that, each step is repeated only for what changed. A database image changes only through a
 reviewed change to its contract.
 
-## Prism Hubot placement and migration
+## Prism Hubot
 
-`prism-hubot` is hosted exclusively on `edge-prod-2`. Its product workflow dispatches
-`deploy-workload` to infra; the server contract selects the `edge-prod-2` GitHub
-Environment. The legacy Prism option in the `edge-prod-1` Deploy workflow has
-been removed to prevent accidental cross-edge releases.
+`prism-hubot` is a container workload on `edge-prod-2`, like prism-hub. Telegram reaches it at
+`https://api.aiaiaiai.org/prism-hubot/telegram/webhook`; Caddy strips `/prism-hubot`. Its
+interaction state lives in the `prism-hubot-state` volume. Its secrets
+(`PRISM_BOT_TELEGRAM_TOKEN`, `PRISM_BOT_TELEGRAM_WEBHOOK_SECRET`, `PRISM_HUB_API_TOKEN`) stay in
+**aiaiaiai-org/prism-hubot → production** and reach the container only in its sealed envelope.
 
-Before the first deployment on `edge-prod-2`, provision Ruby/Bundler, the systemd
-unit and `/opt/prism-hubot/shared/.env` on that server, with the correct owner,
-permissions and runtime variables. If the service was previously active on
-`edge-prod-1`, migrate its required `shared/` state securely, stop the old
-service, and switch the public webhook/origin to the new server during an
-explicitly authorised cutover. Do not start two live consumers of the same
-Telegram bot token or assume that changing a GitHub contract moves any runtime
-files. Verify `/healthz`, Telegram webhook status and Prism delivery after cutover.
-The contract/PR alone does **not** deploy or stop a service.
+The container registers its own webhook and command menu with Telegram when it starts, with the
+URL above and the secret from its envelope; Telegram rejecting either stops the container, so the
+deployment fails visibly. The earlier systemd release under `/opt/prism-hubot` never went live.
+
+Activate the route with *Deploy aiaiaiai edge* before the first deployment, so Telegram's webhook
+registration points at an address that answers.
 
 ## Backups and recovery
 

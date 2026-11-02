@@ -165,7 +165,7 @@ The deployment workflow uses `1927` when `SSH_PORT` is not set. A dedicated test
 - `nilx-web` — deploys and verifies only the `nilx-web` edge surface and owns the nilx wildcard DNS lifecycle;
 - `market` — deploys and verifies only the `market` edge surface;
 
-The selected ref is the infra ref for the 0x1/Market edge surfaces only. Prism Hubot deploys independently via `aiaiaiai-org/prism-hubot` → `repository_dispatch` → `deploy-workload.yml`, which resolves the target `edge-prod-2` from the server contracts. The edge deployment workflow cannot deploy Prism to `edge-prod-1`.
+The selected ref is the infra ref for the 0x1/Market edge surfaces only. Prism workloads are container workloads on `edge-prod-2`, delivered by this repository from their attested images ([docs/automatic-delivery.md](docs/automatic-delivery.md)). The edge deployment workflow cannot deploy Prism to `edge-prod-1`.
 
 
 ## Rollout dependency
@@ -258,16 +258,10 @@ Not every workload is a container. A `WorkloadContract` may declare
 `runtime.kind: systemd-release` when the product is a release-directory service
 managed by systemd.
 
-The `prism-hubot` contract is the first such workload:
+No contract uses it today (`prism-hubot` moved to a container workload).
 
-- repository: `aiaiaiai-org/prism-hubot`;
-- target: resolved from server placement, `edge-prod-2`;
-- deployment path: `/opt/prism-hubot`;
-- service: `prism-hubot.service`;
-- release retention: `5`.
-
-The product workflow supplies only the workload identity and requested release
-ref. Infra reads the repository, target, deployment path, service and retention
+A release-based product workflow supplies only the workload identity and
+requested release ref. Infra reads the repository, target, deployment path, service and retention
 from the merged contract, selects that target's GitHub Environment, and uses its
 existing `SSH_HOST`, `SSH_USER`, `SSH_PRIVATE_KEY` and `SSH_PORT`. The
 product repository therefore holds no box credentials and no deployment path.
