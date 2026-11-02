@@ -95,9 +95,10 @@ A secret a contract names but the Environment lacks stops the deployment before 
    pins it). Healthy when its port accepts connections. Its contract still maps
    `POSTGRES_PASSWORD` from this Environment; moving that onto prism-hub's envelope is a
    separate, pending change, and until then this step cannot run without a product secret here.
-3. **prism-hub:** Actions → *Deploy workload*, workload `prism-hub`, with the verified image and
-   its envelope (`secrets_image`) that prism-hub's publish workflow pushed for that commit. It
-   migrates the database before it serves.
+3. **prism-hub:** automatic. prism-hub's *Publish image* pushes and attests the image and its
+   secret envelope for each verified `master` head, and *Reconcile deliveries* deploys them
+   ([automatic-delivery.md](automatic-delivery.md)); dispatch it with workload `prism-hub` to
+   deliver at once. It migrates the database before it serves.
 4. **Edge again,** with *verify upstreams* **on**: prism-hub answers inside the network, and
    `https://api.aiaiaiai.org/prism-hub/healthz` answers from outside.
 
