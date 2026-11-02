@@ -19,6 +19,10 @@ on:
         description: Producer commit the image was built and attested from
         required: true
         type: string
+      secrets_image:
+        description: Verified secret envelope (image@sha256:...), for a workload whose contract names secrets
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -40,18 +44,20 @@ jobs:
           WORKLOAD: ${{ inputs.workload }}
           IMAGE_REF: ${{ inputs.image }}
           SOURCE_SHA: ${{ inputs.source_sha }}
+          SECRETS_REF: ${{ inputs.secrets_image }}
         run: |
           set -Eeuo pipefail
           [[ "$WORKLOAD" =~ ^[a-z0-9][a-z0-9-]*$ ]]
           [[ "$IMAGE_REF" =~ ^ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$ ]]
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ -z "$SECRETS_REF" || "$SECRETS_REF" =~ ^ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$ ]]
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           jq -n --arg ref "$GITHUB_SHA" --arg environment "delivery/$WORKLOAD" \
-            --arg image "$IMAGE_REF" --arg sha "$SOURCE_SHA" --arg run "$run_url" \
+            --arg image "$IMAGE_REF" --arg secrets "$SECRETS_REF" --arg sha "$SOURCE_SHA" --arg run "$run_url" \
             '{ref: $ref, environment: $environment, auto_merge: false, required_contexts: [],
               transient_environment: false, production_environment: false,
               description: ("Automatic delivery of " + $sha[0:12]),
-              payload: {image: $image, source_sha: $sha, run: $run}}' > "$RUNNER_TEMP/deployment.json"
+              payload: {image: $image, secrets: $secrets, source_sha: $sha, run: $run}}' > "$RUNNER_TEMP/deployment.json"
           id="$(gh api -X POST "repos/$GITHUB_REPOSITORY/deployments" --input "$RUNNER_TEMP/deployment.json" --jq .id)"
           [[ "$id" =~ ^[0-9]+$ ]]
           gh api -X POST "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" \
@@ -65,6 +71,7 @@ jobs:
     with:
       workload: ${{ inputs.workload }}
       image: ${{ inputs.image }}
+      secrets_image: ${{ inputs.secrets_image }}
     secrets: inherit
 
   settle:

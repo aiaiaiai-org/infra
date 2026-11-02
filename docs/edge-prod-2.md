@@ -61,8 +61,6 @@ These are done once, by hand, outside this repository.
    | secret | `SSH_USER` | the deploy user (in the `docker` group) |
    | secret | `SSH_PRIVATE_KEY` | its key |
    | variable | `SSH_PORT` | the SSH port, if not 22022 |
-   | secret | `PRISM_POSTGRES_PASSWORD` | a long random string; the database is created with it and prism-hub connects with it |
-   | secret | `PRISM_HUB_SECRET_KEY_BASE` | 64+ random characters |
 
    The container registry login the workload deployment uses is infra's own
    `github.token`. Every private package it deploys must grant `aiaiaiai-org/infra`
@@ -77,12 +75,15 @@ These are done once, by hand, outside this repository.
    gh secret set SSH_HOST        -R "$repo" --env edge-prod-2 --body '<server>'
    gh secret set SSH_USER        -R "$repo" --env edge-prod-2 --body deploy
    gh secret set SSH_PRIVATE_KEY -R "$repo" --env edge-prod-2 < ~/.ssh/edge-prod-2-deploy
-   openssl rand -hex 32 | gh secret set PRISM_POSTGRES_PASSWORD   -R "$repo" --env edge-prod-2
-   openssl rand -hex 64 | gh secret set PRISM_HUB_SECRET_KEY_BASE -R "$repo" --env edge-prod-2
    ```
 
-   `PRISM_POSTGRES_PASSWORD` is read once, when the database volume is first created. Changing the
-   secret later does not change the database's password.
+   That is all this Environment holds. Product secrets (`PRISM_*`) stay in the product's own
+   Environment and reach a workload only in its encrypted envelope
+   ([automatic-delivery.md](automatic-delivery.md#product-secrets)). The server contract
+   publishes the public half of `SSH_PRIVATE_KEY` as `encryptionRecipient` for that.
+
+   `PRISM_POSTGRES_PASSWORD` is read once, when the database volume is first created. Changing it
+   later does not change the database's password.
 
 A secret a contract names but the Environment lacks stops the deployment before anything changes.
 
@@ -91,9 +92,12 @@ A secret a contract names but the Environment lacks stops the deployment before 
 1. **Edge:** Actions → *Deploy aiaiaiai edge*, with *verify upstreams* **off**. This creates the
    `aiaiaiai-edge` network and starts Caddy. Nothing is routed yet, so nothing is verified.
 2. **Database:** Actions → *Deploy workload*, workload `prism-postgres`, no image (the contract
-   pins it). Healthy when its port accepts connections.
-3. **prism-hub:** from prism-hub, *Deploy production* with the commit to release. It migrates the
-   database before it serves.
+   pins it). Healthy when its port accepts connections. Its contract still maps
+   `POSTGRES_PASSWORD` from this Environment; moving that onto prism-hub's envelope is a
+   separate, pending change, and until then this step cannot run without a product secret here.
+3. **prism-hub:** Actions → *Deploy workload*, workload `prism-hub`, with the verified image and
+   its envelope (`secrets_image`) that prism-hub's publish workflow pushed for that commit. It
+   migrates the database before it serves.
 4. **Edge again,** with *verify upstreams* **on**: prism-hub answers inside the network, and
    `https://api.aiaiaiai.org/prism-hub/healthz` answers from outside.
 
@@ -140,8 +144,8 @@ No new DNS record is needed. Existing `/api/v1/delivery` and
 Hub's workload contract supplies the origin and prefix and maps
 `PRISM_BOT_DELIVERY_SECRET` from the encrypted producer envelope. Configure
 that secret in **aiaiaiai-org/prism-hub → production**, matching
-**0x0sky/h-ua-bot → production → HUA_DELIVERY_SECRET**.
-Use the Hub workflow version that encrypts this additional secret.
+**0x0sky/h-ua-bot → production → HUA_DELIVERY_SECRET**. It is shared between
+the two products and never stored in infra.
 Activate the reviewed edge route before the new Hub workload; neither merge
 activates production. Porter still renders before the bot receives the request.
 

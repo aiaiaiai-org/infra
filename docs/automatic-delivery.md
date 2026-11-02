@@ -60,9 +60,43 @@ verified digest.
 Artifact attestations are available for public repositories. A private producer
 needs a plan that offers them.
 
+## Product secrets
+
+Infra holds only its own `SSH_*` credentials, never a product's secrets. A workload
+whose contract names `runtime.secrets` receives them in an envelope the producer
+publishes next to its image:
+
+1. Its server contract publishes `spec.encryptionRecipient`, the public half of
+   that Environment's `SSH_PRIVATE_KEY`. Run **Issue workload encryption
+   recipient** by hand with the server name to print it. The key is public; the
+   producer reads it from this repository without any credential.
+2. The producer's publish workflow runs in the producer's own Environment,
+   writes exactly the secret names the contract maps (one `NAME=value` per
+   line), encrypts them with `age` to that recipient and pushes them as a
+   one-file image (`FROM scratch`, `/secrets.age`) tagged
+   `ghcr.io/<owner>/<repository>:<full commit SHA>.secrets`. It attests that
+   digest with the same workflow as the image.
+3. **Reconcile deliveries** resolves and verifies the envelope like the image,
+   from the same signer workflow, branch and commit. A head without an envelope
+   is not delivered yet.
+4. **Deploy workload** pulls the envelope by digest and decrypts it only inside
+   the target Environment's job. The values go to the workload's runtime
+   environment and are kept nowhere in infra. The deployment record holds the
+   envelope's digest, never its content.
+
+To rotate a secret, change it in the producer's Environment and re-run its
+publish workflow for the head commit. The new envelope digest is a new delivery.
+`scripts/validate-contracts.rb` rejects a delivered workload with secrets whose
+server publishes no recipient.
+
+The envelope is ciphertext in the producer's package for as long as that tag is
+kept. Everything published under the old recipient becomes readable if that
+server key leaks, so rotate the key and republish when that happens.
+
 ## What still holds secrets
 
 Infra's own server access is unchanged. `SSH_*` stays in the server
-Environments and is used only inside **Deploy workload**. Producers that still
+Environments and is used only inside **Deploy workload**. That is all infra
+holds. Producers that still
 send `repository_dispatch` with a token keep working until they migrate; after
 migration, delete their token secrets.
