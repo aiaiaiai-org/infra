@@ -17,6 +17,7 @@ spec:
   encryptionRecipient: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHLqRGs3btQfLFONwvvHVwZhn3VnGDaIioF0elfZbU6d
   workloads:
     - aiaiaiai-site
+    - 4x-ais
     - prism-postgres
     - prism-hub
     - prism-hubot
