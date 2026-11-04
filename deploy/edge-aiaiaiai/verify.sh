@@ -28,3 +28,10 @@ if docker container inspect aiaiaiai-site >/dev/null 2>&1; then
 else
   echo "aiaiaiai-site workload not deployed; skipping optional website health"
 fi
+
+# AIS is independently delivered. Once its container exists, it must be healthy.
+if docker container inspect 4x-ais >/dev/null 2>&1; then
+  check_upstream 4x-ais http://4x-ais:1927/healthz
+else
+  echo "4x-ais workload not deployed; skipping optional AIS health"
+fi
