@@ -1,0 +1,26 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: 4x-ais
+  owner: aiaiaiai-org/4x-ais
+spec:
+  deployment: production
+  network: aiaiaiai-edge
+  aliases:
+    - 4x-ais
+  protocol: http
+  port: 1927
+  health: /healthz
+  runtime:
+    kind: container
+    labels:
+      - org.aiaiaiai.product=ais
+      - org.aiaiaiai.service=4x-ais
+  public:
+    host: auth.aiaiaiai.org
+    pathPrefix: /
+  delivery:
+    image: ghcr.io/aiaiaiai-org/4x-ais
+    branch: master
+    signerWorkflow: .github/workflows/publish.yml
