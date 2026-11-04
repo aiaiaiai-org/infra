@@ -20,6 +20,12 @@ spec:
       - 443/udp
     tls: automatic
   routes:
+    - id: 4x-ais
+      host: auth.aiaiaiai.org
+      pathPrefix: /
+      service: 4x-ais
+      upstream: 4x-ais:1927
+      health: /healthz
     - id: aiaiaiai-site
       host: ${AIAIAIAI_SITE_DOMAIN}
       pathPrefix: /
