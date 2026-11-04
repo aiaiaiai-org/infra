@@ -127,6 +127,7 @@ jobs:
             return 1
           }
 
+          verify_route "https://auth.aiaiaiai.org/healthz"
           verify_route "https://${AIAIAIAI_SITE_BETA_DOMAIN}/healthz"
           verify_route "https://${PRISM_API_DOMAIN}/prism-hub/healthz"
           verify_route "https://${PRISM_API_DOMAIN}/hua-bot/health"
