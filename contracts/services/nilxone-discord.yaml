@@ -18,3 +18,9 @@ spec:
   public:
     host: nilx.one
     pathPrefix: /discord/
+  # Infra delivers each verified master build on its own (docs/automatic-delivery.md).
+  # The product holds no credential for infra.
+  delivery:
+    image: ghcr.io/nilx-one/web
+    branch: master
+    signerWorkflow: .github/workflows/package-web.yml
