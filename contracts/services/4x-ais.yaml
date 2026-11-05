@@ -23,9 +23,7 @@ spec:
   public:
     host: auth.aiaiaiai.org
     pathPrefix: /
-  # Infra delivers each verified master build on its own (docs/automatic-delivery.md).
-  # The product holds no credential for infra.
-  delivery:
-    image: ghcr.io/aiaiaiai-org/4x-ais
-    branch: master
-    signerWorkflow: .github/workflows/publish.yml
+  # No automatic delivery yet. The planner aborts on any registry error other
+  # than a missing tag, so a private or unpublished package would stop every
+  # other delivery. Add `delivery` after 4x-ais publishes attested images and
+  # grants this repository Read on the package (docs/automatic-delivery.md).
