@@ -34,6 +34,14 @@ spec:
       service: aiaiaiai-site
       upstream: aiaiaiai-site:1927
       health: /healthz
+    # The aiaiaiai auth identity service (aiaiaiai-org/4x-ais). The whole host,
+    # because its OIDC paths (/authorize, /token, /.well-known/*) have no prefix.
+    - id: aiaiaiai-ais
+      host: ${AIAIAIAI_AUTH_DOMAIN}
+      pathPrefix: /
+      service: aiaiaiai-ais
+      upstream: aiaiaiai-ais:1927
+      health: /health
     - id: prism-hub
       host: ${PRISM_API_DOMAIN}
       pathPrefix: /prism-hub/

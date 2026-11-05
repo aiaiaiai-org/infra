@@ -28,3 +28,12 @@ if docker container inspect aiaiaiai-site >/dev/null 2>&1; then
 else
   echo "aiaiaiai-site workload not deployed; skipping optional website health"
 fi
+
+# The auth identity service (aiaiaiai-org/4x-ais) is released independently and
+# may not exist yet. Same rule as the website: skip only when its container is
+# absent; once present, an unhealthy service fails the verification.
+if docker container inspect aiaiaiai-ais >/dev/null 2>&1; then
+  check_upstream aiaiaiai-ais http://aiaiaiai-ais:1927/health
+else
+  echo "aiaiaiai-ais workload not deployed; skipping optional auth health"
+fi

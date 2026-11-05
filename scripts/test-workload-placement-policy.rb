@@ -34,6 +34,7 @@ end
 
 reject_cross_edge_placement("prism-hubot", "edge-prod-2", "edge-prod-1", "edge-prod-2")
 reject_cross_edge_placement("h-ua-bot", "edge-prod-2", "edge-prod-1", "edge-prod-2")
+reject_cross_edge_placement("aiaiaiai-ais", "edge-prod-2", "edge-prod-1", "edge-prod-2")
 reject_cross_edge_placement("nilxone-web", "edge-prod-1", "edge-prod-2", "edge-prod-1")
 reject_cross_edge_placement("market-api-production", "edge-prod-1", "edge-prod-2", "edge-prod-1")
 reject_cross_edge_placement("market-trading-lab", "edge-prod-1", "edge-prod-2", "edge-prod-1")
