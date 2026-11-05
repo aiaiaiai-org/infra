@@ -16,7 +16,7 @@ edge = load_contract.call("contracts/edges/nilx-edge.yaml")
 spec = service.fetch("spec")
 runtime = spec.fetch("runtime")
 
-abort "Trading Lab must belong to new owner" unless service.dig("metadata", "owner") == "0x0sky/trading-lab"
+abort "Trading Lab must belong to new owner" unless service.dig("metadata", "owner") == "0xda-market/trading-lab"
 abort "invalid internal service settings" unless
   spec["deployment"] == "production" &&
   spec["network"] == "nilx-edge" &&

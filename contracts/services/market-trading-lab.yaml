@@ -3,7 +3,7 @@ apiVersion: infra.nilx.one/v1
 kind: WorkloadContract
 metadata:
   name: market-trading-lab
-  owner: 0x0sky/trading-lab
+  owner: 0xda-market/trading-lab
 spec:
   deployment: production
   network: nilx-edge

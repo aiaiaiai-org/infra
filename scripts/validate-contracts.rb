@@ -213,7 +213,6 @@ def expected_target_for(owner, workload)
   return "edge-prod-1" if owner.start_with?("nilx-one/", "0xda-market/")
   return "edge-prod-2" if owner.start_with?("aiaiaiai-org/") && owner != "aiaiaiai-org/infra"
   return "edge-prod-2" if owner == "0x0sky/h-ua-bot"
-  return "edge-prod-1" if owner == "0x0sky/trading-lab"
 
   if owner == "aiaiaiai-org/infra"
     return INFRA_OWNED_PLACEMENTS.fetch(workload) do
