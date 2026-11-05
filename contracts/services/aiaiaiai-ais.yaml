@@ -1,0 +1,25 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: aiaiaiai-ais
+  owner: aiaiaiai-org/4x-ais
+spec:
+  deployment: production
+  network: aiaiaiai-edge
+  aliases:
+    - aiaiaiai-ais
+  protocol: http
+  port: 1927
+  health: /health
+  runtime:
+    kind: container
+    labels:
+      - org.aiaiaiai.product=ais
+      - org.aiaiaiai.service=identity
+  # The aiaiaiai auth identity service: the one sign-in origin for every product
+  # (docs/service-design.md in aiaiaiai-org/4x-ais). Its OIDC paths are not under
+  # a prefix, so the whole host is routed to it.
+  public:
+    host: auth.aiaiaiai.org
+    pathPrefix: /
