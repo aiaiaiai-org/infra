@@ -2,24 +2,30 @@
 apiVersion: infra.nilx.one/v1
 kind: WorkloadContract
 metadata:
-  name: aiaiaiai-ais
+  name: 4x-ais
   owner: aiaiaiai-org/4x-ais
 spec:
   deployment: production
   network: aiaiaiai-edge
   aliases:
-    - aiaiaiai-ais
+    - 4x-ais
   protocol: http
   port: 1927
-  health: /health
+  health: /healthz
   runtime:
     kind: container
     labels:
       - org.aiaiaiai.product=ais
-      - org.aiaiaiai.service=identity
+      - org.aiaiaiai.service=4x-ais
   # The aiaiaiai auth identity service: the one sign-in origin for every product
   # (docs/service-design.md in aiaiaiai-org/4x-ais). Its OIDC paths are not under
   # a prefix, so the whole host is routed to it.
   public:
     host: auth.aiaiaiai.org
     pathPrefix: /
+  # Infra delivers each verified master build on its own (docs/automatic-delivery.md).
+  # The product holds no credential for infra.
+  delivery:
+    image: ghcr.io/aiaiaiai-org/4x-ais
+    branch: master
+    signerWorkflow: .github/workflows/publish.yml

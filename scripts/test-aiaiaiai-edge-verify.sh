@@ -14,7 +14,7 @@ if [[ "$1" == container && "$2" == inspect && "$3" == aiaiaiai-site ]]; then
   [[ "$MOCK_SITE" != absent ]]
   exit
 fi
-if [[ "$1" == container && "$2" == inspect && "$3" == aiaiaiai-ais ]]; then
+if [[ "$1" == container && "$2" == inspect && "$3" == 4x-ais ]]; then
   [[ "$MOCK_AIS" != absent ]]
   exit
 fi
@@ -34,7 +34,7 @@ case "$url" in
   http://prism-hub:1927/healthz) [[ "$MOCK_HUB" == ok ]] ;;
   http://h-ua-bot:1927/health) [[ "$MOCK_BOT" == ok ]] ;;
   http://aiaiaiai-site:1927/healthz) [[ "$MOCK_SITE" == ok ]] ;;
-  http://aiaiaiai-ais:1927/health) [[ "$MOCK_AIS" == ok ]] ;;
+  http://4x-ais:1927/healthz) [[ "$MOCK_AIS" == ok ]] ;;
   *) echo "Unexpected URL" >&2; exit 92 ;;
 esac
 DOCKER
@@ -76,13 +76,13 @@ fi
 export MOCK_HUB=ok MOCK_BOT=ok MOCK_SITE=absent MOCK_AIS=absent
 : > "$tmp/requests"
 bash deploy/edge-aiaiaiai/verify.sh > "$tmp/missing-ais.log"
-grep -Fq 'aiaiaiai-ais workload not deployed; skipping optional auth health' "$tmp/missing-ais.log"
-! grep -Fq 'aiaiaiai-ais' "$tmp/requests"
+grep -Fq '4x-ais workload not deployed; skipping optional auth health' "$tmp/missing-ais.log"
+! grep -Fq '4x-ais' "$tmp/requests"
 
 export MOCK_AIS=ok
 : > "$tmp/requests"
 bash deploy/edge-aiaiaiai/verify.sh > "$tmp/present-ais.log"
-grep -Fxq 'http://aiaiaiai-ais:1927/health' "$tmp/requests"
+grep -Fxq 'http://4x-ais:1927/healthz' "$tmp/requests"
 
 export MOCK_AIS=unhealthy
 : > "$tmp/requests"
