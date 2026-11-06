@@ -48,49 +48,92 @@ authorization and is single-use unless the user explicitly says otherwise.
   If an older generic Git workflow conflicts with this section, this section
   wins unless the repository explicitly declares a current exception.
 
-### Contribution roles and attribution
+### Agent identity and attribution
 
-These rules apply to every human contributor, AI agent and development tool.
-Keep identities configurable outside this file; do not hardcode account names,
-email addresses or tool-specific identities here.
+Applies to every human contributor and to every coding agent and client,
+whatever its product or vendor — for example Kimi, Grok, Claude Code, Codex or
+any other — whenever it writes to GitHub on behalf of a person. The list of
+tools is open; nothing here depends on a particular one. Keep identities
+configurable outside this file; do not hardcode account names, email addresses
+or tool-specific identities here.
 
-- **Human contributor:** accountable person who owns the contribution and PR.
-- **AI agent:** identifiable actor implementing or reviewing changes.
-- **Development tool:** model, IDE or service used by an actor.
+Roles:
 
-A commit must use the actual implementation author's Git identity. Agent-authored
-commits use the identity configured for their execution environment, not the
-human contributor's identity. Agent identity is configured in project-specific instructions and verified
-against the authenticated GitHub connection and execution environment.
-Git author metadata alone does not authenticate an actor. Do not silently
-override the configured identity or impersonate another contributor.
-CI validates attribution trailer syntax without restricting contributors.
-Preserve real human authorship and use `Co-authored-by: Name <email>` only for
-people or agents who materially co-authored the change. Record the actual tool
-separately using `Assisted-by: Tool Name`; this is an informational trailer,
-not a GitHub identity or independent approval. Identify the tool and actual
-authors in the PR description.
+- **Human owner** — the person who asked for the change, owns it and is
+  accountable for it.
+- **Owner's bot** — the human owner's dedicated Git/GitHub bot identity,
+  configured in the execution environment or in project-specific
+  instructions. It authors agent commits.
+- **Tool** — the agent client, model, IDE or service actually doing the work,
+  named as the product calls itself.
 
-The PR creator is the responsible human contributor. Agents may create a PR
-using the human account only with explicit authorization, and must disclose
-agent preparation rather than presenting it as a personal human action.
-If the required identity or permission is unavailable, stop; never silently
-switch to a different account.
+| Action       | Comes from                               | Signature                          |
+|--------------|------------------------------------------|------------------------------------|
+| Commit       | author and committer: owner's bot        | `Assisted-by: <Tool>` trailer      |
+| Pull request | human owner's credentials                | description names tool and bot     |
+| Review       | the reviewing tool                       | `Review by <Tool>` header          |
+| Merge        | human owner's credentials, preferably    | trailers from commits preserved    |
 
-Cross-tool technical review is allowed, including when implementations share
-an agent account. A reviewer must disclose the reviewing actor and tool.
-Technical review is not equivalent to an independent GitHub approval.
-Never claim approval that GitHub has not accepted, dismiss a blocking review
-merely to bypass protection, or circumvent required reviews.
+#### Commits
 
-Merge attribution must identify actual human contributors, agent contributors
-and development tools. Preserve commit history, original authorship and
-repository-required merge method; do not rewrite protected history just to
-change attribution. Do not credit noncontributors as co-authors.
+- Author and committer are the owner's bot identity configured for the
+  environment. Never use the human owner's name or email, and never a tool
+  vendor's noreply address, as the commit author. Git author metadata alone
+  does not authenticate an actor: never impersonate another contributor.
+- Every agent commit ends with `Assisted-by: <Tool>` naming the tool that
+  actually ran, one line per tool. The model may follow in parentheses:
+  `Assisted-by: <Tool> (<model>)`, e.g. `Assisted-by: Kimi` or
+  `Assisted-by: Grok (<model>)`. It is informational, not a GitHub identity
+  or an approval.
+- `Co-authored-by` names people or accounts that materially wrote part of
+  the change. Keep the tool vendor's own trailer when the tool provides one,
+  e.g. `Co-authored-by: <Tool> <vendor noreply address>`: GitHub shows it as a
+  co-author, while `Assisted-by` stays plain text. Use both; neither replaces
+  the other. Never credit noncontributors.
+- CI validates attribution trailer syntax without restricting contributors.
+- If no bot identity is configured, stop and ask. Do not fall back to the
+  human owner's identity.
 
-Before the first write in a task, verify the authenticated account, intended
-actor, repository, branch, author and attribution. Recheck when the session,
-credential, repository or identity context changes. Stop on mismatch. Before merge,
+#### Pull requests
+
+- Open the pull request with the human owner's credentials — the GitHub
+  connection the person gave the tool for this work.
+- The description says the change was prepared with `<Tool>` and that the
+  commits are authored by the owner's bot. Never present agent work as typed
+  by the person.
+- If the owner's credentials are unavailable, stop and ask. Open it from the
+  bot only when the owner explicitly allows it, and then name the human owner
+  in the description. Never switch accounts silently.
+
+#### Reviews
+
+- Cross-tool review is allowed, including when implementations share one bot
+  account. Reviews and review comments are signed by the reviewing tool: the
+  first line reads `**Review by <Tool>**`. A tool reviewing another tool's
+  work names both.
+- Post the review as a comment review. Do not approve with the human owner's
+  credentials: GitHub does not count an approval of your own pull request,
+  and it would present the agent's verdict as the person's approval. Never
+  claim an approval GitHub has not accepted, dismiss a blocking review to
+  bypass protection, or circumvent a required review.
+
+#### Merge
+
+- The final merge is preferably made with the credentials of the human who
+  created the pull request. When the agent works through that person's
+  connection, it merges under the merge rules below. Otherwise it leaves the
+  pull request ready and reports that it waits for the human merge.
+- A squash or merge commit keeps every `Assisted-by` and `Co-authored-by`
+  trailer from the branch commits. Preserve commit history, original
+  authorship and the repository's merge method; do not rewrite protected
+  history just to change attribution.
+
+#### Check before the first write
+
+Verify the authenticated GitHub account, the local Git author and committer,
+the repository and branch, and that they match the roles above. Recheck when
+the session, credentials, repository or environment change. On a mismatch,
+stop and report it instead of switching accounts silently. Before merge,
 verify the exact head CI, required approvals, resolved review threads and
 explicit merge authorization.
 
