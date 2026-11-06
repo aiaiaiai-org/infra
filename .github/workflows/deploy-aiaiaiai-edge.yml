@@ -32,6 +32,7 @@ jobs:
       EDGE_NETWORK: aiaiaiai-edge
       PRISM_API_DOMAIN: api.aiaiaiai.org
       AIAIAIAI_SITE_BETA_DOMAIN: beta.aiaiaiai.org
+      AIAIAIAI_AUTH_DOMAIN: auth.aiaiaiai.org
       REMOTE_EDGE_DIR: .local/share/aiaiaiai-infra/edge-aiaiaiai
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
 
@@ -84,6 +85,7 @@ jobs:
             printf 'EDGE_NETWORK=%s\n' "$EDGE_NETWORK"
             printf 'PRISM_API_DOMAIN=%s\n' "$PRISM_API_DOMAIN"
             printf 'AIAIAIAI_SITE_BETA_DOMAIN=%s\n' "$AIAIAIAI_SITE_BETA_DOMAIN"
+            printf 'AIAIAIAI_AUTH_DOMAIN=%s\n' "$AIAIAIAI_AUTH_DOMAIN"
             printf 'CADDY_IMAGE=caddy:2-alpine\n'
           } > "$RUNNER_TEMP/edge.env"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$REMOTE_EDGE_DIR' && chmod 700 '$REMOTE_EDGE_DIR'"
@@ -112,6 +114,9 @@ jobs:
 
       - name: Verify public HTTPS
         if: ${{ inputs.verify_upstreams }}
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           set -Eeuo pipefail
           verify_route() {
@@ -130,6 +135,14 @@ jobs:
           verify_route "https://${AIAIAIAI_SITE_BETA_DOMAIN}/healthz"
           verify_route "https://${PRISM_API_DOMAIN}/prism-hub/healthz"
           verify_route "https://${PRISM_API_DOMAIN}/hua-bot/health"
+
+          # 4x-ais is released on its own and may not exist yet; verify.sh skips it
+          # the same way. Once its container exists, its public route must answer.
+          if ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "docker container inspect 4x-ais >/dev/null 2>&1"; then
+            verify_route "https://${AIAIAIAI_AUTH_DOMAIN}/healthz"
+          else
+            echo "4x-ais workload not deployed; skipping its public route"
+          fi
 
       - name: Clean secret material
         if: always()
