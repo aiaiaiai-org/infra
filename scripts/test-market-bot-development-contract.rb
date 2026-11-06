@@ -22,6 +22,8 @@ abort "wrong Caddy route" unless route && route["upstream"] == "market-bot-devel
 abort "development must be isolated" unless runtime.fetch("environment").include?("DEPLOY_ENV=development")
 abort "test must not register webhooks during activation" unless runtime.fetch("environment").include?("REGISTER_TELEGRAM_WEBHOOK=0")
 abort "missing secrets" unless runtime.fetch("secrets").length == 4
+abort "development bot must be delivered automatically" unless spec["delivery"] ==
+  { "image" => "ghcr.io/0xda-market/telegram-bot", "branch" => "master", "signerWorkflow" => ".github/workflows/ci.yml" }
 abort "bot must call the development Trading Lab" unless
   runtime.fetch("environment").include?("TRADING_LAB_ORIGIN=http://market-trading-lab-development:1703") &&
   runtime.fetch("secrets").include?("TRADING_LAB_TOKEN=TRADING_LAB_TOKEN")
