@@ -1,10 +1,24 @@
 # © 2026 aiaiaiai · aiaiaiai.org
 #
-# Manual read-only operational verification; no deployments or Telegram sends.
-name: Verify h-ua source cursors
+# Runtime verification; private synthetic delivery requires explicit opt-in inputs.
+name: Verify h-ua runtime and private acceptance
 
 on:
   workflow_dispatch:
+    inputs:
+      acceptance_mode:
+        description: Private acceptance mode (send requires recipient consent)
+        type: choice
+        options: [none, preflight, send-one-private-test]
+        default: none
+      recipient_digest:
+        description: SHA256 of the approved private Telegram chat ID (never the raw ID)
+        type: string
+        default: ''
+      test_id:
+        description: Stable test ID; an attempted send cannot be rerun
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -33,3 +47,12 @@ jobs:
       - name: Query only source cursor metadata
         shell: bash
         run: bash scripts/check-prism-source-cursors.sh
+
+      - name: Private acceptance (explicit opt-in)
+        if: inputs.acceptance_mode != 'none'
+        shell: bash
+        env:
+          E2E_MODE: ${{ inputs.acceptance_mode }}
+          E2E_TARGET_DIGEST: ${{ inputs.recipient_digest }}
+          E2E_TEST_ID: ${{ inputs.test_id }}
+        run: bash scripts/run-prism-private-e2e.sh
