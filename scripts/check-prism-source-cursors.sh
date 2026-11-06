@@ -79,4 +79,18 @@ done < "$ssh_dir/cursors"
 [[ "$seen" -eq 4 ]] || { echo "::error::Expected four source rows, found $seen" >&2; exit 1; }
 
 echo "Cursor presence is NOT proof of successful recent polling: inspect Hub signal scheduler logs for source failures."
+# Private temporary captures are never printed or uploaded as artifacts.
+# Process presence and a recent complete scheduler pass are separate gates.
+ssh_runtime=(ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
+  -o UserKnownHostsFile="$ssh_dir/known_hosts" -o ConnectTimeout=10
+  -i "$ssh_dir/key" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST")
+if ! "${ssh_runtime[@]}" 'docker top prism-hub -eo args' > "$ssh_dir/processes" 2> "$ssh_dir/runtime-error"; then
+  echo "::error::Cannot inspect Hub processes" >&2
+  exit 1
+fi
+if ! "${ssh_runtime[@]}" 'docker logs --since 10m --tail 20000 --timestamps prism-hub 2>&1' > "$ssh_dir/logs" 2> "$ssh_dir/runtime-error"; then
+  echo "::error::Cannot inspect recent Hub logs" >&2
+  exit 1
+fi
+python3 "$(dirname "$0")/check-prism-runtime.py" "$ssh_dir/processes" "$ssh_dir/logs" || result=1
 exit "$result"
