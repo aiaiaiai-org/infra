@@ -1,0 +1,88 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+#
+# Read-only diagnosis of the development Trading Lab path:
+#   Mini App -> market-bot-test -> market-trading-lab-development -> OKX public API.
+# Prints container state, reachability and HTTP status codes. Tokens are never printed:
+# only whether each is set and whether their SHA-256 digests match.
+name: Debug Market Trading Lab (development)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    name: Inspect bot -> Trading Lab -> OKX (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: edge-prod-1
+    env:
+      SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          install -m 0700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 0600 "$HOME/.ssh/id_ed25519"
+          ssh-keyscan -T 10 -p "$SSH_PORT" -H "$SSH_HOST" > "$HOME/.ssh/known_hosts"
+          test -s "$HOME/.ssh/known_hosts"
+
+      - name: Inspect the Trading Lab path
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE' | tee "$RUNNER_TEMP/report.txt"
+          set -u
+          lab=market-trading-lab-development
+          bot=market-bot-test
+          echo "## containers"
+          docker ps -a --filter name=market-trading-lab --filter name=market-bot \
+            --format '{{.Names}}  {{.Status}}  {{.Image}}' || true
+          echo
+          echo "## tokens (never printed)"
+          empty="$(printf '' | sha256sum | cut -c1-64)"
+          lab_hash="$(docker exec "$lab" sh -c 'printf %s "${TRADING_LAB_SERVICE_TOKEN:-}"' 2>/dev/null | sha256sum | cut -c1-64)"
+          bot_hash="$(docker exec "$bot" sh -c 'printf %s "${TRADING_LAB_TOKEN:-}"' 2>/dev/null | sha256sum | cut -c1-64)"
+          echo "lab TRADING_LAB_SERVICE_TOKEN set: $([[ "$lab_hash" != "$empty" ]] && echo yes || echo no)"
+          echo "bot TRADING_LAB_TOKEN set: $([[ "$bot_hash" != "$empty" ]] && echo yes || echo no)"
+          echo "tokens match: $([[ "$lab_hash" == "$bot_hash" ]] && echo yes || echo NO)"
+          echo "bot TRADING_LAB_ORIGIN: $(docker exec "$bot" sh -c 'printf %s "${TRADING_LAB_ORIGIN:-<unset>}"' 2>/dev/null || echo '<exec failed>')"
+          echo
+          echo "## bot -> lab /health"
+          docker exec "$bot" ruby -rnet/http -e '
+            r = Net::HTTP.get_response(URI("http://market-trading-lab-development:1703/health"))
+            puts "#{r.code} #{r.body.to_s[0, 120]}"' 2>&1 | tail -n 3 || true
+          echo
+          echo "## bot -> lab GET /v1/leaders/okx?limit=1 with the bot token"
+          docker exec "$bot" ruby -rnet/http -e '
+            u = URI("http://market-trading-lab-development:1703/v1/leaders/okx?limit=1")
+            q = Net::HTTP::Get.new(u)
+            q["authorization"] = "Bearer #{ENV.fetch("TRADING_LAB_TOKEN", "")}"
+            r = Net::HTTP.start(u.host, u.port, read_timeout: 15) { |h| h.request(q) }
+            puts "#{r.code} #{r.body.to_s[0, 300]}"' 2>&1 | tail -n 3 || true
+          echo
+          echo "## lab -> OKX public lead traders"
+          docker exec "$lab" ruby -rnet/http -e '
+            r = Net::HTTP.get_response(URI("https://www.okx.com/api/v5/copytrading/public-lead-traders?instType=SWAP&limit=1"))
+            puts "#{r.code} #{r.body.to_s[0, 200]}"' 2>&1 | tail -n 3 || true
+          echo
+          echo "## recent lab log"
+          docker logs --tail 40 "$lab" 2>&1 || true
+          echo
+          echo "## recent bot log lines about Trading Lab or errors"
+          docker logs --tail 300 "$bot" 2>&1 | grep -iE 'trading|leader|error|exception|502' | tail -n 40 || true
+          REMOTE
+          { echo '```'; cat "$RUNNER_TEMP/report.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
