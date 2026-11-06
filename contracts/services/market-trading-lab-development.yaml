@@ -1,0 +1,30 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: market-trading-lab-development
+  owner: 0xda-market/trading-lab
+spec:
+  deployment: test
+  network: nilx-edge
+  aliases:
+    - market-trading-lab-development
+  protocol: http
+  port: 1703
+  health: /health
+  # Infra delivers each verified master build on its own (docs/automatic-delivery.md). Its
+  # service token arrives only in trading-lab's attested envelope; infra stores none of it.
+  delivery:
+    image: ghcr.io/0xda-market/trading-lab
+    branch: master
+    signerWorkflow: .github/workflows/ci.yml
+  runtime:
+    kind: container
+    # No public route. Only the development bot on nilx-edge calls this paper-only service.
+    environment:
+      - PORT=1703
+    secrets:
+      - TRADING_LAB_SERVICE_TOKEN=TRADING_LAB_SERVICE_TOKEN
+    labels:
+      - org.aiaiaiai.product=0xda-market
+      - org.aiaiaiai.service=trading-lab

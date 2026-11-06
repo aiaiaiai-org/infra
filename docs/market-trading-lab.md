@@ -2,7 +2,7 @@
 
 # Trading Lab private deployment
 
-Workload: `market-trading-lab`. Application owner: [`0xda-market/trading-lab`](https://github.com/0xda-market/trading-lab).
+Workloads: `market-trading-lab` (production, port `1927`) and `market-trading-lab-development` (test, port `1703`, automatic delivery from `master`). Application owner: [`0xda-market/trading-lab`](https://github.com/0xda-market/trading-lab).
 
 The workload runs in `edge-prod-1`, on the external `nilx-edge` Docker network, alias `market-trading-lab`, port `1927`. No edge host, public DNS name, public route or database is allocated.
 
@@ -33,3 +33,16 @@ The `market-bot-production` contract currently lacks its own complete production
 4. Enable the bot only after the backend is healthy and its separate production deployment contract is reviewed.
 
 Neither a PR nor a successful GitHub Actions image build authorizes activation.
+
+## Development delivery
+
+`market-trading-lab-development` is delivered automatically (docs/automatic-delivery.md).
+After push Full CI passes on `master`, the trading-lab `ci.yml` publish job pushes
+`ghcr.io/0xda-market/trading-lab:<sha>` and the envelope `:<sha>.secrets`. The envelope holds
+`TRADING_LAB_SERVICE_TOKEN` from the trading-lab `development` Environment, encrypted to the
+`edge-prod-1` `encryptionRecipient`. Both are attested by that job. The package must grant
+`aiaiaiai-org/infra` **Read** under *Manage Actions access*.
+
+The development bot (`market-bot-test`) reaches it at
+`TRADING_LAB_ORIGIN=http://market-trading-lab-development:1703` with `TRADING_LAB_TOKEN`
+(the same value) in its own secret envelope.

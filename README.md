@@ -27,7 +27,7 @@ the network of the edge on the server it is placed on, and an edge routes only t
 | 0x1 | `edge-prod-1` | `nilx-edge` | `nilx.one`, `0xda-market.nilx.one` | [`contracts/edges/nilx-edge.yaml`](contracts/edges/nilx-edge.yaml) |
 | aiaiaiai | `edge-prod-2` | `aiaiaiai-edge` | `aiaiaiai.org`, `api.aiaiaiai.org`, Prism services, `h-ua-bot` | [`contracts/edges/aiaiaiai-edge.yaml`](contracts/edges/aiaiaiai-edge.yaml) |
 
-**Product placement policy:** workloads from `nilx-one/*` and `0xda-market/*` run only on `edge-prod-1`; workloads from `aiaiaiai-org/*` and `0x0sky/h-ua-bot` run only on `edge-prod-2`. `0xda-market/trading-lab` (workload `market-trading-lab`) follows the Market rule; infrastructure-owned PostgreSQL workloads follow their product (`market-postgres-production` on `edge-prod-1`, `prism-postgres` on `edge-prod-2`). `aiaiaiai-org/infra` orchestrates both edges but is not itself an application workload. CI enforces these boundaries.
+**Product placement policy:** workloads from `nilx-one/*` and `0xda-market/*` run only on `edge-prod-1`; workloads from `aiaiaiai-org/*` and `0x0sky/h-ua-bot` run only on `edge-prod-2`. `0xda-market/trading-lab` (workloads `market-trading-lab` and `market-trading-lab-development`) follows the Market rule; infrastructure-owned PostgreSQL workloads follow their product (`market-postgres-production` on `edge-prod-1`, `prism-postgres` on `edge-prod-2`). `aiaiaiai-org/infra` orchestrates both edges but is not itself an application workload. CI enforces these boundaries.
 
 The sections below up to **Workload deployment** describe the 0x1 edge. The aiaiaiai edge, and how
 to bring `edge-prod-2` up, is [`docs/edge-prod-2.md`](docs/edge-prod-2.md).
@@ -84,6 +84,7 @@ Current workload owners:
 - `market-api-production` → `0xda-market/core`;
 - `market-bot-production` → `0xda-market/telegram-bot` (`0xda-market`);
 - `market-bot-test` → `0xda-market/telegram-bot` (`0xda-market-test`);
+- `market-trading-lab`, `market-trading-lab-development` → `0xda-market/trading-lab` (private, no public route);
 - `nilxone-web`, `nilxone-telegram`, `nilxone-discord` → `nilx-one/web` (`0x1`).
 
 ## Contracts

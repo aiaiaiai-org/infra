@@ -55,4 +55,23 @@ Tempfile.create("trading-lab-credential") do |file|
   abort "unexpected extra credentials accepted" if code.success?
 end
 
+development = load_contract.call("contracts/services/market-trading-lab-development.yaml")
+dev = development.fetch("spec")
+abort "development Trading Lab owner" unless development.dig("metadata", "owner") == "0xda-market/trading-lab"
+abort "invalid development Trading Lab settings" unless
+  dev["deployment"] == "test" && dev["network"] == "nilx-edge" && dev["aliases"] == ["market-trading-lab-development"] &&
+  dev["port"] == 1703 && dev["health"] == "/health" && !dev.key?("public") &&
+  dev.dig("runtime", "environment") == ["PORT=1703"] &&
+  dev.dig("runtime", "secrets") == ["TRADING_LAB_SERVICE_TOKEN=TRADING_LAB_SERVICE_TOKEN"]
+abort "development Trading Lab delivery" unless dev["delivery"] ==
+  { "image" => "ghcr.io/0xda-market/trading-lab", "branch" => "master", "signerWorkflow" => ".github/workflows/ci.yml" }
+abort "missing development placement" unless server.dig("spec", "workloads").include?("market-trading-lab-development")
+abort "edge-prod-1 needs an encryption recipient" unless server.dig("spec", "encryptionRecipient").to_s.start_with?("ssh-ed25519 ")
+abort "development Trading Lab must not have a public route" if edge.dig("spec", "routes").any? { |route| route["service"] == "market-trading-lab-development" }
+dev_out, dev_err, dev_status = Open3.capture3({ "GITHUB_OUTPUT" => nil }, "ruby", File.join(ROOT, "scripts/resolve-workload-target.rb"), "market-trading-lab-development")
+abort dev_err unless dev_status.success?
+%w[target=edge-prod-1 alias=market-trading-lab-development port=1703].each do |line|
+  abort "invalid development resolution: #{line}" unless dev_out.lines.map(&:strip).include?(line)
+end
+
 puts "private Trading Lab workload placement and secret contract verified"

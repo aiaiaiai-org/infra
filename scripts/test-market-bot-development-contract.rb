@@ -21,7 +21,10 @@ route = edge.dig("spec", "routes").find { |r| r["service"] == "market-bot-test" 
 abort "wrong Caddy route" unless route && route["upstream"] == "market-bot-development:10000"
 abort "development must be isolated" unless runtime.fetch("environment").include?("DEPLOY_ENV=development")
 abort "test must not register webhooks during activation" unless runtime.fetch("environment").include?("REGISTER_TELEGRAM_WEBHOOK=0")
-abort "missing secrets" unless runtime.fetch("secrets").length == 3
+abort "missing secrets" unless runtime.fetch("secrets").length == 4
+abort "bot must call the development Trading Lab" unless
+  runtime.fetch("environment").include?("TRADING_LAB_ORIGIN=http://market-trading-lab-development:1703") &&
+  runtime.fetch("secrets").include?("TRADING_LAB_TOKEN=TRADING_LAB_TOKEN")
 abort "missing public vars" unless runtime.fetch("producerEnvironment").sort == %w[TELEGRAM_BOT_USERNAME MARKET_API_URL PUBLIC_URL].sort
 
 # Verify that the actual infra resolver and credential allowlist accept only configured names.
@@ -34,6 +37,7 @@ envelope = {
   "TELEGRAM_BOT_TOKEN" => "ci-only",
   "TELEGRAM_WEBHOOK_SECRET" => "ci-only-webhook",
   "MARKET_API_TOKEN" => "ci-only-api",
+  "TRADING_LAB_TOKEN" => "ci-only-lab",
   "TELEGRAM_BOT_USERNAME" => "zeroxda_market_test_bot",
   "MARKET_API_URL" => "http://market-api-development:10000",
   "PUBLIC_URL" => "https://0xda-market.nilx.one/bot-test"

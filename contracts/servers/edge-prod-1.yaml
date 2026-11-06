@@ -12,6 +12,9 @@ spec:
     - 443/tcp
     - 443/udp
   runtimeRoot: /opt/infra/targets/edge-prod-1
+  # Public half of this Environment's SSH_PRIVATE_KEY, printed by Issue workload encryption
+  # recipient. Producers encrypt their secret envelopes to it (docs/automatic-delivery.md).
+  encryptionRecipient: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHAMCMjolxisrPf5ELo+rY9NXstsnwdqQZReBDbXw1jN
   workloads:
     - market-postgres-production
     - market-api-production
@@ -20,6 +23,7 @@ spec:
     - market-prices-development
     - market-bot-production
     - market-trading-lab
+    - market-trading-lab-development
     - market-bot-test
     - market-webapp-development
     - nilxone-web
