@@ -20,6 +20,7 @@ Product repositories should therefore not choose an application port independent
 ## Current classes
 
 - `market-bot-test` → `test` → `market-bot-development:1703`
+- `market-trading-lab-development` → `test` → `market-trading-lab-development:1703` (private, no route)
 - `market-api-production` → `production` → `market-api-production:1927`
 - `market-bot-production` → `production` → `market-bot-production:1927`
 - `nilxone-web` → `production` → `nilxone-web:1927`
