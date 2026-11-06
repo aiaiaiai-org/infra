@@ -84,8 +84,20 @@ echo "Cursor presence is NOT proof of successful recent polling: inspect Hub sig
 ssh_runtime=(ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
   -o UserKnownHostsFile="$ssh_dir/known_hosts" -o ConnectTimeout=10
   -i "$ssh_dir/key" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST")
-if ! "${ssh_runtime[@]}" 'docker top prism-hub -eo args' > "$ssh_dir/processes" 2> "$ssh_dir/runtime-error"; then
-  python3 -c 'import re,sys; s=open(sys.argv[1]).read(); print("::error::Cannot inspect Hub processes; categories=" + ",".join(k for k in ["permission denied","not allowed","not found","No such container","not running","unknown flag","unrecognized option","ps","invalid","Connection","docker"] if k in s))' "$ssh_dir/runtime-error" >&2
+# Docker top depends on the host's ps implementation; read container /proc with
+# its installed Ruby runtime instead. Exclude this observer's own command.
+if ! "${ssh_runtime[@]}" 'docker exec -i prism-hub ruby' > "$ssh_dir/processes" 2> "$ssh_dir/runtime-error" <<'RUBY'
+Dir.glob("/proc/[0-9]*/cmdline").each do |path|
+  next if path.split("/")[2].to_i == Process.pid
+  begin
+    puts File.binread(path).tr("\x00", " ")
+  rescue Errno::ENOENT, Errno::EACCES, Errno::ESRCH
+    next
+  end
+end
+RUBY
+then
+  echo "::error::Cannot inspect Hub process metadata" >&2
   exit 1
 fi
 if ! "${ssh_runtime[@]}" 'docker logs --since 10m --tail 20000 --timestamps prism-hub 2>&1' > "$ssh_dir/logs" 2> "$ssh_dir/runtime-error"; then
