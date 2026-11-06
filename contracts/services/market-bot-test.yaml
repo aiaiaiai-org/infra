@@ -14,6 +14,12 @@ spec:
   public:
     host: 0xda-market.nilx.one
     pathPrefix: /bot-test/
+  # Infra delivers each verified master build on its own (docs/automatic-delivery.md). Its
+  # credentials and producer variables arrive only in telegram-bot's attested envelope.
+  delivery:
+    image: ghcr.io/0xda-market/telegram-bot
+    branch: master
+    signerWorkflow: .github/workflows/ci.yml
   runtime:
     kind: container
     environment:
