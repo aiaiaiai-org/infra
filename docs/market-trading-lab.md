@@ -2,7 +2,7 @@
 
 # Trading Lab private deployment
 
-Workload: `market-trading-lab`. Application owner: [`0x0sky/trading-lab`](https://github.com/0x0sky/trading-lab).
+Workload: `market-trading-lab`. Application owner: [`0xda-market/trading-lab`](https://github.com/0xda-market/trading-lab).
 
 The workload runs in `edge-prod-1`, on the external `nilx-edge` Docker network, alias `market-trading-lab`, port `1927`. No edge host, public DNS name, public route or database is allocated.
 
@@ -15,7 +15,7 @@ The bot validates Telegram initData and resolves a Market Core user before calli
 
 ## Secret ownership
 
-- `0x0sky/trading-lab`, Environment `production`: `TRADING_LAB_SERVICE_TOKEN`.
+- `0xda-market/trading-lab`, Environment `production`: `TRADING_LAB_SERVICE_TOKEN`.
 - `0xda-market/telegram-bot`, Environment `production`: `TRADING_LAB_TOKEN` with the **same** random value.
 - The bot's nonsecret configuration is `TRADING_LAB_ORIGIN=http://market-trading-lab:1927`, accepted only as the specifically allowlisted Docker host.
 
