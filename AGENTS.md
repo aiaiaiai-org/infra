@@ -96,14 +96,16 @@ Roles:
 
 #### Pull requests
 
-- Open the pull request with the human owner's credentials — the GitHub
-  connection the person gave the tool for this work.
+- Prefer opening the pull request with the human owner's credentials — the
+  GitHub connection the person gave the tool for this work. This is a
+  recommendation, not a hard requirement.
 - The description says the change was prepared with `<Tool>` and that the
   commits are authored by the owner's bot. Never present agent work as typed
   by the person.
-- If the owner's credentials are unavailable, stop and ask. Open it from the
-  bot only when the owner explicitly allows it, and then name the human owner
-  in the description. Never switch accounts silently.
+- If the owner's credentials are unavailable, use the credentials that are
+  available, such as the owner's bot, and name the human owner and the
+  opening account in the description. Never present it as the person's own
+  action.
 
 #### Reviews
 
@@ -175,10 +177,11 @@ Deployment is a separate protected step after merge.
 
 ### Pull requests
 
-The responsible human contributor creates the pull request under their own
-identity, or explicitly authorizes an agent to create it using that identity.
-Agents prepare the branch, commits, description and review materials. Never
-substitute the agent's account as PR creator without explicit authorization.
+The responsible human contributor owns the pull request. Prefer creating it
+under their identity; when that identity is unavailable to the agent, create it
+with the credentials that are available and name the human owner, as described
+in "Agent identity and attribution". Agents prepare the branch, commits,
+description and review materials.
 
 Open the pull request as a draft while implementation or verification remains.
 
