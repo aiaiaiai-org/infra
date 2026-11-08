@@ -1,0 +1,91 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Identity operator
+run-name: Execute Core Identity request ${{ inputs.request_run_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_run_id:
+        description: Successful fresh Core operator request run ID (master only)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+  attestations: read
+
+concurrency:
+  group: production-identity-operator
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    if: github.repository == 'aiaiaiai-org/infra' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: edge-prod-1
+    env:
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+      OPERATOR_ACTOR_IDS: ${{ vars.IDENTITY_OPERATOR_ACTOR_IDS || '75973992,300452669' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate Core provenance and request before accessing SSH secrets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUEST_RUN_ID: ${{ inputs.request_run_id }}
+          CALLER_ACTOR_ID: ${{ github.actor_id }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          python3 scripts/identity-operator-request.py "$REQUEST_RUN_ID"
+      - name: Configure existing infra SSH access
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]] && (( SSH_PORT > 0 && SSH_PORT <= 65535 ))
+          install -m 0700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 0600 "$HOME/.ssh/id_ed25519"
+          ssh-keyscan -T 10 -p "$SSH_PORT" -H "$SSH_HOST" > "$HOME/.ssh/known_hosts"
+          test -s "$HOME/.ssh/known_hosts"
+      - name: Execute against verified production Identity volume
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh_args=(-o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT")
+          remote="$(ssh "${ssh_args[@]}" "$SSH_USER@$SSH_HOST" 'mktemp -d /tmp/nilxone-operator.XXXXXXXXXX')"
+          [[ "$remote" =~ ^/tmp/nilxone-operator\.[A-Za-z0-9]{10}$ ]]
+          cleanup() { ssh "${ssh_args[@]}" "$SSH_USER@$SSH_HOST" "rm -f '$remote/nilxone-identity-operator'; rmdir '$remote'" || true; }
+          trap cleanup EXIT
+          chmod 0555 operator-bundle/nilxone-identity-operator
+          scp -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" \
+            operator-bundle/nilxone-identity-operator "$SSH_USER@$SSH_HOST:$remote/nilxone-identity-operator"
+          encoded="$(base64 -w0 operator-bundle/request.json)"
+          digest="$(python3 -c 'import json; print(json.load(open("operator-provenance.json"))["tool_sha256"])')"
+          ssh "${ssh_args[@]}" "$SSH_USER@$SSH_HOST" \
+            "python3 - '$remote' '$encoded' '$digest'" < scripts/execute-identity-operator.py > operator-result.json
+          python3 -m json.tool operator-result.json
+      - name: Preserve observed result and source provenance
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: identity-operator-result
+          path: |
+            operator-result.json
+            operator-provenance.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Remove runner key
+        if: always()
+        run: rm -f "$HOME/.ssh/id_ed25519"
