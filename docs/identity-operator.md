@@ -20,7 +20,12 @@ selected addresses/role; they never contain the production database or results.
 2. Copy its successful request run ID into infra's **Identity operator** workflow
    on master. This second manual action authorizes execution of that exact
    request. No workflow runs automatically after a pull request or merge.
-3. Read the actual execution result and provenance artifact. A successful Core
+3. Read the execution receipt and provenance artifact. The summary gives a
+   `sudo cat /tmp/nilxone-operator.<random>/result.json` command for the actual
+   result on edge-prod-1. The result is mode 0600 inside a mode 0700 directory;
+   registered users are never printed in the public workflow or uploaded as a
+   public artifact. Remove that temporary result after reading when desired.
+   A successful Core
    preparation alone is never evidence of a database change.
 
 The actor-ID allowlist defaults to the project owner's two configured GitHub

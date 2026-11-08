@@ -5,6 +5,7 @@
 import base64
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -40,6 +41,17 @@ def docker_command(container, binary, args):
             "--entrypoint", "/operator", container["Image"], *args]
 
 
+def public_receipt(container, result, result_path):
+    # infra is public: a registered-user directory is operator data, not a
+    # public workflow log or downloadable GitHub artifact.
+    return {"image_id": container["Image"],
+            "image": container["Config"]["Image"],
+            "contract_label": (container["Config"].get("Labels") or {}).get("one.nilx.identity.contract"),
+            "volume": "nilxone-identity-data", "result_file": str(result_path),
+            "row_count": len(result["bonds"]) if "bonds" in result else None,
+            "status": result.get("status", "listed")}
+
+
 def main():
     directory, encoded, digest = sys.argv[1:]
     require(re.fullmatch(r"/tmp/nilxone-operator\.[A-Za-z0-9]{10}", directory), "invalid temporary directory")
@@ -53,11 +65,12 @@ def main():
     require(isinstance(args, list) and all(isinstance(v, str) and 0 < len(v) <= 256 for v in args), "invalid arguments")
     container = json.loads(subprocess.check_output(["docker", "inspect", "nilxone-identity"], text=True))[0]
     command = docker_command(container, str(binary), args)
-    output = subprocess.check_output(command, text=True)
-    print(json.dumps({"image_id": container["Image"],
-                      "image": container["Config"]["Image"],
-                      "contract_label": (container["Config"].get("Labels") or {}).get("one.nilx.identity.contract"),
-                      "volume": "nilxone-identity-data", "result": json.loads(output)}, ensure_ascii=False))
+    result = json.loads(subprocess.check_output(command, text=True))
+    result_path = Path(directory) / "result.json"
+    fd = os.open(result_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as output:
+        json.dump(result, output, ensure_ascii=False)
+    print(json.dumps(public_receipt(container, result, result_path), ensure_ascii=False))
 
 
 if __name__ == "__main__":

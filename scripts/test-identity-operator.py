@@ -33,7 +33,7 @@ class OperatorTests(unittest.TestCase):
     def container(self):
         return {"State": {"Running": True, "Health": {"Status": "healthy"}},
                 "Image": "sha256:" + "a" * 64,
-                "Config": {"User": "identity", "Env": ["DATABASE_URL=sqlite:///data/identity.db"]},
+                "Config": {"User": "identity", "Image": "verified-image", "Env": ["DATABASE_URL=sqlite:///data/identity.db"]},
                 "Mounts": [{"Destination": "/data", "Type": "volume", "Name": "nilxone-identity-data"}]}
 
     def test_only_trusted_successful_master_requests_are_accepted(self):
@@ -132,6 +132,14 @@ class OperatorTests(unittest.TestCase):
         self.assertIn("--read-only", mutation)
         self.assertEqual(mutation[mutation.index("--network") + 1], "none")
         self.assertEqual(mutation[mutation.index("--pull") + 1], "never")
+
+    def test_public_receipt_never_exports_registered_users(self):
+        result = {"bonds": [{"pub_dress": "0x1private-directory-entry", "global_role": "admin"}]}
+        receipt = execute.public_receipt(self.container(), result, "/tmp/private/result.json")
+        self.assertEqual(receipt["row_count"], 1)
+        self.assertEqual(receipt["result_file"], "/tmp/private/result.json")
+        self.assertNotIn("private-directory-entry", json.dumps(receipt))
+        self.assertNotIn("global_role", json.dumps(receipt))
 
 
 if __name__ == "__main__":

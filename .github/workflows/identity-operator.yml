@@ -66,7 +66,7 @@ jobs:
           ssh_args=(-o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT")
           remote="$(ssh "${ssh_args[@]}" "$SSH_USER@$SSH_HOST" 'mktemp -d /tmp/nilxone-operator.XXXXXXXXXX')"
           [[ "$remote" =~ ^/tmp/nilxone-operator\.[A-Za-z0-9]{10}$ ]]
-          cleanup() { ssh "${ssh_args[@]}" "$SSH_USER@$SSH_HOST" "rm -f '$remote/nilxone-identity-operator'; rmdir '$remote'" || true; }
+          cleanup() { ssh "${ssh_args[@]}" "$SSH_USER@$SSH_HOST" "rm -f '$remote/nilxone-identity-operator'; rmdir '$remote' 2>/dev/null || true" || true; }
           trap cleanup EXIT
           chmod 0555 operator-bundle/nilxone-identity-operator
           scp -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" \
@@ -76,6 +76,18 @@ jobs:
           ssh "${ssh_args[@]}" "$SSH_USER@$SSH_HOST" \
             "python3 - '$remote' '$encoded' '$digest'" < scripts/execute-identity-operator.py > operator-result.json
           python3 -m json.tool operator-result.json
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          result = json.load(open('operator-result.json'))
+          print('## Observed execution receipt')
+          print('Status:', result['status'])
+          print('Listed rows:', result['row_count'])
+          print('Read the private result on edge-prod-1:')
+          print('```bash')
+          print('sudo cat ' + result['result_file'])
+          print('```')
+          print('The result file is mode 0600 inside a mode 0700 directory; its contents are not uploaded to GitHub.')
+          PY
       - name: Preserve observed result and source provenance
         if: success()
         uses: actions/upload-artifact@v4
