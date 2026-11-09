@@ -3,9 +3,9 @@
 # frozen_string_literal: true
 
 # market-api-production's invariants: its secrets come only from Core's
-# attested envelope, the database password is never in the URL and is the very
-# secret market-postgres-production is created with, and it listens on the
-# contract port the edge routes to.
+# attested envelope, its database credentials derive from the very secret
+# market-postgres-production is created with, and it listens on the contract
+# port the edge routes to.
 
 require "yaml"
 
@@ -26,12 +26,15 @@ abort "must be a production container" unless spec["deployment"] == "production"
 abort "must listen on the contract port" unless spec["port"] == 1927 && environment.include?("PORT=1927")
 abort "must run Core in production mode" unless environment.include?("DEPLOY_ENV=production")
 abort "mock payments must stay off" unless environment.include?("ENABLE_MOCK_PAYMENT_PROVIDER=0")
-url = environment.find { |entry| entry.start_with?("DATABASE_URL=") } || abort("missing DATABASE_URL")
-abort "database URL must not carry a password" unless url == "DATABASE_URL=postgres://market@market-postgres-production:1927/market"
+# Core's DatabaseTarget requires the password in a production URL, so the URL
+# is never a plain variable: it arrives in the envelope, derived by Core's
+# publish workflow from the same MARKET_POSTGRES_PASSWORD the database uses.
+abort "DATABASE_URL must not be a plain variable" if environment.any? { |entry| entry.start_with?("DATABASE_URL=") }
 abort "no pinned image: Core delivers its own" if runtime.key?("image")
 abort "secrets come from the envelope, not prepareEnv" if runtime.key?("prepareEnv")
 
 expected = %w[
+  DATABASE_URL=MARKET_DATABASE_URL
   PGPASSWORD=MARKET_POSTGRES_PASSWORD
   PUBLIC_API_TOKEN=PUBLIC_API_TOKEN
   MANUAL_PROVIDER_TOKEN=MANUAL_PROVIDER_TOKEN
