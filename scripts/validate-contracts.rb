@@ -181,8 +181,16 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
       unknown = delivery.keys - %w[image branch signerWorkflow]
       abort("#{path}: unknown delivery keys #{unknown.join(', ')}") unless unknown.empty?
       abort("#{path}: delivery conflicts with a contract-pinned runtime.image") unless image.nil?
-      # The producer repository publishes under its own name; nothing else can sign for it.
-      abort("#{path}: delivery.image must be ghcr.io/#{owner.downcase}") unless delivery["image"] == "ghcr.io/#{owner.downcase}"
+      # The producer publishes in its own organization: under the repository's name, or, for a
+      # repository that delivers more than one workload, under another package name there. The
+      # name only locates the image; Reconcile deliveries trusts it only when its provenance
+      # verifies for exactly this owner repository and signer workflow, so no other repository
+      # can sign for it.
+      organization = owner.downcase.split("/", 2).first
+      image_ref = delivery["image"]
+      own_image = image_ref == "ghcr.io/#{owner.downcase}" ||
+                  (image_ref.is_a?(String) && image_ref.match?(%r{\Aghcr\.io/#{Regexp.escape(organization)}/[a-z0-9][a-z0-9._-]{0,99}\z}))
+      abort("#{path}: delivery.image must be ghcr.io/#{owner.downcase} or another package of ghcr.io/#{organization}/") unless own_image
       abort("#{path}: delivery.branch must be a branch name") unless delivery["branch"].is_a?(String) && delivery["branch"].match?(%r{\A[A-Za-z0-9._/-]+\z})
       abort("#{path}: delivery.signerWorkflow must be .github/workflows/<file>.yml") unless delivery["signerWorkflow"].is_a?(String) && delivery["signerWorkflow"].match?(%r{\A\.github/workflows/[A-Za-z0-9._-]+\.ya?ml\z})
     end
@@ -237,6 +245,16 @@ servers.each do |server_name, server|
 end
 services.each_key do |workload|
   abort("workload #{workload} is not placed on any server") unless placed_on.key?(workload)
+end
+
+# A package's `<sha>.secrets` envelope is the one envelope for that commit. Workloads may share
+# a package (one client image for several hosts) only when none of them takes secrets from it.
+delivered_images = services.filter_map { |workload, service| [service.dig("spec", "delivery", "image"), workload] if service.dig("spec", "delivery") }
+delivered_images.group_by(&:first).each do |image, entries|
+  next if entries.length == 1
+  next if entries.none? { |(_, workload)| Array(services.fetch(workload).dig("spec", "runtime", "secrets")).any? }
+
+  abort("delivery.image #{image} carries secrets but is delivered by more than one workload: #{entries.map(&:last).join(', ')}")
 end
 
 # Infra holds no product secret. A delivered workload that names secrets receives them only in

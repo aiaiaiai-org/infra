@@ -48,7 +48,7 @@ verified digest.
    ```yaml
    spec:
      delivery:
-       image: ghcr.io/<owner>/<repository>   # must be the contract owner's package
+       image: ghcr.io/<owner>/<repository>   # the owner's package (see below)
        branch: master
        signerWorkflow: .github/workflows/<publish workflow>.yml
    ```
@@ -56,6 +56,16 @@ verified digest.
    `scripts/validate-contracts.rb` enforces the image name, the branch and the
    workflow path. A contract that pins `runtime.image` cannot also deliver
    automatically.
+
+   The image is the repository's own package, `ghcr.io/<owner>/<repository>`.
+   A repository that delivers more than one workload (`nilx-one/web` delivers
+   the 0x1 web client and the 0x1 API) publishes each under another package
+   name of the same organization, `ghcr.io/<owner>/<package>`. The name only
+   locates the image: **Reconcile deliveries** trusts it only when its
+   provenance verifies for exactly the owner repository, the signer workflow
+   and the branch, so another repository cannot sign for it. Workloads may
+   share a package (one client image for several hosts) only when none of them
+   takes secrets, because a commit has one `<sha>.secrets` envelope.
 
 Artifact attestations are available for public repositories. A private producer
 needs a plan that offers them.
