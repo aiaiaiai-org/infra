@@ -1,3 +1,4 @@
+# © 2026 aiaiaiai · aiaiaiai.org
 apiVersion: infra.nilx.one/v1
 kind: WorkloadContract
 metadata:
@@ -14,3 +15,34 @@ spec:
   public:
     host: 0xda-market.nilx.one
     pathPrefix: /
+  runtime:
+    kind: container
+    environment:
+      - DEPLOY_ENV=production
+      # Core's Puma listens on PORT (10000 by default); the contract port is 1927.
+      - PORT=1927
+      - ENABLE_MOCK_PAYMENT_PROVIDER=0
+      # The password is not in the URL: it is PGPASSWORD, the same secret
+      # market-postgres-production is created with (docs/market-postgres-production.md).
+      - DATABASE_URL=postgres://market@market-postgres-production:1927/market
+      # Seeds checkout and the 0x1 issuer API. Purchases still need an active
+      # Special SKU in Market's catalog and Identity's issuer worker: both are
+      # separate, authorized activations.
+      - ENABLE_NILX_SEEDS_CHECKOUT=1
+    # Every value arrives only in 0xda-market/core's attested envelope, published
+    # from its own production Environment (docs/automatic-delivery.md). Infra
+    # stores none of them.
+    secrets:
+      - PGPASSWORD=MARKET_POSTGRES_PASSWORD
+      - PUBLIC_API_TOKEN=PUBLIC_API_TOKEN
+      - MANUAL_PROVIDER_TOKEN=MANUAL_PROVIDER_TOKEN
+      - NILX_BROWSER_HANDOFF_TOKEN=NILX_BROWSER_HANDOFF_TOKEN
+    labels:
+      - org.aiaiaiai.product=0xda-market
+      - org.aiaiaiai.service=market-api
+  # No automatic delivery yet. The planner aborts on any registry error other
+  # than a missing tag, so an unpublished package would stop every other
+  # delivery. Add `delivery` (image ghcr.io/0xda-market/core) once Core
+  # publishes attested production images and envelopes and grants this
+  # repository Read on the package; then market-postgres-production takes its
+  # password with `secretsFrom: market-api-production`.

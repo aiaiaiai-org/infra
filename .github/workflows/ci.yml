@@ -137,6 +137,9 @@ jobs:
       - name: Validate Market development Core workload contracts
         run: ruby scripts/test-market-core-development-contract.rb
 
+      - name: Validate Market production Core workload contract
+        run: ruby scripts/test-market-core-production-contract.rb
+
       - name: Validate Market development Bot deployment
         run: ruby scripts/test-market-bot-development-contract.rb
 
@@ -421,7 +424,7 @@ jobs:
             --volume "$PWD/deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro" \
             infra-edge-caddy:ci \
             caddy validate --config /etc/caddy/Caddyfile
-          test "$(grep -Fc 'reverse_proxy market-api-production:10000' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy market-api-production:1927' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy market-api-development:10000' deploy/edge/Caddyfile)" -eq 1
           grep -Fq '@market_browser_development path /nilx-browser/handoffs /nilx-browser/exchange /nilx-browser/session /v1/webapp/bootstrap' deploy/edge/Caddyfile
           grep -Fq 'market-development) EDGE_SCOPE=market-development' .github/workflows/deploy.yml
@@ -513,7 +516,7 @@ jobs:
               "mkdir -p /srv; printf '%s' '$body' > /srv/health; python3 -m http.server '$port' --bind 0.0.0.0 --directory /srv" >/dev/null
           }
 
-          start_fixture infra-ci-market-api market-api-production 10000 market-api-production
+          start_fixture infra-ci-market-api market-api-production 1927 market-api-production
           # Production-sensitive APIs must not be routed to the development service.
           docker exec infra-ci-market-api sh -ec 'mkdir -p /srv/v1; printf market-api-production > /srv/v1/issuer-orders'
           start_fixture infra-ci-market-api-development market-api-development 10000 market-api-development
@@ -537,7 +540,7 @@ jobs:
             docker exec "$name" wget -q -T 1 -O- "http://127.0.0.1:${port}/health" | grep -qx "$body"
           }
 
-          wait_fixture infra-ci-market-api 10000 market-api-production
+          wait_fixture infra-ci-market-api 1927 market-api-production
           wait_fixture infra-ci-market-api-development 10000 market-api-development
           wait_fixture infra-ci-market-bot 10000 market-bot-production
           wait_fixture infra-ci-market-bot-test 10000 market-bot-development
