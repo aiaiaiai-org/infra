@@ -23,6 +23,9 @@ spec:
       - POSTGRES_DB=market
     secrets:
       - POSTGRES_PASSWORD=MARKET_POSTGRES_PASSWORD
+    # The one password Core holds: the database takes it from Core's last delivered
+    # envelope and never from infra. Without such an envelope Deploy workload stops.
+    secretsFrom: market-api-production
     labels:
       - org.aiaiaiai.product=0xda-market
       - org.aiaiaiai.service=postgres

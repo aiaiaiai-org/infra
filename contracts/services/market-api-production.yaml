@@ -45,9 +45,10 @@ spec:
     labels:
       - org.aiaiaiai.product=0xda-market
       - org.aiaiaiai.service=market-api
-  # No automatic delivery yet. The planner aborts on any registry error other
-  # than a missing tag, so an unpublished package would stop every other
-  # delivery. Add `delivery` (image ghcr.io/0xda-market/core) once Core
-  # publishes attested production images and envelopes and grants this
-  # repository Read on the package; then market-postgres-production takes its
-  # password with `secretsFrom: market-api-production`.
+  # Infra deploys Core's verified master head on its own once Core publishes
+  # (docs/market-postgres-production.md, steps 5 to 7). Core's publish job signs the
+  # image and its envelope from ci.yml. A head Core has not published is skipped.
+  delivery:
+    image: ghcr.io/0xda-market/core
+    branch: master
+    signerWorkflow: .github/workflows/ci.yml
