@@ -33,6 +33,10 @@ SECRETS_REF = "#{IMAGE}@#{ENVELOPE_DIGEST}"
 SECRET_CONTRACT = CONTRACT.sub("\nspec:\n", "\nspec:\n  runtime:\n    kind: container\n    secrets:\n      - TOKEN=EXAMPLE_TOKEN\n")
 abort("SECRET_CONTRACT fixture did not apply") if SECRET_CONTRACT == CONTRACT
 
+# A workload whose prepareEnv consumes the producer's envelope lists the names in delivery.envelope.
+ENVELOPE_CONTRACT = CONTRACT.sub("    signerWorkflow: .github/workflows/publish.yml\n", "    signerWorkflow: .github/workflows/publish.yml\n    envelope:\n      - TOKEN\n")
+abort("ENVELOPE_CONTRACT fixture did not apply") if ENVELOPE_CONTRACT == CONTRACT
+
 # Stubs read the scenario from $STUB_STATE and log their arguments.
 GH_STUB = "#!#{RbConfig.ruby}\n" + <<~'RUBY'
   require "json"
@@ -141,4 +145,12 @@ expect("secret envelope unchanged", plan(sealed.merge("last_image" => IMAGE_REF,
 expect("secret envelope rotated", plan(sealed.merge("last_image" => IMAGE_REF, "last_secrets" => "#{IMAGE}@sha256:#{'f' * 64}", "last_state" => "success").merge("contract" => SECRET_CONTRACT)), ok: true, count: 1)
 expect("no envelope without secrets", plan(sealed), ok: true, count: 1)
 abort("no envelope without secrets: entry carries secrets") if plan(sealed)[:deliveries].first.key?("secrets")
-puts "Delivery planner: 15 cases passed"
+with_envelope = plan(sealed.merge("contract" => ENVELOPE_CONTRACT))
+expect("delivery.envelope", with_envelope, ok: true, count: 1)
+abort("delivery.envelope: wrong entry #{with_envelope[:deliveries]}") unless
+  with_envelope[:deliveries] == [{ "workload" => "example-site", "image" => IMAGE_REF, "source_sha" => SHA, "secrets" => SECRETS_REF }]
+abort("delivery.envelope: envelope provenance not verified") unless
+  with_envelope[:calls].lines.any? { |line| line.start_with?("attestation verify oci://#{SECRETS_REF}") && line.include?("--source-digest #{SHA}") }
+expect("delivery.envelope not published", plan(attested.merge("contract" => ENVELOPE_CONTRACT)), ok: true, count: 0)
+expect("delivery.envelope unchanged", plan(sealed.merge("last_image" => IMAGE_REF, "last_secrets" => SECRETS_REF, "last_state" => "success").merge("contract" => ENVELOPE_CONTRACT)), ok: true, count: 0)
+puts "Delivery planner: 18 cases passed"

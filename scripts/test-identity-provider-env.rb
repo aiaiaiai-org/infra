@@ -55,6 +55,46 @@ Dir.mktmpdir("identity-secret-contract") do |dir|
 end
 puts "identity provider allowlist passes"
 
+# The producer's envelope (delivery.envelope) carries the public client IDs too, so a delivered
+# identity needs no PROVIDER_* variables. Server-owned native secrets are refused.
+Dir.mktmpdir("identity-envelope-ids") do |dir|
+  source = File.join(dir, "input")
+  output = File.join(dir, "output")
+  env = { "WORKLOAD_SECRET_SOURCE_FILE" => source, "IDENTITY_PROVIDER_ENV_FILE" => output }
+  with_ids = DEFAULT + "TELEGRAM_OIDC_CLIENT_ID=envelope-telegram-id\nDISCORD_CLIENT_ID=envelope-discord-id\n"
+  run = lambda do |content, extra = {}|
+    File.write(source, content)
+    File.delete(output) if File.exist?(output)
+    Open3.capture3(env.merge(extra), "ruby", SCRIPT)
+  end
+
+  _out, errors, ok = run.call(with_ids)
+  abort("envelope client IDs rejected: #{errors}") unless ok.success?
+  data = File.read(output)
+  abort("envelope Telegram ID absent") unless data.include?("TELEGRAM_OIDC_CLIENT_ID=envelope-telegram-id\n")
+  abort("envelope Discord ID absent") unless data.include?("DISCORD_CLIENT_ID=envelope-discord-id\n")
+  abort("GHCR token leaked into runtime") if data.include?("ephemeral")
+
+  # The envelope wins over a caller's variable.
+  _out, errors, ok = run.call(with_ids, "PROVIDER_DISCORD_CLIENT_ID" => "caller-discord-id", "PROVIDER_TELEGRAM_OIDC_CLIENT_ID" => "caller-telegram-id")
+  abort("envelope with caller IDs rejected: #{errors}") unless ok.success?
+  abort("caller ID overrode the envelope") if File.read(output).include?("caller-")
+
+  # Neither source: refuse.
+  _out, _errors, ok = run.call(DEFAULT)
+  abort("missing client IDs accepted") if ok.success?
+  # One ID short in the envelope: refuse (no mixing sources on a guess).
+  _out, _errors, ok = run.call(DEFAULT + "TELEGRAM_OIDC_CLIENT_ID=only-telegram\n")
+  abort("half the client IDs accepted") if ok.success?
+
+  %w[NATIVE_AUTH_SECRET PASSWORD_PEPPER GITHUB_EVIDENCE_ENCRYPTION_KEY].each do |name|
+    stdout, stderr, status = run.call(with_ids + "#{name}=#{'n' * 64}\n")
+    abort("server-owned #{name} accepted from the envelope") if status.success?
+    abort("secret leaked in failure log") if "#{stdout}#{stderr}".include?("n" * 64)
+  end
+end
+puts "identity envelope client IDs pass"
+
 # Regression: infra must not request a second set of production provider secrets
 # after the encrypted producer handoff has already been decrypted.
 workflow_path = File.expand_path("../.github/workflows/deploy-workload.yml", __dir__)

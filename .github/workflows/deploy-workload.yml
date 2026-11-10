@@ -301,10 +301,18 @@ jobs:
             printf 'WORKLOAD_VOLUMES=%s\n' "$WORKLOAD_VOLUMES"
           } > "$RUNNER_TEMP/workload.env"
           if [[ "$WORKLOAD" == "nilxone-identity" ]]; then
-            test -n "$PROVIDER_TELEGRAM_OIDC_CLIENT_ID" || { echo "::error::Missing Telegram OIDC client ID." >&2; exit 1; }
-            test -n "$PROVIDER_DISCORD_CLIENT_ID" || { echo "::error::Missing Discord client ID." >&2; exit 1; }
             if [[ ! -s "$RUNNER_TEMP/source-credentials.env" ]]; then
               echo "::error::Identity requires encrypted workload-scoped credentials from its producer." >&2
+              exit 1
+            fi
+            # The public client IDs come in the producer's envelope (delivery.envelope) or, for a
+            # dispatching caller, in PROVIDER_* variables. Values are never printed.
+            if [[ -z "$PROVIDER_TELEGRAM_OIDC_CLIENT_ID" ]] && ! grep -q '^TELEGRAM_OIDC_CLIENT_ID=.' "$RUNNER_TEMP/source-credentials.env"; then
+              echo "::error::Missing Telegram OIDC client ID." >&2
+              exit 1
+            fi
+            if [[ -z "$PROVIDER_DISCORD_CLIENT_ID" ]] && ! grep -q '^DISCORD_CLIENT_ID=.' "$RUNNER_TEMP/source-credentials.env"; then
+              echo "::error::Missing Discord client ID." >&2
               exit 1
             fi
           fi

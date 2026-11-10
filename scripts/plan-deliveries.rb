@@ -10,7 +10,7 @@
 #   3. verifies the image's build provenance: signed by the declared workflow
 #      of the producer repository, from that branch and that commit, on a
 #      GitHub-hosted runner,
-#   4. for a workload whose contract names runtime secrets, resolves and verifies
+#   4. for a workload whose contract names runtime secrets (or lists delivery.envelope), resolves and verifies
 #      the same way the producer's encrypted secret envelope, `<image>:<sha>.secrets`,
 #   5. compares both with the last delivery this repository recorded.
 #
@@ -139,7 +139,10 @@ contracts(dir, option("--workload")).each do |contract|
   image_ref = "#{image}@#{digest}"
 
   secrets_ref = nil
-  unless Array(contract.dig("spec", "runtime", "secrets")).empty?
+  # An envelope is expected when the contract maps runtime secrets, or lists the names its
+  # prepareEnv consumes (delivery.envelope).
+  wants_envelope = !Array(contract.dig("spec", "runtime", "secrets")).empty? || !Array(delivery["envelope"]).empty?
+  if wants_envelope
     envelope = published_digest(image, secret_envelope_tag(sha))
     if envelope.nil?
       summary << "#{workload}: #{repository}@#{sha[0, 12]} has no published secret envelope yet"

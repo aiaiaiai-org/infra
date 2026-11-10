@@ -46,6 +46,9 @@ jobs:
       - name: Test delivery planner
         run: ruby scripts/test-plan-deliveries.rb
 
+      - name: Test delivery envelope contract
+        run: ruby scripts/test-delivery-envelope-contract.rb
+
       - name: Test Identity operator provenance and production boundary
         run: python3 scripts/test-identity-operator.py
 
