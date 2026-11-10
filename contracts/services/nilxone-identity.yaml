@@ -12,6 +12,21 @@ spec:
   protocol: http
   port: 1927
   health: /health
+  # Infra deploys the producer's verified master head on its own (docs/automatic-delivery.md).
+  # The envelope carries the provider credentials only. NATIVE_AUTH_SECRET, PASSWORD_PEPPER and
+  # GITHUB_EVIDENCE_ENCRYPTION_KEY stay on the host: prepare-runtime-env.sh keeps the existing
+  # values and refuses an override, and validate-contracts.rb refuses them here.
+  delivery:
+    image: ghcr.io/nilx-one/0x1-identity
+    branch: master
+    signerWorkflow: .github/workflows/package-identity-service.yml
+    envelope:
+      - TELOXIDE_TOKEN
+      - TELEGRAM_OIDC_CLIENT_ID
+      - TELEGRAM_OIDC_CLIENT_SECRET
+      - DISCORD_CLIENT_ID
+      - DISCORD_CLIENT_SECRET
+      - NILX_BROWSER_HANDOFF_TOKEN
   runtime:
     kind: container
     environment:
@@ -22,7 +37,7 @@ spec:
     labels:
       - one.nilx.product=0x1
       - one.nilx.service=identity
-      - one.nilx.identity.contract=16
+      - one.nilx.identity.contract=19
     volumes:
       - nilxone-identity-data:/data
   public:

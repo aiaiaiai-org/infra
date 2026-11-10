@@ -109,6 +109,38 @@ The envelope is ciphertext in the producer's package for as long as that tag is
 kept. Everything published under the old recipient becomes readable if that
 server key leaks, so rotate the key and republish when that happens.
 
+### A workload that prepares its own environment (`delivery.envelope`)
+
+`nilxone-identity` builds its runtime environment with its producer's
+`runtime.prepareEnv` script, so it cannot also map `runtime.secrets`: the deploy
+script takes either `WORKLOAD_SECRET_ENV` or `WORKLOAD_SECRET_ENV_FILE`. Its
+contract lists the names of the producer's envelope under `delivery.envelope`
+instead:
+
+```yaml
+spec:
+  delivery:
+    image: ghcr.io/nilx-one/0x1-identity
+    branch: master
+    signerWorkflow: .github/workflows/package-identity-service.yml
+    envelope:
+      - TELOXIDE_TOKEN
+      - ...
+```
+
+The envelope is resolved, verified and decrypted exactly like any other (steps 3
+and 4 above); a head without one is not delivered yet. `prepare-identity-provider-env.rb`
+then accepts only the listed provider credentials and the two public client IDs,
+which travel in the envelope too, so a delivered Identity needs no
+`PROVIDER_*` variable from a caller.
+
+`NATIVE_AUTH_SECRET`, `PASSWORD_PEPPER` and `GITHUB_EVIDENCE_ENCRYPTION_KEY` are
+**server-owned**. The host's `runtime.env` keeps them: the producer's
+`prepare-runtime-env.sh` reuses the existing values and refuses an override.
+`validate-contracts.rb` and the provider-env script both refuse them in an
+envelope. Copying them into a GitHub Environment would let one wrong value lock
+out every password, end every session and lose every stored GitHub token.
+
 ## What still holds secrets
 
 Infra's own server access is unchanged. `SSH_*` stays in the server

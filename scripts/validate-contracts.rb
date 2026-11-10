@@ -178,7 +178,7 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
     delivery = spec["delivery"]
     unless delivery.nil?
       abort("#{path}: delivery must be a mapping") unless delivery.is_a?(Hash)
-      unknown = delivery.keys - %w[image branch signerWorkflow]
+      unknown = delivery.keys - %w[image branch signerWorkflow envelope]
       abort("#{path}: unknown delivery keys #{unknown.join(', ')}") unless unknown.empty?
       abort("#{path}: delivery conflicts with a contract-pinned runtime.image") unless image.nil?
       # The producer publishes in its own organization: under the repository's name, or, for a
@@ -193,6 +193,24 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
       abort("#{path}: delivery.image must be ghcr.io/#{owner.downcase} or another package of ghcr.io/#{organization}/") unless own_image
       abort("#{path}: delivery.branch must be a branch name") unless delivery["branch"].is_a?(String) && delivery["branch"].match?(%r{\A[A-Za-z0-9._/-]+\z})
       abort("#{path}: delivery.signerWorkflow must be .github/workflows/<file>.yml") unless delivery["signerWorkflow"].is_a?(String) && delivery["signerWorkflow"].match?(%r{\A\.github/workflows/[A-Za-z0-9._-]+\.ya?ml\z})
+
+      # delivery.envelope: the names a producer's `<sha>.secrets` envelope carries for a workload
+      # whose runtime.prepareEnv consumes it (nilxone-identity). Contracts that map secrets with
+      # runtime.secrets name them there instead; the two never combine, because the deploy script
+      # takes either WORKLOAD_SECRET_ENV or WORKLOAD_SECRET_ENV_FILE (runtime.secrets with prepareEnv is
+      # already refused above, and the envelope requires prepareEnv).
+      envelope = delivery["envelope"]
+      unless envelope.nil?
+        abort("#{path}: delivery.envelope must be a non-empty array of NAMES") unless
+          envelope.is_a?(Array) && !envelope.empty? && envelope.all? { |name| name.is_a?(String) && name.match?(/\A[A-Z][A-Z0-9_]*\z/) }
+        abort("#{path}: delivery.envelope names a variable twice") unless envelope.uniq.length == envelope.length
+        abort("#{path}: delivery.envelope needs runtime.prepareEnv, which consumes it") unless runtime["prepareEnv"]
+        abort("#{path}: GHCR_ credentials never travel in a producer envelope") if envelope.any? { |name| name.start_with?("GHCR_") }
+        # The host keeps these. Copying them into a GitHub Environment would let a wrong value
+        # lock out every password, end every session and lose every stored GitHub token.
+        server_owned = %w[NATIVE_AUTH_SECRET PASSWORD_PEPPER GITHUB_EVIDENCE_ENCRYPTION_KEY]
+        abort("#{path}: delivery.envelope must not carry server-owned #{(envelope & server_owned).join(', ')}") unless (envelope & server_owned).empty?
+      end
     end
   else
     repository = fetch!(spec, "repository", path)
@@ -252,7 +270,10 @@ end
 delivered_images = services.filter_map { |workload, service| [service.dig("spec", "delivery", "image"), workload] if service.dig("spec", "delivery") }
 delivered_images.group_by(&:first).each do |image, entries|
   next if entries.length == 1
-  next if entries.none? { |(_, workload)| Array(services.fetch(workload).dig("spec", "runtime", "secrets")).any? }
+  next if entries.none? do |(_, workload)|
+    service = services.fetch(workload)
+    Array(service.dig("spec", "runtime", "secrets")).any? || Array(service.dig("spec", "delivery", "envelope")).any?
+  end
 
   abort("delivery.image #{image} carries secrets but is delivered by more than one workload: #{entries.map(&:last).join(', ')}")
 end
@@ -260,7 +281,8 @@ end
 # Infra holds no product secret. A delivered workload that names secrets receives them only in
 # the producer's envelope, encrypted to its server's public key, so that server must publish one.
 services.each do |workload, service|
-  next if service.dig("spec", "delivery").nil? || Array(service.dig("spec", "runtime", "secrets")).empty?
+  delivery = service.dig("spec", "delivery")
+  next if delivery.nil? || (Array(service.dig("spec", "runtime", "secrets")).empty? && Array(delivery["envelope"]).empty?)
 
   server = placed_on.fetch(workload)
   next if servers.fetch(server).dig("spec", "encryptionRecipient")
