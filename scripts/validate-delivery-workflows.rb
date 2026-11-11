@@ -44,4 +44,7 @@ abort("reconcile-deliveries.yml: must run on a schedule") unless reconcile.key?(
 abort("reconcile-deliveries.yml: must allow workflow_dispatch") unless reconcile.key?("workflow_dispatch")
 check_call("reconcile-deliveries.yml", "deliver", "deliver-workload.yml")
 check_call("deliver-workload.yml", "deploy", "deploy-workload.yml")
+deploy_with = workflow("deliver-workload.yml").dig("jobs", "deploy", "with")
+abort("deliver-workload.yml: deploy must pin ref to inputs.source_sha") unless
+  deploy_with["ref"].to_s.include?("inputs.source_sha")
 puts "Delivery workflows: wiring validated"

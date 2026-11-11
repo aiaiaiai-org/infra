@@ -81,10 +81,16 @@ if runtime_kind == "container"
 
   prepare_env = runtime["prepareEnv"].to_s
   if !prepare_env.empty?
+    abort("#{service_path}: runtime.prepareEnv must be a relative path inside the source repository") unless
+      prepare_env.match?(%r{\A[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\z}) &&
+      prepare_env.split("/").none? { |segment| segment == "." || segment == ".." }
     owner = service.dig("metadata", "owner")
     abort("#{service_path}: metadata.owner must be owner/name when prepareEnv is set") unless owner.is_a?(String) && owner.match?(/\A[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\z/)
     result["repository"] = owner
   end
+  prepare_env_secrets = runtime["prepareEnvSecrets"]
+  abort("#{service_path}: runtime.prepareEnvSecrets must be true or false") unless [nil, true, false].include?(prepare_env_secrets)
+  abort("#{service_path}: runtime.prepareEnvSecrets needs runtime.prepareEnv") if prepare_env_secrets == true && prepare_env.empty?
 
   result.merge!(
     "network" => network,

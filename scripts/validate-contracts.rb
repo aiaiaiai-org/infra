@@ -170,7 +170,17 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
     abort("#{path}: runtime.secrets sets a variable twice") unless secret_names.uniq.length == secret_names.length
     overlap = secret_names & plain_names
     abort("#{path}: #{overlap.join(', ')} is both a plain and a secret variable") unless overlap.empty?
-    if secrets.any? && runtime["prepareEnv"]
+    prepare_env = runtime["prepareEnv"]
+    unless prepare_env.nil?
+      valid_prepare_env = prepare_env.is_a?(String) &&
+                          prepare_env.match?(%r{\A[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*\z}) &&
+                          prepare_env.split("/").none? { |segment| segment == "." || segment == ".." }
+      abort("#{path}: runtime.prepareEnv must be a relative path inside the source repository") unless valid_prepare_env
+      abort("#{path}: metadata.owner must be owner/name when runtime.prepareEnv is set") unless
+        owner.is_a?(String) && owner.match?(%r{\A[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\z})
+    end
+
+    if secrets.any? && prepare_env
       abort("#{path}: runtime.secrets and runtime.prepareEnv are mutually exclusive")
     end
 
@@ -181,7 +191,7 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
     prepare_secrets = runtime["prepareEnvSecrets"]
     unless prepare_secrets.nil?
       abort("#{path}: runtime.prepareEnvSecrets must be true or false") unless [true, false].include?(prepare_secrets)
-      abort("#{path}: runtime.prepareEnvSecrets needs runtime.prepareEnv, whose runtime.env it injects") if prepare_secrets && !runtime["prepareEnv"]
+      abort("#{path}: runtime.prepareEnvSecrets needs runtime.prepareEnv, whose runtime.env it injects") if prepare_secrets && !prepare_env
     end
 
     # Automatic delivery: infra deploys the producer's verified branch head on its own.
@@ -214,7 +224,8 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
         abort("#{path}: delivery.envelope must be a non-empty array of NAMES") unless
           envelope.is_a?(Array) && !envelope.empty? && envelope.all? { |name| name.is_a?(String) && name.match?(/\A[A-Z][A-Z0-9_]*\z/) }
         abort("#{path}: delivery.envelope names a variable twice") unless envelope.uniq.length == envelope.length
-        abort("#{path}: delivery.envelope needs runtime.prepareEnv, which consumes it") unless runtime["prepareEnv"]
+        abort("#{path}: delivery.envelope needs runtime.prepareEnv, which consumes it") unless prepare_env
+        abort("#{path}: delivery.envelope and runtime.prepareEnvSecrets are mutually exclusive") if prepare_secrets
         abort("#{path}: GHCR_ credentials never travel in a producer envelope") if envelope.any? { |name| name.start_with?("GHCR_") }
         # The host keeps these. Copying them into a GitHub Environment would let a wrong value
         # lock out every password, end every session and lose every stored GitHub token.

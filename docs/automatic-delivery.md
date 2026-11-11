@@ -146,16 +146,28 @@ out every password, end every session and lose every stored GitHub token.
 A service that owns its secrets, such as AIS's signing key, can generate them
 on the host instead of taking them from a GitHub Environment or an envelope. Its
 contract names a `runtime.prepareEnv` script from the producer and sets
-`runtime.prepareEnvSecrets: true`. **Deploy workload** copies that script to the
-host and runs it before the container starts; whatever `runtime.env` the script
-writes is injected into the container as its secret environment. The script
-keeps values it has already generated, so a redeploy changes none of them. It
-must also refuse a malformed existing value rather than replace it: rotating a
-key a product's identifiers derive from is damage, not a fix.
+`runtime.prepareEnvSecrets: true`. **Deploy workload** checks out the exact
+producer commit being delivered, copies that script to the host, runs it before
+the container starts, enforces `0600` on the `runtime.env` it writes, and
+injects that file into the container as its secret environment.
 
+Because `runtime.env` lives in the host workload directory separately from the
+service's Docker data volume and infra does not back `runtime.env` up, the
+producer's script must uphold three invariants:
+
+- generate secrets **only when `runtime.env` does not exist at all**, and only
+  when the workload's data volume does not exist yet either, so a lost secrets
+  file beside a surviving database stops the deploy loudly;
+- keep values already generated across every redeploy;
+- refuse a missing, empty, or malformed value in an existing `runtime.env`
+  rather than minting or replacing it: rotating a key a product's identifiers
+  or password hashes derive from is damage, not a fix.
+
+After the first deploy, the operator backs `runtime.env` up off-host once.
 Nothing secret passes through infra, GitHub or the registry, and nothing needs
-rotating there. `runtime.secrets` and `runtime.prepareEnv` stay mutually
-exclusive, and `nilxone-identity` keeps its injection by name.
+rotating there. `runtime.prepareEnvSecrets` is mutually exclusive with both
+`runtime.secrets` and `delivery.envelope`, and `nilxone-identity` keeps its
+injection by name.
 
 ## What still holds secrets
 
