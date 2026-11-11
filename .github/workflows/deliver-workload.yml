@@ -71,6 +71,7 @@ jobs:
     with:
       workload: ${{ inputs.workload }}
       image: ${{ inputs.image }}
+      ref: ${{ inputs.source_sha }}
       secrets_image: ${{ inputs.secrets_image }}
     secrets: inherit
 

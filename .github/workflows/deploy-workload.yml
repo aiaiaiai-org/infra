@@ -362,7 +362,20 @@ jobs:
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$REMOTE_WORKLOAD_DIR' && chmod 700 '$REMOTE_WORKLOAD_DIR'"
           scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "source/${PREPARE_ENV}" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh"
           scp -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -P "$SSH_PORT" "$RUNNER_TEMP/identity-provider.env" "$SSH_USER@$SSH_HOST:$REMOTE_WORKLOAD_DIR/provider.env"
-          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "chmod 700 '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' && chmod 600 '$REMOTE_WORKLOAD_DIR/provider.env' && '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' '$REMOTE_WORKLOAD_DIR/runtime.env' '$REMOTE_WORKLOAD_DIR/provider.env' && rm -f '$REMOTE_WORKLOAD_DIR/provider.env' '$REMOTE_WORKLOAD_DIR/prepare-runtime-env.sh' && test -s '$REMOTE_WORKLOAD_DIR/runtime.env'"
+          ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -s -- "$REMOTE_WORKLOAD_DIR" "$WORKLOAD" "$PREPARE_ENV_SECRETS" <<'EOF'
+          set -Eeuo pipefail
+          dir="$1"
+          workload="$2"
+          secret_env="$3"
+          trap 'rm -f "$dir/provider.env" "$dir/prepare-runtime-env.sh"' EXIT
+          chmod 700 "$dir/prepare-runtime-env.sh"
+          chmod 600 "$dir/provider.env"
+          "$dir/prepare-runtime-env.sh" "$dir/runtime.env" "$dir/provider.env"
+          test -s "$dir/runtime.env"
+          if [[ "$workload" == "nilxone-identity" || "$secret_env" == "true" ]]; then
+            chmod 600 "$dir/runtime.env"
+          fi
+          EOF
           rm -f "$RUNNER_TEMP/identity-provider.env"
           # nilxone-identity is injected by name; any other workload opts in with
           # runtime.prepareEnvSecrets, because a prepareEnv may write something else.
@@ -479,7 +492,7 @@ jobs:
 
       - name: Clean runner secret material
         if: always()
-        run: rm -f "$RUNNER_TEMP/workload.env" "$RUNNER_TEMP/source-credentials.env"
+        run: rm -f "$RUNNER_TEMP/workload.env" "$RUNNER_TEMP/source-credentials.env" "$RUNNER_TEMP/identity-provider.env"
 
       - name: Publish summary
         if: always()
