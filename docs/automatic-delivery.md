@@ -141,6 +141,22 @@ which travel in the envelope too, so a delivered Identity needs no
 envelope. Copying them into a GitHub Environment would let one wrong value lock
 out every password, end every session and lose every stored GitHub token.
 
+### A workload that makes its own secrets (`runtime.prepareEnvSecrets`)
+
+A service that owns its secrets, such as AIS's signing key, can generate them
+on the host instead of taking them from a GitHub Environment or an envelope. Its
+contract names a `runtime.prepareEnv` script from the producer and sets
+`runtime.prepareEnvSecrets: true`. **Deploy workload** copies that script to the
+host and runs it before the container starts; whatever `runtime.env` the script
+writes is injected into the container as its secret environment. The script
+keeps values it has already generated, so a redeploy changes none of them. It
+must also refuse a malformed existing value rather than replace it: rotating a
+key a product's identifiers derive from is damage, not a fix.
+
+Nothing secret passes through infra, GitHub or the registry, and nothing needs
+rotating there. `runtime.secrets` and `runtime.prepareEnv` stay mutually
+exclusive, and `nilxone-identity` keeps its injection by name.
+
 ## What still holds secrets
 
 Infra's own server access is unchanged. `SSH_*` stays in the server

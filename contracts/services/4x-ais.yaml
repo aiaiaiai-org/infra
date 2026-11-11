@@ -17,6 +17,14 @@ spec:
     labels:
       - org.aiaiaiai.product=ais
       - org.aiaiaiai.service=4x-ais
+    # AIS makes its own secrets on the host: the signing key, AIS_SECRET and the password pepper
+    # are generated once by the producer's script and kept there. No GitHub Environment holds
+    # them and no envelope carries them. The script also writes the issuer and the registered
+    # clients (docs/runtime.md in aiaiaiai-org/4x-ais).
+    prepareEnv: deploy/prepare-runtime-env.sh
+    prepareEnvSecrets: true
+    volumes:
+      - 4x-ais-data:/data
   # The aiaiaiai auth identity service: the one sign-in origin for every product
   # (docs/service-design.md in aiaiaiai-org/4x-ais). Its OIDC paths are not under
   # a prefix, so the whole host is routed to it.

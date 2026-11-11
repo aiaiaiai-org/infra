@@ -49,6 +49,9 @@ jobs:
       - name: Test delivery envelope contract
         run: ruby scripts/test-delivery-envelope-contract.rb
 
+      - name: Test prepareEnvSecrets
+        run: ruby scripts/test-prepare-env-secrets.rb
+
       - name: Test Identity operator provenance and production boundary
         run: python3 scripts/test-identity-operator.py
 
