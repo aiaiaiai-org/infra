@@ -199,8 +199,28 @@ jobs:
       - name: Verify age encryption to target SSH public key
         run: |
           set -Eeuo pipefail
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq age
+          # BEGIN install-age (identical in ci.yml, deploy-workload.yml and backup-prism-postgres.yml;
+          # scripts/test-age-install.rb keeps them so and runs this block against stubbed tools)
+          # Every call is bounded: a mirror whose DNS fails retries for minutes, longer than a job's
+          # timeout, so without a cap the fallback below would never get to run.
+          install_age() {
+            timeout -k 5 90 sudo apt-get -o Acquire::Retries=2 update -qq &&
+              timeout -k 5 90 sudo apt-get -o Acquire::Retries=2 install -y -qq --no-install-recommends age
+          }
+          if ! install_age; then
+            # Ubuntu's mirrors can be unreachable for a long while: on 2026-11-11 the runner could not
+            # resolve azure.archive.ubuntu.com or archive.ubuntu.com, so no other ubuntu.com host helps.
+            # age is a Go program and the runner has Go. Build the pinned release from the Go module
+            # proxy, whose answers Go checks against sum.golang.org, so no checksum is pinned here.
+            echo "::warning::apt cannot reach Ubuntu's mirrors; building age v1.2.1 from the Go module proxy"
+            command -v go >/dev/null
+            mkdir -p "$HOME/.local/bin"
+            GOBIN="$HOME/.local/bin" timeout -k 5 240 go install filippo.io/age/cmd/age@v1.2.1
+            export PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+          command -v age >/dev/null
+          # END install-age
           umask 077
           ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/recipient"
           ssh-keygen -q -t ed25519 -N '' -f "$RUNNER_TEMP/other"
