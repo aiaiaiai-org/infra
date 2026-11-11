@@ -33,6 +33,10 @@ spec:
       - HTTP_BIND=0.0.0.0:1927
       - DATABASE_URL=sqlite:///data/identity.db
       - TELEGRAM_INIT_DATA_MAX_AGE_SECONDS=300
+      # Sign-in through AIS (auth.aiaiaiai.org). 0x1 is a public client: no secret, only this
+      # public address, and it is the one switch that turns the routes on. Without it the
+      # /api/v1/auth/aiaiaiai/* routes answer "not configured".
+      - AIAIAIAI_SIGN_IN_ISSUER=https://auth.aiaiaiai.org
     prepareEnv: services/identity/deploy/prepare-runtime-env.sh
     labels:
       - one.nilx.product=0x1
