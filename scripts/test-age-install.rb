@@ -4,9 +4,11 @@
 
 # `age` is installed by three workflows: the Contracts check, the deploy that decrypts a workload's
 # secrets, and the Prism backup. All three used one `apt-get install` from the runner's default
-# mirror, so a long outage of that mirror stopped CI, deploys and backups at once. Each now installs
-# through the same block: apt with retries, then the Ubuntu archive itself. This test keeps the
-# three blocks identical and runs the block against a stubbed apt, for each way it can go.
+# mirror, so an outage of Ubuntu's mirrors stopped CI, deploys and backups at once. On 2026-11-11 the
+# runner could not resolve azure.archive.ubuntu.com or archive.ubuntu.com for over an hour, so no
+# apt fallback could help. Each workflow now installs through the same block: apt, bounded, and if
+# that fails the pinned release built from the Go module proxy. This test keeps the three blocks
+# identical and runs the block against stubbed tools for each way it can go.
 
 require "fileutils"
 require "open3"
@@ -29,60 +31,63 @@ FILES.each do |path|
   text = File.read(path, encoding: "UTF-8")
   abort("#{path}: a bare `apt-get install ... age` is back") if text.match?(/^\s*sudo apt-get install -y[^\n]* age\s*$/)
 end
+abort("the block does not bound its apt calls with timeout") unless reference.scan(/timeout -k 5 \d+ sudo apt-get/).length == 2
+abort("the block does not bound go install with timeout") unless reference.include?("timeout -k 5 240 go install filippo.io/age/cmd/age@v1.2.1")
 
-def run_block(block, primary_fails:, fallback_fails:)
+def run_block(block, apt_fails:, go_fails:)
   Dir.mktmpdir("age-install") do |dir|
     bin = File.join(dir, "bin")
     FileUtils.mkdir_p(bin)
-    log = File.join(dir, "apt.log")
+    home = File.join(dir, "home")
+    FileUtils.mkdir_p(home)
+    log = File.join(dir, "calls.log")
+    github_path = File.join(dir, "github_path")
+    File.write(github_path, "")
     {
       "sudo" => "#!/bin/sh\nexec \"$@\"\n",
-      "lsb_release" => "#!/bin/sh\necho noble\n",
       "age" => "#!/bin/sh\nexit 0\n",
-      "tee" => "#!/bin/sh\ncat > \"#{dir}/fallback.list\"\n",
-      "apt-get" => <<~SH
+      "apt-get" => <<~SH,
         #!/bin/sh
-        echo "$*" >> "#{log}"
-        # Once the fallback list has been updated, the install that follows reads from it.
-        case "$*" in
-          *Dir::Etc::sourcelist*)
-            [ "#{fallback_fails}" = true ] && { echo "E: fallback down" >&2; exit 100; }
-            touch "#{dir}/fallback-updated"
-            ;;
-          *)
-            if [ ! -e "#{dir}/fallback-updated" ] && [ "#{primary_fails}" = true ]; then
-              echo "E: Temporary failure resolving azure.archive.ubuntu.com" >&2; exit 100
-            fi
-            ;;
-        esac
+        echo "apt-get $*" >> "#{log}"
+        [ "#{apt_fails}" = true ] && { echo "E: Temporary failure resolving azure.archive.ubuntu.com" >&2; exit 100; }
+        exit 0
+      SH
+      "go" => <<~SH
+        #!/bin/sh
+        echo "go $* GOBIN=$GOBIN" >> "#{log}"
+        [ "#{go_fails}" = true ] && { echo "go: module proxy down" >&2; exit 1; }
         exit 0
       SH
     }.each do |name, body|
       File.write(File.join(bin, name), body)
       File.chmod(0o755, File.join(bin, name))
     end
-    output, status = Open3.capture2e({ "PATH" => "#{bin}:#{ENV.fetch('PATH')}" }, "bash", "-c", "set -Eeuo pipefail\n#{block}\n")
+    env = { "PATH" => "#{bin}:#{ENV.fetch('PATH')}", "HOME" => home, "GITHUB_PATH" => github_path }
+    output, status = Open3.capture2e(env, "bash", "-c", "set -Eeuo pipefail\n#{block}\n")
     calls = File.exist?(log) ? File.read(log) : ""
-    [status.success?, output, calls, File.exist?(File.join(dir, "fallback.list")) ? File.read(File.join(dir, "fallback.list")) : nil]
+    [status.success?, output, calls, File.read(github_path), home]
   end
 end
 
-# The mirror answers: no fallback, no warning, and every apt call retries.
-ok, output, calls, list = run_block(reference, primary_fails: false, fallback_fails: false)
+# Ubuntu's mirror answers: no Go, no warning, and every apt call retries.
+ok, output, calls, = run_block(reference, apt_fails: false, go_fails: false)
 abort("healthy mirror failed:\n#{output}") unless ok
-abort("fallback used with a healthy mirror") if calls.include?("Dir::Etc::sourcelist") || list || output.include?("::warning::")
+abort("Go used with a healthy mirror:\n#{calls}") if calls.include?("go ") || output.include?("::warning::")
 abort("an apt call does not retry:\n#{calls}") unless calls.lines.all? { |line| line.include?("Acquire::Retries=2") }
-abort("the block does not bound its apt calls with timeout:\n#{reference}") unless reference.scan(/timeout -k 5 \d+ sudo apt-get/).length == 4
 
-# The mirror is down: the Ubuntu archive is used, signed, with a warning, and the install succeeds.
-ok, output, calls, list = run_block(reference, primary_fails: true, fallback_fails: false)
-abort("fallback did not rescue the install:\n#{output}") unless ok
-abort("no warning that the mirror is down") unless output.include?("::warning::")
-abort("fallback list is not the signed Ubuntu archive:\n#{list}") unless list&.include?("[signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] http://archive.ubuntu.com/ubuntu noble universe")
-abort("fallback does not install age:\n#{calls}") unless calls.lines.last.include?("install") && calls.lines.last.include?(" age")
+# Ubuntu's mirrors are down: the pinned release is built from the module proxy, with a warning, into
+# a directory that is put on PATH for this step and the ones after it.
+ok, output, calls, github_path, home = run_block(reference, apt_fails: true, go_fails: false)
+abort("the Go fallback did not rescue the install:\n#{output}") unless ok
+abort("no warning that apt is down") unless output.include?("::warning::")
+go_calls = calls.lines.grep(/^go /)
+abort("expected exactly one go install, got:\n#{calls}") unless go_calls.length == 1
+abort("go install is not the pinned release:\n#{go_calls.first}") unless go_calls.first.start_with?("go install filippo.io/age/cmd/age@v1.2.1 ")
+abort("go install does not write into ~/.local/bin:\n#{go_calls.first}") unless go_calls.first.include?("GOBIN=#{home}/.local/bin")
+abort("~/.local/bin is not on PATH for later steps") unless github_path.include?("#{home}/.local/bin")
 
-# Both are down: the step fails. It never reports success without age.
-ok, = run_block(reference, primary_fails: true, fallback_fails: true)
+# Everything is down: the step fails. It never reports success without age.
+ok, = run_block(reference, apt_fails: true, go_fails: true)
 abort("install succeeded with every source down") if ok
 
 puts "age install: three identical blocks, healthy mirror, mirror down, everything down: passed"
