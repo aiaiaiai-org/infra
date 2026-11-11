@@ -31,7 +31,12 @@ spec:
   public:
     host: auth.aiaiaiai.org
     pathPrefix: /
-  # No automatic delivery yet. The planner aborts on any registry error other
-  # than a missing tag, so a private or unpublished package would stop every
-  # other delivery. Add `delivery` after 4x-ais publishes attested images and
-  # grants this repository Read on the package (docs/automatic-delivery.md).
+  # Automatic delivery of the verified master head (docs/automatic-delivery.md). 4x-ais is
+  # public, publishes an attested image, and grants this repository Read on the package: the
+  # planner aborts every delivery on a registry error other than a missing tag, so this block
+  # must never be merged before that Read access is in place. No envelope: AIS makes its own
+  # secrets on the host (runtime.prepareEnvSecrets).
+  delivery:
+    image: ghcr.io/aiaiaiai-org/4x-ais
+    branch: master
+    signerWorkflow: .github/workflows/publish.yml
