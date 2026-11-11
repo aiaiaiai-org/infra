@@ -71,7 +71,8 @@ end
 ok, output, calls, list = run_block(reference, primary_fails: false, fallback_fails: false)
 abort("healthy mirror failed:\n#{output}") unless ok
 abort("fallback used with a healthy mirror") if calls.include?("Dir::Etc::sourcelist") || list || output.include?("::warning::")
-abort("an apt call does not retry:\n#{calls}") unless calls.lines.all? { |line| line.include?("Acquire::Retries=5") }
+abort("an apt call does not retry:\n#{calls}") unless calls.lines.all? { |line| line.include?("Acquire::Retries=2") }
+abort("the block does not bound its apt calls with timeout:\n#{reference}") unless reference.scan(/timeout -k 5 \d+ sudo apt-get/).length == 4
 
 # The mirror is down: the Ubuntu archive is used, signed, with a warning, and the install succeeds.
 ok, output, calls, list = run_block(reference, primary_fails: true, fallback_fails: false)

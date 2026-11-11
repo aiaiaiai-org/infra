@@ -46,9 +46,11 @@ jobs:
           set -Eeuo pipefail
           # BEGIN install-age (identical in ci.yml, deploy-workload.yml and backup-prism-postgres.yml;
           # scripts/test-age-install.rb keeps them so and runs this block against stubbed apt)
+          # Every apt call is bounded: a mirror whose DNS fails retries for minutes, longer than a job's
+          # timeout, so without a cap the fallback below would never get to run.
           install_age() {
-            sudo apt-get -o Acquire::Retries=5 update -qq &&
-              sudo apt-get -o Acquire::Retries=5 install -y -qq --no-install-recommends age
+            timeout -k 5 90 sudo apt-get -o Acquire::Retries=2 update -qq &&
+              timeout -k 5 90 sudo apt-get -o Acquire::Retries=2 install -y -qq --no-install-recommends age
           }
           if ! install_age; then
             # The runner's default mirror can be unreachable for a long while. Fall back to the
@@ -56,8 +58,8 @@ jobs:
             echo "::warning::the runner's apt mirror is unreachable; installing age from archive.ubuntu.com"
             echo "deb [signed-by=/usr/share/keyrings/ubuntu-archive-keyring.gpg] http://archive.ubuntu.com/ubuntu $(lsb_release -cs) universe" |
               sudo tee /etc/apt/sources.list.d/age-fallback.list >/dev/null
-            sudo apt-get -o Acquire::Retries=5 update -qq -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/age-fallback.list -o Dir::Etc::sourceparts=-
-            sudo apt-get -o Acquire::Retries=5 install -y -qq --no-install-recommends age
+            timeout -k 5 120 sudo apt-get -o Acquire::Retries=2 update -qq -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/age-fallback.list -o Dir::Etc::sourceparts=-
+            timeout -k 5 120 sudo apt-get -o Acquire::Retries=2 install -y -qq --no-install-recommends age
           fi
           command -v age >/dev/null
           # END install-age
