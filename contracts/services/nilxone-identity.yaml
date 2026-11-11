@@ -20,6 +20,9 @@ spec:
     image: ghcr.io/nilx-one/0x1-identity
     branch: master
     signerWorkflow: .github/workflows/package-identity-service.yml
+    # The last two are sign-in through AIS (auth.aiaiaiai.org), both or neither: the producer
+    # carries them only once its Environment holds them. The secret is AIS's client secret
+    # for `nilx-one`, of which AIS keeps only the SHA-256.
     envelope:
       - TELOXIDE_TOKEN
       - TELEGRAM_OIDC_CLIENT_ID
@@ -27,6 +30,8 @@ spec:
       - DISCORD_CLIENT_ID
       - DISCORD_CLIENT_SECRET
       - NILX_BROWSER_HANDOFF_TOKEN
+      - AIAIAIAI_SIGN_IN_ISSUER
+      - AIAIAIAI_SIGN_IN_CLIENT_SECRET
   runtime:
     kind: container
     environment:

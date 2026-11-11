@@ -42,6 +42,10 @@ abort("identity contract lost its envelope") unless contract.include?("    envel
 %w[NATIVE_AUTH_SECRET PASSWORD_PEPPER GITHUB_EVIDENCE_ENCRYPTION_KEY].each do |name|
   abort("identity contract lists server-owned #{name}") if contract.match?(/^\s+- #{name}$/)
 end
+# The AIS sign-in pair is listed together, so a producer that carries it is not refused.
+%w[AIAIAIAI_SIGN_IN_ISSUER AIAIAIAI_SIGN_IN_CLIENT_SECRET].each do |name|
+  abort("identity contract does not list #{name}") unless contract.match?(/^      - #{name}$/)
+end
 
 %w[NATIVE_AUTH_SECRET PASSWORD_PEPPER GITHUB_EVIDENCE_ENCRYPTION_KEY].each do |name|
   refused("server-owned #{name}", /server-owned #{name}/) { |text| text.sub("      - TELOXIDE_TOKEN\n", "      - TELOXIDE_TOKEN\n      - #{name}\n") }

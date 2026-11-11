@@ -95,6 +95,48 @@ Dir.mktmpdir("identity-envelope-ids") do |dir|
 end
 puts "identity envelope client IDs pass"
 
+# Sign-in through AIS rides the envelope as a pair, and only as a well-formed pair. Neither half is
+# ever logged when the pair is refused.
+Dir.mktmpdir("identity-ais-sign-in") do |dir|
+  source = File.join(dir, "input")
+  output = File.join(dir, "output")
+  env = { "WORKLOAD_SECRET_SOURCE_FILE" => source, "IDENTITY_PROVIDER_ENV_FILE" => output }
+  with_ids = DEFAULT + "TELEGRAM_OIDC_CLIENT_ID=envelope-telegram-id\nDISCORD_CLIENT_ID=envelope-discord-id\n"
+  secret = "s" * 40
+  pair = "AIAIAIAI_SIGN_IN_ISSUER=https://auth.aiaiaiai.org\nAIAIAIAI_SIGN_IN_CLIENT_SECRET=#{secret}\n"
+  run = lambda do |content|
+    File.write(source, content)
+    File.delete(output) if File.exist?(output)
+    Open3.capture3(env, "ruby", SCRIPT)
+  end
+
+  _out, errors, ok = run.call(with_ids + pair)
+  abort("AIS sign-in pair rejected: #{errors}") unless ok.success?
+  data = File.read(output)
+  abort("AIS issuer absent") unless data.include?("AIAIAIAI_SIGN_IN_ISSUER=https://auth.aiaiaiai.org\n")
+  abort("AIS client secret absent") unless data.include?("AIAIAIAI_SIGN_IN_CLIENT_SECRET=#{secret}\n")
+  abort("GHCR token leaked into runtime") if data.include?("ephemeral")
+
+  # Without the pair, nothing about AIS reaches the runtime file.
+  _out, errors, ok = run.call(with_ids)
+  abort("envelope without the AIS pair rejected: #{errors}") unless ok.success?
+  abort("AIS names appeared without the pair") if File.read(output).include?("AIAIAIAI_")
+
+  [
+    with_ids + "AIAIAIAI_SIGN_IN_ISSUER=https://auth.aiaiaiai.org\n",
+    with_ids + "AIAIAIAI_SIGN_IN_CLIENT_SECRET=#{secret}\n",
+    with_ids + pair.sub("https://", "http://"),
+    with_ids + pair.sub("auth.aiaiaiai.org", "auth.aiaiaiai.org/path"),
+    with_ids + pair.sub(secret, "s" * 31),
+    with_ids + pair + pair
+  ].each do |payload|
+    stdout, stderr, status = run.call(payload)
+    abort("invalid AIS sign-in settings accepted") if status.success?
+    abort("secret leaked in failure log") if "#{stdout}#{stderr}".include?(secret)
+  end
+end
+puts "identity AIS sign-in pair passes"
+
 # Regression: infra must not request a second set of production provider secrets
 # after the encrypted producer handoff has already been decrypted.
 workflow_path = File.expand_path("../.github/workflows/deploy-workload.yml", __dir__)

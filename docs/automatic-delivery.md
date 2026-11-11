@@ -132,7 +132,12 @@ The envelope is resolved, verified and decrypted exactly like any other (steps 3
 and 4 above); a head without one is not delivered yet. `prepare-identity-provider-env.rb`
 then accepts only the listed provider credentials and the two public client IDs,
 which travel in the envelope too, so a delivered Identity needs no
-`PROVIDER_*` variable from a caller.
+`PROVIDER_*` variable from a caller. The envelope may also carry the pair for
+sign-in through AIS, `AIAIAIAI_SIGN_IN_ISSUER` (an https origin) and
+`AIAIAIAI_SIGN_IN_CLIENT_SECRET` (at least 32 bytes), both or neither: the
+script refuses half of it, and without it nothing about AIS reaches the
+runtime file. The secret is AIS's client secret for `nilx-one`; AIS keeps only
+its SHA-256.
 
 `NATIVE_AUTH_SECRET`, `PASSWORD_PEPPER` and `GITHUB_EVIDENCE_ENCRYPTION_KEY` are
 **server-owned**. The host's `runtime.env` keeps them: the producer's
