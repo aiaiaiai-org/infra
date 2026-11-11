@@ -101,6 +101,7 @@ if runtime_kind == "container"
     "labels" => Base64.strict_encode64(labels.join("\n") + "\n"),
     "volumes" => Base64.strict_encode64(volumes.join("\n") + "\n"),
     "prepare_env" => prepare_env,
+    "prepare_env_secrets" => runtime["prepareEnvSecrets"] == true ? "true" : "false",
   )
 else
   repository = spec["repository"]

@@ -174,6 +174,16 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
       abort("#{path}: runtime.secrets and runtime.prepareEnv are mutually exclusive")
     end
 
+    # prepareEnvSecrets: the runtime.env the workload's own prepareEnv writes on the host is its
+    # secret environment, injected into the container. The script generates and keeps the values
+    # itself, so no GitHub Environment and no envelope holds them. nilxone-identity is injected
+    # by name; any other workload opts in here.
+    prepare_secrets = runtime["prepareEnvSecrets"]
+    unless prepare_secrets.nil?
+      abort("#{path}: runtime.prepareEnvSecrets must be true or false") unless [true, false].include?(prepare_secrets)
+      abort("#{path}: runtime.prepareEnvSecrets needs runtime.prepareEnv, whose runtime.env it injects") if prepare_secrets && !runtime["prepareEnv"]
+    end
+
     # Automatic delivery: infra deploys the producer's verified branch head on its own.
     delivery = spec["delivery"]
     unless delivery.nil?
