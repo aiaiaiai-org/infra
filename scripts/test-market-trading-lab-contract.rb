@@ -27,8 +27,9 @@ abort "invalid internal service settings" unless
 
 abort "Trading Lab must not declare a public origin" if spec.key?("public")
 abort "unexpected Trading Lab environment" unless runtime.fetch("environment") == ["PORT=1927"]
+abort "Trading Lab must take its secrets from Core's envelope" unless runtime["secretsFrom"] == "market-api-production"
 abort "unexpected Trading Lab secret allowlist" unless
-  runtime.fetch("secrets") == ["TRADING_LAB_SERVICE_TOKEN=TRADING_LAB_SERVICE_TOKEN", "TRADING_LAB_DATABASE_URL=TRADING_LAB_DATABASE_URL"]
+  runtime.fetch("secrets") == ["TRADING_LAB_SERVICE_TOKEN=TRADING_LAB_SERVICE_TOKEN", "TRADING_LAB_DATABASE_URL=MARKET_DATABASE_URL"]
 abort "missing edge placement" unless server.dig("spec", "workloads").include?("market-trading-lab")
 abort "Trading Lab must not have a public route" if edge.dig("spec", "routes").any? { |route| route["service"] == "market-trading-lab" }
 
@@ -38,23 +39,34 @@ abort stderr unless status.success?
   abort "invalid resolution: #{line}" unless stdout.lines.map(&:strip).include?(line)
 end
 
-Tempfile.create("trading-lab-credential") do |file|
-  file.write("TRADING_LAB_SERVICE_TOKEN=ci-not-real\nTRADING_LAB_DATABASE_URL=postgres://trading_lab:x@market-postgres-production:1927/trading_lab\n")
-  file.flush
-  env = {
-    "WORKLOAD_SECRETS" => Base64.strict_encode64(runtime.fetch("secrets").join("\n") + "\n"),
-    "WORKLOAD_SECRET_SOURCE_FILE" => file.path
-  }
-  encoded, error, code = Open3.capture3(env, "ruby", File.join(ROOT, "scripts/workload-secret-env.rb"))
-  abort error unless code.success?
-  abort "missing service secrets" unless Base64.strict_decode64(encoded).lines.sort ==
-    ["TRADING_LAB_DATABASE_URL=postgres://trading_lab:x@market-postgres-production:1927/trading_lab\n", "TRADING_LAB_SERVICE_TOKEN=ci-not-real\n"]
+# Core's production envelope, as Core's publish job seals it.
+CORE_ENVELOPE = <<~ENV
+  MARKET_DATABASE_URL=postgres://market:x@market-postgres-production:1927/market
+  MARKET_POSTGRES_PASSWORD=x
+  PUBLIC_API_TOKEN=ci-public
+  MANUAL_PROVIDER_TOKEN=ci-manual
+  NILX_BROWSER_HANDOFF_TOKEN=ci-handoff-ci-handoff-ci-handoff-ci
+  TRADING_LAB_SERVICE_TOKEN=ci-not-real
+ENV
 
-  file.write("UNKNOWN_SECRET=refuse\n")
-  file.flush
-  _, _, code = Open3.capture3(env, "ruby", File.join(ROOT, "scripts/workload-secret-env.rb"))
-  abort "unexpected extra credentials accepted" if code.success?
+# Runs the deploy-time secret filter as Deploy workload does for a secretsFrom contract.
+take_from_core = lambda do |secrets, envelope|
+  Tempfile.create("core-envelope") do |file|
+    file.write(envelope)
+    file.flush
+    env = { "WORKLOAD_SECRETS" => Base64.strict_encode64(secrets.join("\n") + "\n"), "WORKLOAD_SECRET_SOURCE_FILE" => file.path,
+            "WORKLOAD_SECRETS_FROM" => "market-api-production" }
+    out, error, code = Open3.capture3(env, "ruby", File.join(ROOT, "scripts/workload-secret-env.rb"))
+    [code.success? ? Base64.strict_decode64(out).lines.sort : nil, error]
+  end
 end
+
+service_env, error = take_from_core.call(runtime.fetch("secrets"), CORE_ENVELOPE)
+abort error unless service_env
+abort "service must receive exactly its token and Market's database URL" unless service_env ==
+  ["TRADING_LAB_DATABASE_URL=postgres://market:x@market-postgres-production:1927/market\n", "TRADING_LAB_SERVICE_TOKEN=ci-not-real\n"]
+abort "a Core envelope without the service token was accepted" if
+  take_from_core.call(runtime.fetch("secrets"), CORE_ENVELOPE.sub(/^TRADING_LAB_SERVICE_TOKEN=.*\n/, "")).first
 
 development = load_contract.call("contracts/services/market-trading-lab-development.yaml")
 dev = development.fetch("spec")
@@ -83,21 +95,15 @@ abort "invalid collector settings" unless
   col["deployment"] == "production" && col["network"] == "nilx-edge" && col["aliases"] == ["market-trading-lab-okx-collector"] &&
   col["healthKind"] == "process" && !col.key?("public") && !col.key?("delivery") &&
   col.dig("runtime", "command") == %w[bundle exec ruby bin/trading-lab collect-okx]
-abort "collector must hold only the research database" unless col.dig("runtime", "secrets") == ["TRADING_LAB_DATABASE_URL=TRADING_LAB_DATABASE_URL"]
+abort "collector must take its secrets from Core's envelope" unless col.dig("runtime", "secretsFrom") == "market-api-production"
+abort "collector must hold only the database URL" unless col.dig("runtime", "secrets") == ["TRADING_LAB_DATABASE_URL=MARKET_DATABASE_URL"]
 abort "missing collector placement" unless server.dig("spec", "workloads").include?("market-trading-lab-okx-collector")
 abort "collector must not have a public route" if edge.dig("spec", "routes").any? { |route| route["service"] == "market-trading-lab-okx-collector" }
-Tempfile.create("collector-credential") do |file|
-  env = { "WORKLOAD_SECRETS" => Base64.strict_encode64(col.dig("runtime", "secrets").join("\n") + "\n"), "WORKLOAD_SECRET_SOURCE_FILE" => file.path }
-  file.write("TRADING_LAB_DATABASE_URL=postgres://trading_lab:x@market-postgres-production:1927/trading_lab\n")
-  file.flush
-  _, error, code = Open3.capture3(env, "ruby", File.join(ROOT, "scripts/workload-secret-env.rb"))
-  abort error unless code.success?
-  # The service envelope carries the service token, which a collector must not receive.
-  file.write("TRADING_LAB_SERVICE_TOKEN=ci-not-real\n")
-  file.flush
-  _, _, code = Open3.capture3(env, "ruby", File.join(ROOT, "scripts/workload-secret-env.rb"))
-  abort "collector accepted the service envelope" if code.success?
-end
+collector_env, error = take_from_core.call(col.dig("runtime", "secrets"), CORE_ENVELOPE)
+abort error unless collector_env
+# Only the mapped name reaches the collector: never the service token or Core's credentials.
+abort "collector received more than the database URL" unless
+  collector_env == ["TRADING_LAB_DATABASE_URL=postgres://market:x@market-postgres-production:1927/market\n"]
 
 # Development deliberately has no research database (docs/market-trading-lab.md).
 abort "development Trading Lab must not get a database" if dev.dig("runtime", "secrets").any? { |entry| entry.include?("DATABASE") }

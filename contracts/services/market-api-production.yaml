@@ -42,6 +42,9 @@ spec:
       - PUBLIC_API_TOKEN=PUBLIC_API_TOKEN
       - MANUAL_PROVIDER_TOKEN=MANUAL_PROVIDER_TOKEN
       - NILX_BROWSER_HANDOFF_TOKEN=NILX_BROWSER_HANDOFF_TOKEN
+      # Trading Lab's service token. Core's envelope carries it so market-trading-lab can
+      # take it with runtime.secretsFrom; secretsFrom offers only names this contract maps.
+      - TRADING_LAB_SERVICE_TOKEN=TRADING_LAB_SERVICE_TOKEN
     labels:
       - org.aiaiaiai.product=0xda-market
       - org.aiaiaiai.service=market-api

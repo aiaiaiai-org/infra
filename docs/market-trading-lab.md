@@ -4,7 +4,7 @@
 
 Workloads: `market-trading-lab` (production, port `1927`) and `market-trading-lab-development` (test, port `1703`, automatic delivery from `master`). Application owner: [`0xda-market/trading-lab`](https://github.com/0xda-market/trading-lab).
 
-The workload runs in `edge-prod-1`, on the external `nilx-edge` Docker network, alias `market-trading-lab`, port `1927`. No edge host, public DNS name or public route is allocated. Production keeps its research history in the `trading_lab` database of `market-postgres-production` (below); development has none.
+The workload runs in `edge-prod-1`, on the external `nilx-edge` Docker network, alias `market-trading-lab`, port `1927`. No edge host, public DNS name or public route is allocated. Production keeps its research history in Market's database (below); development has none.
 
 ```text
 Telegram Mini App → market-bot-production → http://market-trading-lab:1927/v1/paper/replays
@@ -15,7 +15,8 @@ The bot validates Telegram initData and resolves a Market Core user before calli
 
 ## Secret ownership
 
-- `0xda-market/trading-lab`, Environment `production`: `TRADING_LAB_SERVICE_TOKEN` and `TRADING_LAB_POSTGRES_PASSWORD`. Its publish workflow derives `TRADING_LAB_DATABASE_URL` from the password, so infra never holds either.
+- Production: `0xda-market/core`, Environment `production`, holds `TRADING_LAB_SERVICE_TOKEN`. Trading Lab is part of production Market and owns no production secret (below).
+- Development: `0xda-market/trading-lab`, Environment `development`, holds `TRADING_LAB_SERVICE_TOKEN`.
 - `0xda-market/telegram-bot`, Environment `production`: `TRADING_LAB_TOKEN` with the **same** random value.
 - The bot's nonsecret configuration is `TRADING_LAB_ORIGIN=http://market-trading-lab:1927`, accepted only as the specifically allowlisted Docker host.
 
@@ -49,37 +50,26 @@ The development bot (`market-bot-test`) reaches it at
 
 ## Research database (production only)
 
-Trading Lab runs on Market's capacity: one database `trading_lab`, owned by the role `trading_lab`, inside the existing `market-postgres-production` instance. It is a separate database, not a schema in Core's `market` database, so Core's migrations never see the lab's tables and the `trading_lab` role cannot reach Market data.
+Trading Lab is part of production Market and runs on its capacity. It has no database, role or password of its own: it connects to Market's database with Core's credentials and keeps its tables in its own schema, `trading_lab`, inside the `market` database. Core's migrations use the `market` schema and never touch it; Trading Lab's migrations stay in `trading_lab`.
 
 ```text
-market-trading-lab ─────────────┐
-market-trading-lab-okx-collector ┴─> market-postgres-production:1927/trading_lab
-market-trading-lab-development      (no database)
+market-api-production ── envelope ─┬─> market-trading-lab              TRADING_LAB_SERVICE_TOKEN, TRADING_LAB_DATABASE_URL
+                                    └─> market-trading-lab-okx-collector TRADING_LAB_DATABASE_URL
+                                          │
+                                          └─> market-postgres-production:1927/market, schema trading_lab
+market-trading-lab-development            no database
 ```
 
-- **Production only.** `market-trading-lab-development` ships every `master` commit and migrates at boot; given the database it would migrate the only real research data with unreleased code. It keeps simulating without history.
-- **Envelopes.** Trading Lab's production publish emits `:production-<sha>.secrets` (`TRADING_LAB_SERVICE_TOKEN`, `TRADING_LAB_DATABASE_URL`) for `market-trading-lab` and `:production-<sha>.collector.secrets` (`TRADING_LAB_DATABASE_URL` only) for the collectors. Deploy workload admits exactly the names a contract maps, so a collector refuses the service envelope and never holds the service token.
-- **Collectors.** `market-trading-lab-okx-collector` runs the release image with `bin/trading-lab collect-okx`: read-only public OKX tickers, no listener, health is the process staying up. A Telegram collector joins once a channel list is chosen, as its own contract with `TRADING_LAB_TELEGRAM_CHANNELS` and the same collector envelope.
+- **Secrets come from Core.** Both Trading Lab workloads use `runtime.secretsFrom: market-api-production`. Deploy workload takes the envelope of Core's last successful delivery and passes only the names each contract maps: the service gets `TRADING_LAB_SERVICE_TOKEN` and `MARKET_DATABASE_URL` as `TRADING_LAB_DATABASE_URL`; the collector gets only the URL. Core's publish seals `TRADING_LAB_SERVICE_TOKEN` because `market-api-production` maps it, which `secretsFrom` requires.
+- **Trust.** Trading Lab code runs with Market's database role and could, through a bug, reach Market data. That is the price of not separating it from Core. Its schema separation keeps the two migration histories apart; it is not an access boundary.
+- **Production only.** `market-trading-lab-development` ships every `master` commit and migrates at boot; given a database it would migrate production data with unreleased code. It keeps simulating without history.
+- **Collectors.** `market-trading-lab-okx-collector` runs the release image with `bin/trading-lab collect-okx`: read-only public OKX tickers, no listener, health is the process staying up. A Telegram collector joins once a channel list is chosen, as its own contract with `TRADING_LAB_TELEGRAM_CHANNELS` and the same `secretsFrom`.
 - **Growth.** The OKX collector writes about 345,000 rows a day at its defaults. There is no retention yet; watch the volume's disk on edge-prod-1.
-- **Backups.** The Market backup required before activation (`docs/market-postgres-production.md`, step 3) must cover the `trading_lab` database as well as `market`, and its restore test must include it.
+- **Backups.** Market's backup (`docs/market-postgres-production.md`, step 3) is a dump of the `market` database, so it covers the `trading_lab` schema too; its restore test must include it.
 
 ### Activation order (manual, each step authorized separately)
 
-Nothing here runs before `market-postgres-production` is active and verified (`docs/market-postgres-production.md`, steps 1–7).
-
-1. **Password.** Generate a random password locally and store it as `TRADING_LAB_POSTGRES_PASSWORD` in `0xda-market/trading-lab`'s `production` Environment. Never commit, print or paste it.
-2. **Role and database, once.** On edge-prod-1, from the same shell that still holds the password in `$pw`, create them through the container's local socket (the official image trusts local connections; nothing crosses the network):
-
-   ```sh
-   docker exec -i -e PW="$pw" market-postgres-production sh -c \
-     'psql -v ON_ERROR_STOP=1 -U market -d market -v pw="$PW"' <<'SQL'
-   CREATE ROLE trading_lab LOGIN PASSWORD :'pw';
-   CREATE DATABASE trading_lab OWNER trading_lab;
-   REVOKE ALL ON DATABASE trading_lab FROM PUBLIC;
-   REVOKE CONNECT ON DATABASE market FROM trading_lab;
-   SQL
-   ```
-
-   `REVOKE CONNECT ... FROM trading_lab` only bites once `market` itself revokes `CONNECT` from `PUBLIC`; until then the role can connect to `market` but owns nothing there. Unset `$pw` afterwards.
-3. **Release.** Run Trading Lab's *Publish Trading Lab production release* on `master`. The service migrates its schema at boot and refuses to start without its database, so this comes after step 2.
-4. **Activate.** Run **Deploy workload** once per printed row: `market-trading-lab`, then `market-trading-lab-okx-collector`. Verify `/health` on the service and, from a disposable client on `nilx-edge`, that `trading_lab.market_stream_sessions` gains an open session.
+1. **Market first.** `market-api-production` is delivered automatically and `market-postgres-production` is live and backed up (`docs/market-postgres-production.md`). `secretsFrom` needs Core's delivery, so this contract fails validation until `market-api-production` has `delivery`.
+2. **Token.** `TRADING_LAB_SERVICE_TOKEN` is in Core's production Environment (at least 32 bytes) and a Core delivery has sealed it. The production Telegram bot's `TRADING_LAB_TOKEN` carries the same value.
+3. **Release.** Run Trading Lab's *Publish Trading Lab production release* on `master`; it publishes only the image.
+4. **Activate.** Run **Deploy workload** with the printed image for `market-trading-lab`, then for `market-trading-lab-okx-collector`, leaving `secrets_image` empty so infra takes Core's delivered envelope. The service migrates `trading_lab` at boot. Verify `/health` and, from a disposable client on `nilx-edge`, that `trading_lab.market_stream_sessions` gains an open session.

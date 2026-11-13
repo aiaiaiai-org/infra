@@ -22,10 +22,11 @@ spec:
       - ruby
       - bin/trading-lab
       - collect-okx
-    # Its only credential arrives in trading-lab's collector envelope
-    # (:production-<sha>.collector.secrets). It holds no service token and no exchange key.
+    # Its only credential is Market's database URL, taken from Core's envelope. It holds no
+    # service token and no exchange key.
+    secretsFrom: market-api-production
     secrets:
-      - TRADING_LAB_DATABASE_URL=TRADING_LAB_DATABASE_URL
+      - TRADING_LAB_DATABASE_URL=MARKET_DATABASE_URL
     labels:
       - org.aiaiaiai.product=0xda-market
       - org.aiaiaiai.service=trading-lab-okx-collector
