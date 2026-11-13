@@ -116,6 +116,48 @@ Dir.mktmpdir("scoped-secrets") do |directory|
   abort("API handoff token missing") unless Base64.strict_decode64(out) == token_line
   _, _, result = run_unmapped.call(registry + token_line, "market-fx-development")
   abort("worker accepted handoff token") if result.success?
+
+  # First-time Market PostgreSQL bootstrap uses Core's complete production
+  # envelope before Core has a successful delivery; only the database password
+  # from this exact producer envelope may reach the PostgreSQL container.
+  market_password = "market-test-" + ("p" * 32)
+  market_source = [
+    "MARKET_DATABASE_URL=postgres://market:#{market_password}@market-postgres-production:1927/market",
+    "MARKET_POSTGRES_PASSWORD=#{market_password}",
+    "PUBLIC_API_TOKEN=core-api-token",
+    "MANUAL_PROVIDER_TOKEN=manual-provider-token",
+    "NILX_BROWSER_HANDOFF_TOKEN=#{'h' * 64}",
+    "TRADING_LAB_SERVICE_TOKEN=#{'t' * 64}"
+  ].join("\n") + "\n"
+  postgres_mapping = Base64.strict_encode64("POSTGRES_PASSWORD=MARKET_POSTGRES_PASSWORD\n")
+  postgres_run = lambda do |data, workload = "market-postgres-production", mapping = postgres_mapping|
+    File.write(path, data)
+    Open3.capture3(
+      {
+        "WORKLOAD" => workload,
+        "WORKLOAD_SECRETS" => mapping,
+        "WORKLOAD_SECRET_SOURCE_FILE" => path
+      },
+      "ruby", SCRIPT
+    )
+  end
+  out, err, status = postgres_run.call(market_source)
+  abort("Market bootstrap envelope rejected: #{err}") unless status.success?
+  abort("Market bootstrap leaked Core credentials") unless
+    Base64.strict_decode64(out) == "POSTGRES_PASSWORD=#{market_password}\n"
+
+  [
+    [market_source + "SSH_PRIVATE_KEY=unrelated\n", "market-postgres-production", postgres_mapping],
+    [market_source.sub(/^PUBLIC_API_TOKEN=.*\n/, ""), "market-postgres-production", postgres_mapping],
+    [market_source.sub(/^TRADING_LAB_SERVICE_TOKEN=.*$/, "TRADING_LAB_SERVICE_TOKEN="), "market-postgres-production", postgres_mapping],
+    [market_source + "MARKET_POSTGRES_PASSWORD=duplicate\n", "market-postgres-production", postgres_mapping],
+    [market_source, "market-api-production", postgres_mapping],
+    [market_source, "market-postgres-production", Base64.strict_encode64("API_TOKEN=PUBLIC_API_TOKEN\n")]
+  ].each do |data, workload, mapping|
+    out, err, status = postgres_run.call(data, workload, mapping)
+    abort("unauthorized Market bootstrap envelope accepted") if status.success?
+    abort("Market bootstrap leaked credential values") if "#{out}#{err}".include?(market_password)
+  end
 end
 puts "workload secret handoff contract passes"
 
