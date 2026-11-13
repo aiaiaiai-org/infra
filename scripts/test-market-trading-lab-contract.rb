@@ -28,7 +28,7 @@ abort "invalid internal service settings" unless
 abort "Trading Lab must not declare a public origin" if spec.key?("public")
 abort "unexpected Trading Lab environment" unless runtime.fetch("environment") == ["PORT=1927"]
 abort "unexpected Trading Lab secret allowlist" unless
-  runtime.fetch("secrets") == ["TRADING_LAB_SERVICE_TOKEN=TRADING_LAB_SERVICE_TOKEN"]
+  runtime.fetch("secrets") == ["TRADING_LAB_SERVICE_TOKEN=TRADING_LAB_SERVICE_TOKEN", "TRADING_LAB_DATABASE_URL=TRADING_LAB_DATABASE_URL"]
 abort "missing edge placement" unless server.dig("spec", "workloads").include?("market-trading-lab")
 abort "Trading Lab must not have a public route" if edge.dig("spec", "routes").any? { |route| route["service"] == "market-trading-lab" }
 
@@ -39,7 +39,7 @@ abort stderr unless status.success?
 end
 
 Tempfile.create("trading-lab-credential") do |file|
-  file.write("TRADING_LAB_SERVICE_TOKEN=ci-not-real\n")
+  file.write("TRADING_LAB_SERVICE_TOKEN=ci-not-real\nTRADING_LAB_DATABASE_URL=postgres://trading_lab:x@market-postgres-production:1927/trading_lab\n")
   file.flush
   env = {
     "WORKLOAD_SECRETS" => Base64.strict_encode64(runtime.fetch("secrets").join("\n") + "\n"),
@@ -47,7 +47,8 @@ Tempfile.create("trading-lab-credential") do |file|
   }
   encoded, error, code = Open3.capture3(env, "ruby", File.join(ROOT, "scripts/workload-secret-env.rb"))
   abort error unless code.success?
-  abort "missing service secret" unless Base64.strict_decode64(encoded) == "TRADING_LAB_SERVICE_TOKEN=ci-not-real\n"
+  abort "missing service secrets" unless Base64.strict_decode64(encoded).lines.sort ==
+    ["TRADING_LAB_DATABASE_URL=postgres://trading_lab:x@market-postgres-production:1927/trading_lab\n", "TRADING_LAB_SERVICE_TOKEN=ci-not-real\n"]
 
   file.write("UNKNOWN_SECRET=refuse\n")
   file.flush
@@ -73,5 +74,32 @@ abort dev_err unless dev_status.success?
 %w[target=edge-prod-1 alias=market-trading-lab-development port=1703].each do |line|
   abort "invalid development resolution: #{line}" unless dev_out.lines.map(&:strip).include?(line)
 end
+
+# The OKX collector: production only, no listener, and nothing but the research database.
+collector = load_contract.call("contracts/services/market-trading-lab-okx-collector.yaml")
+col = collector.fetch("spec")
+abort "collector owner" unless collector.dig("metadata", "owner") == "0xda-market/trading-lab"
+abort "invalid collector settings" unless
+  col["deployment"] == "production" && col["network"] == "nilx-edge" && col["aliases"] == ["market-trading-lab-okx-collector"] &&
+  col["healthKind"] == "process" && !col.key?("public") && !col.key?("delivery") &&
+  col.dig("runtime", "command") == %w[bundle exec ruby bin/trading-lab collect-okx]
+abort "collector must hold only the research database" unless col.dig("runtime", "secrets") == ["TRADING_LAB_DATABASE_URL=TRADING_LAB_DATABASE_URL"]
+abort "missing collector placement" unless server.dig("spec", "workloads").include?("market-trading-lab-okx-collector")
+abort "collector must not have a public route" if edge.dig("spec", "routes").any? { |route| route["service"] == "market-trading-lab-okx-collector" }
+Tempfile.create("collector-credential") do |file|
+  env = { "WORKLOAD_SECRETS" => Base64.strict_encode64(col.dig("runtime", "secrets").join("\n") + "\n"), "WORKLOAD_SECRET_SOURCE_FILE" => file.path }
+  file.write("TRADING_LAB_DATABASE_URL=postgres://trading_lab:x@market-postgres-production:1927/trading_lab\n")
+  file.flush
+  _, error, code = Open3.capture3(env, "ruby", File.join(ROOT, "scripts/workload-secret-env.rb"))
+  abort error unless code.success?
+  # The service envelope carries the service token, which a collector must not receive.
+  file.write("TRADING_LAB_SERVICE_TOKEN=ci-not-real\n")
+  file.flush
+  _, _, code = Open3.capture3(env, "ruby", File.join(ROOT, "scripts/workload-secret-env.rb"))
+  abort "collector accepted the service envelope" if code.success?
+end
+
+# Development deliberately has no research database (docs/market-trading-lab.md).
+abort "development Trading Lab must not get a database" if dev.dig("runtime", "secrets").any? { |entry| entry.include?("DATABASE") }
 
 puts "private Trading Lab workload placement and secret contract verified"

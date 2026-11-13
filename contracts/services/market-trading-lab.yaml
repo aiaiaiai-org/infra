@@ -17,8 +17,11 @@ spec:
     # No public route. Only workloads on nilx-edge can reach the private service.
     environment:
       - PORT=1927
+    # Both arrive in trading-lab's production envelope. The research database is the
+    # trading_lab database in market-postgres-production (docs/market-trading-lab.md).
     secrets:
       - TRADING_LAB_SERVICE_TOKEN=TRADING_LAB_SERVICE_TOKEN
+      - TRADING_LAB_DATABASE_URL=TRADING_LAB_DATABASE_URL
     labels:
       - org.aiaiaiai.product=0xda-market
       - org.aiaiaiai.service=trading-lab

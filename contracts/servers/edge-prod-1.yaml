@@ -23,6 +23,7 @@ spec:
     - market-prices-development
     - market-bot-production
     - market-trading-lab
+    - market-trading-lab-okx-collector
     - market-trading-lab-development
     - market-bot-test
     - market-webapp-development
