@@ -55,7 +55,13 @@ verified digest.
 
    `scripts/validate-contracts.rb` enforces the image name, the branch and the
    workflow path. A contract that pins `runtime.image` cannot also deliver
-   automatically.
+   automatically. For production workloads which must **never** start on the
+   scheduled reconciler, add `mode: manual` under `delivery`. This mode keeps
+   provenance and envelope verification but excludes the workload from scheduled
+   and unfiltered Reconcile deliveries, including unfiltered force runs. To start
+   it, explicitly dispatch **Reconcile deliveries** with the precise workload
+   name after verifying its image, secrets and dependency readiness. The default
+   when `mode` is omitted remains automatic.
 
    The image is the repository's own package, `ghcr.io/<owner>/<repository>`.
    A repository that delivers more than one workload (`nilx-one/web` delivers

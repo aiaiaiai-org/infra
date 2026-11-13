@@ -17,8 +17,13 @@ spec:
     # No public route. Only workloads on nilx-edge can reach the private service.
     environment:
       - PORT=1927
+    # Trading Lab is part of production Market: both values come from Core's envelope, so
+    # Trading Lab holds no production secret and no database password of its own. Its
+    # tables live in the trading_lab schema of Market's database (docs/market-trading-lab.md).
+    secretsFrom: market-api-production
     secrets:
       - TRADING_LAB_SERVICE_TOKEN=TRADING_LAB_SERVICE_TOKEN
+      - TRADING_LAB_DATABASE_URL=MARKET_DATABASE_URL
     labels:
       - org.aiaiaiai.product=0xda-market
       - org.aiaiaiai.service=trading-lab

@@ -31,6 +31,13 @@ abort "mock payments must stay off" unless environment.include?("ENABLE_MOCK_PAY
 # publish workflow from the same MARKET_POSTGRES_PASSWORD the database uses.
 abort "DATABASE_URL must not be a plain variable" if environment.any? { |entry| entry.start_with?("DATABASE_URL=") }
 abort "no pinned image: Core delivers its own" if runtime.key?("image")
+delivery = spec.fetch("delivery")
+abort "production Core must require explicitly dispatched delivery" unless delivery == {
+  "image" => "ghcr.io/0xda-market/core",
+  "branch" => "master",
+  "signerWorkflow" => ".github/workflows/ci.yml",
+  "mode" => "manual"
+}
 abort "secrets come from the envelope, not prepareEnv" if runtime.key?("prepareEnv")
 
 expected = %w[

@@ -1,0 +1,32 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: market-trading-lab-okx-collector
+  owner: 0xda-market/trading-lab
+spec:
+  deployment: production
+  network: nilx-edge
+  aliases:
+    - market-trading-lab-okx-collector
+  # Nothing listens: the collector only reads the public OKX ticker stream and writes to
+  # the research database. Health is the process staying up.
+  protocol: tcp
+  port: 1927
+  healthKind: process
+  runtime:
+    kind: container
+    command:
+      - bundle
+      - exec
+      - ruby
+      - bin/trading-lab
+      - collect-okx
+    # Its only credential is Market's database URL, taken from Core's envelope. It holds no
+    # service token and no exchange key.
+    secretsFrom: market-api-production
+    secrets:
+      - TRADING_LAB_DATABASE_URL=MARKET_DATABASE_URL
+    labels:
+      - org.aiaiaiai.product=0xda-market
+      - org.aiaiaiai.service=trading-lab-okx-collector
