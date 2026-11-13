@@ -39,6 +39,7 @@ expected = %w[
   PUBLIC_API_TOKEN=PUBLIC_API_TOKEN
   MANUAL_PROVIDER_TOKEN=MANUAL_PROVIDER_TOKEN
   NILX_BROWSER_HANDOFF_TOKEN=NILX_BROWSER_HANDOFF_TOKEN
+  TRADING_LAB_SERVICE_TOKEN=TRADING_LAB_SERVICE_TOKEN
 ]
 abort "unexpected secret mapping: #{secrets.inspect}" unless secrets.sort == expected.sort
 database_secret = database.dig("spec", "runtime", "secrets").first.split("=", 2).last
