@@ -464,7 +464,7 @@ jobs:
           grep -Fq 'check_market_development' deploy/edge/check-upstreams.sh
           grep -Fq 'market-development)' deploy/edge/check-public.sh
           grep -Fq 'market|market-development|nilx-web|all' deploy/edge/deploy.sh
-          test "$(grep -Fc 'reverse_proxy market-bot-production:10000' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy market-bot-production:1927' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy market-bot-development:10000' deploy/edge/Caddyfile)" -eq 1
           test "$(grep -Fc 'reverse_proxy nilxone-web:1927' deploy/edge/Caddyfile)" -eq 3
           grep -Fq 'handle @market_web' deploy/edge/Caddyfile
