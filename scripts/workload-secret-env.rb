@@ -80,7 +80,22 @@ if !source_file.empty?
   # A workload that takes its secrets from another workload's envelope (runtime.secretsFrom)
   # receives a superset; only the names its own contract maps ever reach its runtime.
   subset = ENV.fetch("WORKLOAD_SECRETS_FROM", "") != ""
-  abort("unexpected source credential names") unless extras.empty? || subset
+  # The first Market PostgreSQL deployment precedes Core's first successful delivery.
+  # Its explicitly supplied Core production envelope contains all six Core secrets,
+  # but the PostgreSQL container must receive only POSTGRES_PASSWORD. Admit exactly
+  # that producer envelope shape for this one workload; other direct sources remain
+  # strict and unrelated/malformed envelope keys are still rejected.
+  core_bootstrap_keys = %w[
+    MARKET_DATABASE_URL MARKET_POSTGRES_PASSWORD PUBLIC_API_TOKEN
+    MANUAL_PROVIDER_TOKEN NILX_BROWSER_HANDOFF_TOKEN TRADING_LAB_SERVICE_TOKEN
+  ]
+  market_postgres_bootstrap =
+    ENV.fetch("WORKLOAD", "") == "market-postgres-production" &&
+    mapping == ["POSTGRES_PASSWORD=MARKET_POSTGRES_PASSWORD"] &&
+    producer_names.empty? &&
+    secrets.keys.sort == core_bootstrap_keys.sort &&
+    secrets.values.all? { |value| value.is_a?(String) && !value.empty? }
+  abort("unexpected source credential names") unless extras.empty? || subset || market_postgres_bootstrap
   abort("missing contract-specified source credentials") unless missing.empty?
   registry_names = %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
   provided = registry_names.count { |name| secrets.key?(name) }
