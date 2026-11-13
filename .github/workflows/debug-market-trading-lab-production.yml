@@ -1,0 +1,161 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+#
+# Manual, read-only production diagnosis:
+# Telegram Mini App -> market-bot-production -> market-trading-lab -> OKX.
+# No deploy, mutations, live orders, secret values, hash digests or raw log payloads.
+name: Debug Market Trading Lab (production)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    name: Inspect production bot -> Trading Lab -> OKX (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: edge-prod-1
+    env:
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          install -m 0700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 0600 "$HOME/.ssh/id_ed25519"
+          ssh-keyscan -T 10 -p "$SSH_PORT" -H "$SSH_HOST" > "$HOME/.ssh/known_hosts" 2>/dev/null
+          test -s "$HOME/.ssh/known_hosts"
+
+      - name: Inspect production services and requests
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Euo pipefail
+          set +e
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE' 2>/dev/null | tee "$RUNNER_TEMP/market-trading-production.txt"
+          set -u
+          failed=0
+          bot=market-bot-production
+          lab=market-trading-lab
+          core=market-api-production
+
+          echo '## Container states (no environment or credentials)'
+          for name in "$bot" "$lab" "$core"; do
+            state="$(docker inspect --format '{{.State.Status}}' "$name" 2>/dev/null)" || state=missing
+            printf '%s: %s\n' "$name" "$state"
+            [[ "$state" == running ]] || failed=1
+          done
+          echo
+
+          # Hashes remain on the remote host; workflow logs show equality only.
+          fingerprint() {
+            docker exec "$1" ruby -rdigest -e '
+              value = ENV.fetch(ARGV.fetch(0), "")
+              print(value.empty? ? "missing" : Digest::SHA256.hexdigest(value))
+            ' "$2" 2>/dev/null
+          }
+          echo '## Trading Lab service credentials'
+          bot_hash="$(fingerprint "$bot" TRADING_LAB_TOKEN)" || bot_hash=unavailable
+          lab_hash="$(fingerprint "$lab" TRADING_LAB_SERVICE_TOKEN)" || lab_hash=unavailable
+          core_hash="$(fingerprint "$core" TRADING_LAB_SERVICE_TOKEN)" || core_hash=unavailable
+          for name in bot lab core; do
+            case "$name" in
+              bot) value="$bot_hash" ;;
+              lab) value="$lab_hash" ;;
+              core) value="$core_hash" ;;
+            esac
+            if [[ "$value" =~ ^[0-9a-f]{64}$ ]]; then
+              printf '%s token: set\n' "$name"
+            else
+              printf '%s token: missing or unavailable\n' "$name"
+              failed=1
+            fi
+          done
+          if [[ "$bot_hash" =~ ^[0-9a-f]{64}$ && "$lab_hash" =~ ^[0-9a-f]{64}$ && "$core_hash" =~ ^[0-9a-f]{64}$ ]]; then
+            if [[ "$bot_hash" == "$lab_hash" && "$lab_hash" == "$core_hash" ]]; then
+              echo 'bot/lab/Core tokens: MATCH'
+            else
+              echo 'bot/lab/Core tokens: MISMATCH'
+              failed=1
+            fi
+          else
+            echo 'bot/lab/Core tokens: cannot compare'
+            failed=1
+          fi
+          origin="$(docker exec "$bot" ruby -e 'print(ENV.fetch("TRADING_LAB_ORIGIN", "") == "http://market-trading-lab:1927" ? "MATCH" : "MISMATCH")' 2>/dev/null)" || origin=unavailable
+          printf 'bot Trading Lab origin: %s\n' "$origin"
+          [[ "$origin" == MATCH ]] || failed=1
+          echo
+
+          # Only HTTP status, allowlisted error code and exception class are emitted.
+          probe() {
+            label="$1"; container="$2"; url="$3"; auth="$4"; expected="$5"; kind="$6"
+            result="$(docker exec "$container" ruby -rnet/http -rjson -e '
+              begin
+                uri = URI(ARGV.fetch(0))
+                request = Net::HTTP::Get.new(uri)
+                request["authorization"] = "Bearer #{ENV.fetch("TRADING_LAB_TOKEN", "")}" if ARGV.fetch(1) == "token"
+                response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", open_timeout: 3, read_timeout: 12) { |http| http.request(request) }
+                code = response.code.to_i
+                parsed = JSON.parse(response.body) rescue {}
+                parsed = {} unless parsed.is_a?(Hash)
+                error_code = parsed["error"].to_s
+                safe_error = error_code.match?(/\A[a-z][a-z0-9_]{0,39}\z/) ? " error=#{error_code}" : ""
+                ok = code == Integer(ARGV.fetch(2))
+                ok &&= parsed["code"].to_s == "0" if ARGV.fetch(3) == "okx"
+                puts "HTTP #{code}#{safe_error}"
+                exit(ok ? 0 : 1)
+              rescue StandardError => e
+                puts "exception=#{e.class.name.split("::").last}"
+                exit 1
+              end
+            ' "$url" "$auth" "$expected" "$kind" 2>/dev/null)" && passed=yes || passed=no
+            printf '%s: %s\n' "$label" "${result:-unavailable}"
+            [[ "$passed" == yes ]] || failed=1
+          }
+
+          echo '## Safe HTTP probes (GET only)'
+          probe 'bot -> Core /health' "$bot" 'http://market-api-production:1927/health' none 200 json
+          probe 'bot -> Trading Lab /health' "$bot" 'http://market-trading-lab:1927/health' none 200 json
+          probe 'bot -> Lab leaderboard limit=1' "$bot" 'http://market-trading-lab:1927/v1/leaders/okx?limit=1' token 200 json
+          probe 'bot -> Lab leaderboard 90d / 20' "$bot" 'http://market-trading-lab:1927/v1/leaders/okx?sort=pnl_ratio&min_lead_days=90&limit=20' token 200 json
+          probe 'Lab -> OKX public leaderboard 90d / 20' "$lab" 'https://www.okx.com/api/v5/copytrading/public-lead-traders?instType=SWAP&sortType=pnl_ratio&minLeadDays=3&limit=20' none 200 okx
+          probe 'Mini App leaders without initData (must reject)' "$bot" 'http://market-bot-production:1927/webapp/trading/leaders?sort=pnl_ratio&min_lead_days=90&limit=20' none 401 json
+          echo
+
+          echo '## Bot error fingerprints (counts only; no raw logs)'
+          if docker inspect "$bot" >/dev/null 2>&1; then
+            for pattern in 'NoMethodError|NameError|KeyError' 'trading_lab_unavailable|TradingLabAPI' '500|502|503'; do
+              count="$(docker logs --tail 300 "$bot" 2>/dev/null | grep -Eic "$pattern" || true)"
+              printf 'matching log lines (%s): %s\n' "$pattern" "${count:-0}"
+            done
+          else
+            echo 'bot logs unavailable'
+          fi
+          echo 'Note: authenticated Mini App requests require Telegram initData; no user session is impersonated.'
+          exit "$failed"
+          REMOTE
+          remote_status="${PIPESTATUS[0]}"
+          set -e
+          {
+            echo '## Production Trading Lab — read-only diagnostic'
+            echo '~~~text'
+            cat "$RUNNER_TEMP/market-trading-production.txt"
+            echo '~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$remote_status" -ne 0 ]]; then
+            echo "::error::Production Trading Lab diagnosis failed or found an unhealthy hop; see the job summary."
+          fi
+          exit "$remote_status"
