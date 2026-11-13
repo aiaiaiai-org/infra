@@ -27,6 +27,11 @@ CONTRACT = <<~YAML
       branch: master
       signerWorkflow: .github/workflows/publish.yml
 YAML
+# A manual producer is excluded from an unfiltered/scheduled reconcile, even with --force.
+MANUAL_CONTRACT = CONTRACT.sub("    signerWorkflow: .github/workflows/publish.yml\n",
+                               "    signerWorkflow: .github/workflows/publish.yml\n    mode: manual\n")
+abort("MANUAL_CONTRACT fixture did not apply") if MANUAL_CONTRACT == CONTRACT
+
 ENVELOPE_DIGEST = "sha256:#{'e' * 64}"
 SECRETS_REF = "#{IMAGE}@#{ENVELOPE_DIGEST}"
 # A workload that names secrets gets them only in the producer's envelope.
@@ -133,6 +138,10 @@ expect("not published yet", plan("published" => false, "attested" => true), ok: 
 expect("provenance mismatch", plan("published" => true, "attested" => false), ok: false)
 expect("unknown workload", plan(attested, "--workload", "missing"), ok: false)
 expect("workload filter", plan(attested, "--workload", "example-site"), ok: true, count: 1)
+expect("manual excludes scheduled", plan(attested.merge("contract" => MANUAL_CONTRACT)), ok: true, count: 0)
+expect("manual excludes forced all", plan(attested.merge("contract" => MANUAL_CONTRACT), "--force"), ok: true, count: 0)
+expect("manual explicit dispatch", plan(attested.merge("contract" => MANUAL_CONTRACT), "--workload", "example-site"), ok: true, count: 1)
+expect("manual explicit forced", plan(attested.merge("contract" => MANUAL_CONTRACT), "--workload", "example-site", "--force"), ok: true, count: 1)
 sealed = attested.merge("envelope" => ENVELOPE_DIGEST)
 with_secrets = plan(sealed.merge("contract" => SECRET_CONTRACT))
 expect("secret envelope", with_secrets, ok: true, count: 1)
@@ -153,4 +162,4 @@ abort("delivery.envelope: envelope provenance not verified") unless
   with_envelope[:calls].lines.any? { |line| line.start_with?("attestation verify oci://#{SECRETS_REF}") && line.include?("--source-digest #{SHA}") }
 expect("delivery.envelope not published", plan(attested.merge("contract" => ENVELOPE_CONTRACT)), ok: true, count: 0)
 expect("delivery.envelope unchanged", plan(sealed.merge("last_image" => IMAGE_REF, "last_secrets" => SECRETS_REF, "last_state" => "success").merge("contract" => ENVELOPE_CONTRACT)), ok: true, count: 0)
-puts "Delivery planner: 18 cases passed"
+puts "Delivery planner: 22 cases passed"

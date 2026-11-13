@@ -69,7 +69,7 @@ market-trading-lab-development            no database
 
 ### Activation order (manual, each step authorized separately)
 
-1. **Market first.** `market-api-production` is delivered automatically and `market-postgres-production` is live and backed up (`docs/market-postgres-production.md`). `secretsFrom` needs Core's delivery, so this contract fails validation until `market-api-production` has `delivery`.
+1. **Market first.** The `market-api-production` contract declares `delivery.mode: manual`, so the scheduled reconciler cannot activate it. Bootstrap `market-postgres-production`, verify an encrypted off-host backup and isolated restore, then explicitly dispatch **Reconcile deliveries** for `workload=market-api-production` and verify successful Core delivery. Although the Trading Lab consumer contracts are valid with this staged producer, their `secretsFrom` resolution fails closed until the producer has a successful delivery record.
 2. **Token.** `TRADING_LAB_SERVICE_TOKEN` is in Core's production Environment (at least 32 bytes) and a Core delivery has sealed it. The production Telegram bot's `TRADING_LAB_TOKEN` carries the same value.
 3. **Release.** Run Trading Lab's *Publish Trading Lab production release* on `master`; it publishes only the image.
 4. **Activate.** Run **Deploy workload** with the printed image for `market-trading-lab`, then for `market-trading-lab-okx-collector`, leaving `secrets_image` empty so infra takes Core's delivered envelope. The service migrates `trading_lab` at boot. Verify `/health` and, from a disposable client on `nilx-edge`, that `trading_lab.market_stream_sessions` gains an open session.

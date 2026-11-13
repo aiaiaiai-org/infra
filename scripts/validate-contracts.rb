@@ -198,8 +198,12 @@ Dir.glob(SERVICE_GLOB).sort.each do |path|
     delivery = spec["delivery"]
     unless delivery.nil?
       abort("#{path}: delivery must be a mapping") unless delivery.is_a?(Hash)
-      unknown = delivery.keys - %w[image branch signerWorkflow envelope]
+      unknown = delivery.keys - %w[image branch signerWorkflow envelope mode]
       abort("#{path}: unknown delivery keys #{unknown.join(', ')}") unless unknown.empty?
+      # An explicit manual mode allows staged production contracts without an
+      # automatic scheduled deployment. Omitted mode retains the existing behavior.
+      mode = delivery.fetch("mode", "automatic")
+      abort("#{path}: delivery.mode must be automatic or manual") unless %w[automatic manual].include?(mode)
       abort("#{path}: delivery conflicts with a contract-pinned runtime.image") unless image.nil?
       # The producer publishes in its own organization: under the repository's name, or, for a
       # repository that delivers more than one workload, under another package name there. The
@@ -320,7 +324,7 @@ services.each do |workload, service|
   mapped = Array(service.dig("spec", "runtime", "secrets")).map { |entry| entry.split("=", 2).last }
   abort("workload #{workload}: secretsFrom needs runtime.secrets") if mapped.empty?
   producer = services[from] || abort("workload #{workload}: secretsFrom names unknown workload #{from}")
-  abort("workload #{workload}: secretsFrom #{from} must be delivered automatically") if producer.dig("spec", "delivery").nil?
+  abort("workload #{workload}: secretsFrom #{from} requires a delivery producer") if producer.dig("spec", "delivery").nil?
   abort("workload #{workload}: secretsFrom #{from} must run on the same server") unless placed_on.fetch(from) == placed_on.fetch(workload)
   offered = Array(producer.dig("spec", "runtime", "secrets")).map { |entry| entry.split("=", 2).last }
   missing = mapped - offered

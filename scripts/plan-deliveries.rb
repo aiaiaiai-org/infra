@@ -111,7 +111,9 @@ end
 def contracts(dir, only)
   all = Dir.glob(File.join(dir, "*.yaml")).sort.map { |path| YAML.safe_load(File.read(path), aliases: false) }
   selected = all.select { |contract| contract.dig("spec", "delivery") }
-  return selected unless only
+  # Manual producers must never be scheduled by the periodic or unfiltered
+  # reconcile. They can be planned only by an explicit named workflow dispatch.
+  return selected.reject { |contract| contract.dig("spec", "delivery", "mode") == "manual" } unless only
 
   match = selected.select { |contract| contract.dig("metadata", "name") == only }
   abort("workload #{only} has no automatic delivery") if match.empty?
