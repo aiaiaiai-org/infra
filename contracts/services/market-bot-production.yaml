@@ -1,3 +1,4 @@
+# © 2026 aiaiaiai · aiaiaiai.org
 apiVersion: infra.nilx.one/v1
 kind: WorkloadContract
 metadata:
@@ -14,3 +15,28 @@ spec:
   public:
     host: 0xda-market.nilx.one
     pathPrefix: /bot/
+  runtime:
+    kind: container
+    environment:
+      - DEPLOY_ENV=production
+      - MARKET_CORE_ENV=production
+      - PORT=1927
+      - REGISTER_TELEGRAM_WEBHOOK=0
+      - REGISTER_TELEGRAM_WEBAPP=0
+      - TRADING_LAB_ORIGIN=http://market-trading-lab:1927
+    secrets:
+      - TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN
+      - TELEGRAM_WEBHOOK_SECRET=TELEGRAM_WEBHOOK_SECRET
+      - MARKET_API_TOKEN=MARKET_API_TOKEN
+      - TRADING_LAB_TOKEN=TRADING_LAB_TOKEN
+    producerEnvironment:
+      - TELEGRAM_BOT_USERNAME
+      - MARKET_API_URL
+      - PUBLIC_URL
+  # Production is opt-in only. No scheduled reconciler may deploy this workload.
+  # The producer publishes via manual publish-production.yml from exact green master.
+  delivery:
+    image: ghcr.io/0xda-market/telegram-bot-production
+    branch: master
+    signerWorkflow: .github/workflows/publish-production.yml
+    mode: manual
