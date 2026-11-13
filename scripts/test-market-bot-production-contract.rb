@@ -11,6 +11,7 @@ test_bot = load_contract.call("contracts/services/market-bot-test.yaml")
 edge = load_contract.call("contracts/edges/nilx-edge.yaml")
 server = load_contract.call("contracts/servers/edge-prod-1.yaml")
 caddy = File.read(File.join(root, "deploy/edge/Caddyfile"))
+upstream_checks = File.read(File.join(root, "deploy/edge/check-upstreams.sh"))
 
 abort "wrong production bot owner" unless bot.dig("metadata", "owner") == "0xda-market/telegram-bot"
 spec = bot.fetch("spec")
@@ -63,5 +64,10 @@ abort "Caddy must use production contract port" unless
   !caddy.include?("reverse_proxy market-bot-production:10000")
 abort "development Caddy route must be untouched" unless
   caddy.include?("reverse_proxy market-bot-development:10000")
+abort "production upstream health check must use contract port" unless
+  upstream_checks.include?("http://market-bot-production:#{spec.fetch("port")}/health") &&
+  !upstream_checks.include?("http://market-bot-production:10000/health")
+abort "development bot health check must stay on test port" unless
+  upstream_checks.include?("http://market-bot-development:10000/health")
 
 puts "production bot release contract verified (manual-only)"

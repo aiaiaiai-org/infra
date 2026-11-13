@@ -25,7 +25,7 @@ check_upstream() {
 
 check_market() {
   check_upstream market-api-production http://market-api-production:1927/health
-  check_upstream market-bot-production http://market-bot-production:10000/health
+  check_upstream market-bot-production http://market-bot-production:1927/health
   check_upstream market-bot-test http://market-bot-development:10000/health
 }
 
