@@ -152,6 +152,9 @@ jobs:
       - name: Validate Market development Bot deployment
         run: ruby scripts/test-market-bot-development-contract.rb
 
+      - name: Validate Market production Bot release contract
+        run: ruby scripts/test-market-bot-production-contract.rb
+
       - name: Validate market production PostgreSQL isolation
         run: ruby scripts/test-market-postgres-contract.rb
 
