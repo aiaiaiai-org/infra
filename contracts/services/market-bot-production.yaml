@@ -29,6 +29,9 @@ spec:
       - TELEGRAM_WEBHOOK_SECRET=TELEGRAM_WEBHOOK_SECRET
       - MARKET_API_TOKEN=MARKET_API_TOKEN
       - TRADING_LAB_TOKEN=TRADING_LAB_TOKEN
+      # Optional best-effort errors.v1 reporting; empty pair disables the reporter.
+      - FOUR_X_ERRORS_URL=FOUR_X_ERRORS_URL
+      - FOUR_X_ERRORS_TOKEN=FOUR_X_ERRORS_TOKEN
     producerEnvironment:
       - TELEGRAM_BOT_USERNAME
       - MARKET_API_URL
