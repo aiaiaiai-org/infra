@@ -41,12 +41,10 @@ expected_secrets = %w[
   TELEGRAM_WEBHOOK_SECRET=TELEGRAM_WEBHOOK_SECRET
   MARKET_API_TOKEN=MARKET_API_TOKEN
   TRADING_LAB_TOKEN=TRADING_LAB_TOKEN
-  FOUR_X_ERRORS_URL=FOUR_X_ERRORS_URL
-  FOUR_X_ERRORS_TOKEN=FOUR_X_ERRORS_TOKEN
 ]
 abort "unexpected secrets mapping" unless runtime.fetch("secrets").sort == expected_secrets.sort
 abort "production must supply its own bot identity, API and public URL" unless
-  runtime.fetch("producerEnvironment").sort == %w[TELEGRAM_BOT_USERNAME MARKET_API_URL PUBLIC_URL].sort
+  runtime.fetch("producerEnvironment").sort == %w[TELEGRAM_BOT_USERNAME MARKET_API_URL PUBLIC_URL FOUR_X_ERRORS_URL].sort
 abort "prod must never share dev's delivery image" if
   spec.dig("delivery", "image") == test_bot.dig("spec", "delivery", "image")
 abort "production must never deploy on schedule" unless spec.fetch("delivery") == {
