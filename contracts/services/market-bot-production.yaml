@@ -33,6 +33,8 @@ spec:
       - TELEGRAM_BOT_USERNAME
       - MARKET_API_URL
       - PUBLIC_URL
+      # Public collector origin (not a secret or a database connection string).
+      - FOUR_X_ERRORS_URL
   # Production is opt-in only. No scheduled reconciler may deploy this workload.
   # The producer publishes via manual publish-production.yml from exact green master.
   delivery:
