@@ -31,12 +31,12 @@ spec:
   public:
     host: auth.aiaiaiai.org
     pathPrefix: /
-  # Automatic delivery of the verified master head (docs/automatic-delivery.md). 4x-ais is
-  # public, publishes an attested image, and grants this repository Read on the package: the
-  # planner aborts every delivery on a registry error other than a missing tag, so this block
-  # must never be merged before that Read access is in place. No envelope: AIS makes its own
-  # secrets on the host (runtime.prepareEnvSecrets).
+  # Keep attested images available without triggering a production deploy
+  # when AIS master changes. The scheduled reconciler skips this workload;
+  # release requires an explicitly targeted Reconcile deliveries dispatch.
+  # AIS still owns its secrets on the host (runtime.prepareEnvSecrets).
   delivery:
+    mode: manual
     image: ghcr.io/aiaiaiai-org/4x-ais
     branch: master
     signerWorkflow: .github/workflows/publish.yml
