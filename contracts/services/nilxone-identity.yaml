@@ -12,11 +12,15 @@ spec:
   protocol: http
   port: 1927
   health: /health
-  # Infra deploys the producer's verified master head on its own (docs/automatic-delivery.md).
-  # The envelope carries the provider credentials only. NATIVE_AUTH_SECRET, PASSWORD_PEPPER and
-  # GITHUB_EVIDENCE_ENCRYPTION_KEY stay on the host: prepare-runtime-env.sh keeps the existing
-  # values and refuses an override, and validate-contracts.rb refuses them here.
+  # Publishing a verified image from Web master is not authorization for a
+  # production Identity Service deploy. Scheduled and unfiltered Reconcile
+  # deliveries skip this workload; release it only through a named, manually
+  # authorized dispatch (Reconcile deliveries with this workload, or Deploy
+  # workload with an explicit image).
+  # The envelope carries provider credentials only; server-owned secrets
+  # stay on the host and are never overridden.
   delivery:
+    mode: manual
     image: ghcr.io/nilx-one/0x1-identity
     branch: master
     signerWorkflow: .github/workflows/package-identity-service.yml
