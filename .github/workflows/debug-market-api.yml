@@ -1,0 +1,103 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Debug Market API workloads
+
+on:
+  workflow_dispatch:
+    inputs:
+      tail_lines:
+        description: Number of container log lines to tail
+        required: false
+        default: "200"
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    name: Inspect market-api-production/development and the 0x1 handoff (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: edge-prod-1
+    env:
+      SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
+      TAIL_LINES: ${{ inputs.tail_lines }}
+    steps:
+      - name: Validate SSH credentials
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$SSH_HOST"
+          test -n "$SSH_USER"
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+
+      - name: Configure SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          install -m 0700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 0600 "$HOME/.ssh/id_ed25519"
+          ssh-keyscan -T 10 -p "$SSH_PORT" -H "$SSH_HOST" > "$HOME/.ssh/known_hosts"
+          test -s "$HOME/.ssh/known_hosts"
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" true
+      - name: Inspect Market containers, handoff secret agreement and recent logs
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh_run() {
+            ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "$1"
+          }
+          {
+            echo '```'
+            echo '## public Market health (through the edge, like Identity)'
+            ssh_run "curl -sS -o /dev/null -w '0xda-market.nilx.one/health -> HTTP %{http_code} in %{time_total}s\n' https://0xda-market.nilx.one/health" || true
+            ssh_run "curl -sS -o /dev/null -w 'POST /nilx-browser/handoffs without credentials -> HTTP %{http_code} (401 expected)\n' -X POST -H 'Content-Type: application/json' -d '{}' https://0xda-market.nilx.one/nilx-browser/handoffs" || true
+            echo
+            echo '## docker ps (market api)'
+            ssh_run "docker ps -a --filter name=market-api --format '{{.Names}}\t{{.Status}}\t{{.Image}}\t{{.RunningFor}}'" || true
+            echo
+            echo '## handoff token agreement (digest comparison only, never the value)'
+            # Never print a secret: each digest is computed on the host and only
+            # the verdict leaves it.
+            ssh -o BatchMode=yes -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" 'bash -s' <<'SH' || true
+          set -u
+          digest() {
+            docker inspect "$1" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+              | sed -n 's/^NILX_BROWSER_HANDOFF_TOKEN=//p' | tr -d '\n' | sha256sum | cut -c1-64
+          }
+          empty=$(printf '' | sha256sum | cut -c1-64)
+          identity=$(digest nilxone-identity)
+          [ "$identity" = "$empty" ] && echo 'nilxone-identity: no NILX_BROWSER_HANDOFF_TOKEN'
+          for market in market-api-production market-api-development; do
+            value=$(digest "$market")
+            if [ "$value" = "$empty" ]; then echo "$market: no NILX_BROWSER_HANDOFF_TOKEN"
+            elif [ "$value" = "$identity" ]; then echo "$market: matches nilxone-identity"
+            else echo "$market: DIFFERS from nilxone-identity"; fi
+          done
+          SH
+            for name in market-api-production market-api-development; do
+              echo
+              echo "## $name: restarts"
+              ssh_run "docker inspect $name --format 'RestartCount={{.RestartCount}} StartedAt={{.State.StartedAt}}'" || true
+              echo
+              echo "## $name: nilx-browser requests and errors (tail $TAIL_LINES, filtered)"
+              ssh_run "docker logs --tail '$TAIL_LINES' $name 2>&1 | grep -Ei 'nilx-browser|error|exception|fatal|refused|denied' | tail -n 120" || true
+            done
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Clean SSH key
+        if: always()
+        run: rm -f "$HOME/.ssh/id_ed25519"
