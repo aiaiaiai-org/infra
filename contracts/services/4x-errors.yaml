@@ -1,0 +1,43 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: 4x-errors
+  owner: aiaiaiai-org/4x-errors
+spec:
+  deployment: production
+  network: aiaiaiai-edge
+  aliases:
+    - 4x-errors
+  protocol: http
+  port: 1927
+  # Ready, not merely alive: the collector answers 200 only once its browser
+  # origins are configured and its database accepts the trusted writer's rows, so a
+  # delivery with a wrong DATABASE_URL fails here and leaves the running one in place.
+  health: /ready
+  runtime:
+    kind: container
+    environment:
+      # The image listens on 9292 unless told otherwise (aiaiaiai-org/4x-errors#61).
+      - PORT=1927
+    # The collector's database is the producer's Supabase project. Both values arrive in the
+    # producer's secret envelope (docs/automatic-delivery.md): BROWSER_INGEST_ORIGINS is not a
+    # secret, but it is normalized to one line by the collector's own policy parser before it is
+    # sealed, so it travels with the connection string.
+    secrets:
+      - DATABASE_URL=DATABASE_URL
+      - BROWSER_INGEST_ORIGINS=BROWSER_INGEST_ORIGINS
+    labels:
+      - org.aiaiaiai.product=errors
+      - org.aiaiaiai.service=4x-errors
+  # The browser SDK posts to https://errors.aiaiaiai.org/v1/browser/events, /ready and /health
+  # are served from the same host, so the whole host is routed to the collector.
+  public:
+    host: errors.aiaiaiai.org
+    pathPrefix: /
+  # The collector must keep working: a new master head is delivered on its own. Provenance and
+  # the envelope are verified like any delivery, and a head without an envelope is not delivered.
+  delivery:
+    image: ghcr.io/aiaiaiai-org/4x-errors
+    branch: master
+    signerWorkflow: .github/workflows/package-collector.yml

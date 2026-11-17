@@ -18,6 +18,10 @@ if [[ "$1" == container && "$2" == inspect && "$3" == 4x-ais ]]; then
   [[ "$MOCK_AIS" != absent ]]
   exit
 fi
+if [[ "$1" == container && "$2" == inspect && "$3" == 4x-errors ]]; then
+  [[ "$MOCK_ERRORS" != absent ]]
+  exit
+fi
 [[ "$1" == run && "$2" == --rm && "$3" == --network &&
    "$4" == aiaiaiai-edge && "$5" == alpine:3.22 &&
    "$6" == wget ]] || {
@@ -35,6 +39,7 @@ case "$url" in
   http://h-ua-bot:1927/health) [[ "$MOCK_BOT" == ok ]] ;;
   http://aiaiaiai-site:1927/healthz) [[ "$MOCK_SITE" == ok ]] ;;
   http://4x-ais:1927/healthz) [[ "$MOCK_AIS" == ok ]] ;;
+  http://4x-errors:1927/ready) [[ "$MOCK_ERRORS" == ok ]] ;;
   *) echo "Unexpected URL" >&2; exit 92 ;;
 esac
 DOCKER
@@ -43,7 +48,7 @@ export PATH="$tmp/bin:$PATH"
 export EDGE_NETWORK=aiaiaiai-edge
 export MOCK_LOG="$tmp/requests"
 
-export MOCK_HUB=ok MOCK_BOT=ok MOCK_SITE=absent MOCK_AIS=absent
+export MOCK_HUB=ok MOCK_BOT=ok MOCK_SITE=absent MOCK_AIS=absent MOCK_ERRORS=absent
 bash deploy/edge-aiaiaiai/verify.sh > "$tmp/missing.log"
 grep -Fq 'workload not deployed; skipping optional website health' "$tmp/missing.log"
 test "$(wc -l < "$tmp/requests")" -eq 2
@@ -73,7 +78,7 @@ if bash deploy/edge-aiaiaiai/verify.sh > "$tmp/bad-hub.log" 2>&1; then
   echo "Required Prism Hub must fail" >&2; exit 1
 fi
 
-export MOCK_HUB=ok MOCK_BOT=ok MOCK_SITE=absent MOCK_AIS=absent
+export MOCK_HUB=ok MOCK_BOT=ok MOCK_SITE=absent MOCK_AIS=absent MOCK_ERRORS=absent
 : > "$tmp/requests"
 bash deploy/edge-aiaiaiai/verify.sh > "$tmp/missing-ais.log"
 grep -Fq '4x-ais workload not deployed; skipping optional auth health' "$tmp/missing-ais.log"
@@ -90,4 +95,21 @@ if bash deploy/edge-aiaiaiai/verify.sh > "$tmp/bad-ais.log" 2>&1; then
   echo "Deployed but unhealthy auth service must fail" >&2; exit 1
 fi
 
-echo "Edge verification: missing website and auth service tolerated, deployed ones and both APIs required"
+export MOCK_AIS=absent MOCK_ERRORS=absent
+: > "$tmp/requests"
+bash deploy/edge-aiaiaiai/verify.sh > "$tmp/missing-errors.log"
+grep -Fq '4x-errors workload not deployed; skipping optional error collector health' "$tmp/missing-errors.log"
+! grep -Fq '4x-errors' "$tmp/requests"
+
+export MOCK_ERRORS=ok
+: > "$tmp/requests"
+bash deploy/edge-aiaiaiai/verify.sh > "$tmp/present-errors.log"
+grep -Fxq 'http://4x-errors:1927/ready' "$tmp/requests"
+
+export MOCK_ERRORS=unhealthy
+: > "$tmp/requests"
+if bash deploy/edge-aiaiaiai/verify.sh > "$tmp/bad-errors.log" 2>&1; then
+  echo "Deployed but unready error collector must fail" >&2; exit 1
+fi
+
+echo "Edge verification: missing website, auth service and error collector tolerated, deployed ones and both APIs required"

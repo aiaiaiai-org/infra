@@ -42,6 +42,16 @@ spec:
       service: 4x-ais
       upstream: 4x-ais:1927
       health: /healthz
+    # The error collector (aiaiaiai-org/4x-errors): the browser SDK's ingest endpoint for
+    # every product. The whole host, because /v1/browser/events, /ready and /health have
+    # no common prefix. Liveness here, readiness at deploy: a database blip must not make
+    # the edge answer 503 for a collector that retries and queues on its own.
+    - id: 4x-errors
+      host: ${AIAIAIAI_ERRORS_DOMAIN}
+      pathPrefix: /
+      service: 4x-errors
+      upstream: 4x-errors:1927
+      health: /health
     - id: prism-hub
       host: ${PRISM_API_DOMAIN}
       pathPrefix: /prism-hub/

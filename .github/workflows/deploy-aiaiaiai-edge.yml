@@ -33,6 +33,7 @@ jobs:
       PRISM_API_DOMAIN: api.aiaiaiai.org
       AIAIAIAI_SITE_BETA_DOMAIN: beta.aiaiaiai.org
       AIAIAIAI_AUTH_DOMAIN: auth.aiaiaiai.org
+      AIAIAIAI_ERRORS_DOMAIN: errors.aiaiaiai.org
       REMOTE_EDGE_DIR: .local/share/aiaiaiai-infra/edge-aiaiaiai
       SSH_PORT: ${{ vars.SSH_PORT || '22022' }}
 
@@ -86,6 +87,7 @@ jobs:
             printf 'PRISM_API_DOMAIN=%s\n' "$PRISM_API_DOMAIN"
             printf 'AIAIAIAI_SITE_BETA_DOMAIN=%s\n' "$AIAIAIAI_SITE_BETA_DOMAIN"
             printf 'AIAIAIAI_AUTH_DOMAIN=%s\n' "$AIAIAIAI_AUTH_DOMAIN"
+            printf 'AIAIAIAI_ERRORS_DOMAIN=%s\n' "$AIAIAIAI_ERRORS_DOMAIN"
             printf 'CADDY_IMAGE=caddy:2-alpine\n'
           } > "$RUNNER_TEMP/edge.env"
           ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "mkdir -p '$REMOTE_EDGE_DIR' && chmod 700 '$REMOTE_EDGE_DIR'"
@@ -142,6 +144,15 @@ jobs:
             verify_route "https://${AIAIAIAI_AUTH_DOMAIN}/healthz"
           else
             echo "4x-ais workload not deployed; skipping its public route"
+          fi
+
+          # The error collector is released on its own too; once its container exists, its
+          # public route must answer (liveness: the edge's own check; readiness is verified
+          # from inside the network above).
+          if ssh -o IdentitiesOnly=yes -i "$HOME/.ssh/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "docker container inspect 4x-errors >/dev/null 2>&1"; then
+            verify_route "https://${AIAIAIAI_ERRORS_DOMAIN}/health"
+          else
+            echo "4x-errors workload not deployed; skipping its public route"
           fi
 
       - name: Clean secret material
