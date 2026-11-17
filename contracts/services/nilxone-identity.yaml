@@ -13,8 +13,10 @@ spec:
   port: 1927
   health: /health
   # Publishing a verified image from Web master is not authorization for a
-  # production Identity Service deploy. Only a named, manually authorized
-  # Reconcile deliveries dispatch may release this workload.
+  # production Identity Service deploy. Scheduled and unfiltered Reconcile
+  # deliveries skip this workload; release it only through a named, manually
+  # authorized dispatch (Reconcile deliveries with this workload, or Deploy
+  # workload with an explicit image).
   # The envelope carries provider credentials only; server-owned secrets
   # stay on the host and are never overridden.
   delivery:
