@@ -12,6 +12,13 @@ spec:
   protocol: http
   port: 10000
   health: /health
+  # Infra delivers each verified master build on its own (docs/automatic-delivery.md).
+  # Core publishes development under its own package: production's ghcr.io/0xda-market/core
+  # already carries that commit's one <sha>.secrets envelope.
+  delivery:
+    image: ghcr.io/0xda-market/core-development
+    branch: master
+    signerWorkflow: .github/workflows/ci.yml
   runtime:
     kind: container
     environment:
