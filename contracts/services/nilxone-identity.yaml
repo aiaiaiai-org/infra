@@ -35,6 +35,7 @@ spec:
   runtime:
     kind: container
     environment:
+      - MARKET_TELEGRAM_ISSUER_URL=https://0xda-market.nilx.one/production-issuer/issuer
       - HTTP_BIND=0.0.0.0:1927
       - DATABASE_URL=sqlite:///data/identity.db
       - TELEGRAM_INIT_DATA_MAX_AGE_SECONDS=300

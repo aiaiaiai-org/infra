@@ -27,7 +27,8 @@ preparer and secret handoff allowlists must deploy with the new envelope contrac
 2. Merge the coordinated Infra contracts and producers only with authorization.
    Publication during a producer/consumer mismatch fails closed; running containers
    remain unchanged. Publish/retry candidates only after the complete contract lands.
-3. With separate deployment authorization, deploy `nilxone-identity`, then
+3. With separate deployment authorization, deploy the nilx edge route for
+   `/production-issuer/issuer/v1/orders` and then deploy `nilxone-identity`, then
    `market-api-production`, then `market-bot-production`, using their verified
    candidates. All three workloads remain manual-only. Do not deploy the unrelated
    telemetry work in infra#119 / telegram-bot#145 as part of this task.
