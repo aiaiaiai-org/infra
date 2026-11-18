@@ -456,7 +456,7 @@ jobs:
             --volume "$PWD/deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro" \
             infra-edge-caddy:ci \
             caddy validate --config /etc/caddy/Caddyfile
-          test "$(grep -Fc 'reverse_proxy market-api-production:1927' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy market-api-production:1927' deploy/edge/Caddyfile)" -eq 2
           test "$(grep -Fc 'reverse_proxy market-api-development:10000' deploy/edge/Caddyfile)" -eq 1
           grep -Fq '@market_browser_development path /nilx-browser/handoffs /nilx-browser/exchange /nilx-browser/session /v1/webapp/bootstrap' deploy/edge/Caddyfile
           grep -Fq 'market-development) EDGE_SCOPE=market-development' .github/workflows/deploy.yml
