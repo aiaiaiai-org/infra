@@ -18,7 +18,7 @@ File.foreach(source, chomp: true) do |entry|
   secrets[name] = value
 end
 
-required = %w[TELOXIDE_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET NILX_BROWSER_HANDOFF_TOKEN]
+required = %w[TELOXIDE_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET NILX_BROWSER_HANDOFF_TOKEN PARTNER_LOOKUP_TOKEN]
 optional = %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
 # The public client IDs come in the producer's envelope (delivery.envelope), or, for a caller that
 # still dispatches, in PROVIDER_* variables. The envelope wins; one source never mixes with the other.
@@ -32,6 +32,8 @@ abort("invalid provider client ID") if ids.values.any? { |value| value.match?(/[
 abort("unapproved identity provider entry") unless (secrets.keys - required - optional - public_names).empty?
 abort("missing identity provider credential") unless required.all? { |name| secrets[name].is_a?(String) && !secrets[name].empty? }
 abort("NILX_BROWSER_HANDOFF_TOKEN must contain at least 32 bytes") if secrets.fetch("NILX_BROWSER_HANDOFF_TOKEN").bytesize < 32
+abort("PARTNER_LOOKUP_TOKEN must contain at least 32 bytes") if secrets.fetch("PARTNER_LOOKUP_TOKEN").bytesize < 32
+abort("partner lookup token must differ from issuer authority") if secrets["PARTNER_LOOKUP_TOKEN"] == secrets["NILX_BROWSER_HANDOFF_TOKEN"]
 abort("incomplete GHCR credential") if optional.count { |name| secrets.key?(name) } == 1
 abort("missing GHCR credential") if optional.any? { |name| secrets[name] == "" }
 
@@ -42,7 +44,8 @@ lines = [
   "TELEGRAM_OIDC_CLIENT_SECRET=#{secrets.fetch('TELEGRAM_OIDC_CLIENT_SECRET')}",
   "DISCORD_CLIENT_ID=#{ids.fetch('DISCORD_CLIENT_ID')}",
   "DISCORD_CLIENT_SECRET=#{secrets.fetch('DISCORD_CLIENT_SECRET')}",
-  "NILX_BROWSER_HANDOFF_TOKEN=#{secrets.fetch('NILX_BROWSER_HANDOFF_TOKEN')}"
+  "NILX_BROWSER_HANDOFF_TOKEN=#{secrets.fetch('NILX_BROWSER_HANDOFF_TOKEN')}",
+  "PARTNER_LOOKUP_TOKEN=#{secrets.fetch('PARTNER_LOOKUP_TOKEN')}"
 ]
 File.open(output, File::WRONLY | File::CREAT | File::TRUNC, 0o600) do |file|
   file.write(lines.join("\n") + "\n")

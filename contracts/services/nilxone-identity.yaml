@@ -31,6 +31,7 @@ spec:
       - DISCORD_CLIENT_ID
       - DISCORD_CLIENT_SECRET
       - NILX_BROWSER_HANDOFF_TOKEN
+      - PARTNER_LOOKUP_TOKEN
   runtime:
     kind: container
     environment:

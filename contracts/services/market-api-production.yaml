@@ -26,6 +26,10 @@ spec:
       # Special SKU in Market's catalog and Identity's issuer worker: both are
       # separate, authorized activations.
       - ENABLE_NILX_SEEDS_CHECKOUT=1
+      - ENABLE_ISSUER_ORDER_ROUTES=1
+      - CHANNEL_ASSERTION_PROVIDERS=telegram
+      - ISSUER_DIRECTORY_URL=https://nilx.one/api/v1/partner/provider-lookup
+      - ISSUER_DIRECTORY_PROVIDERS=telegram
     # Every value arrives only in 0xda-market/core's attested envelope, published
     # from its own production Environment (docs/automatic-delivery.md). Infra
     # stores none of them.
@@ -43,6 +47,8 @@ spec:
       - MANUAL_PROVIDER_TOKEN=MANUAL_PROVIDER_TOKEN
       - NILX_BROWSER_HANDOFF_TOKEN=NILX_BROWSER_HANDOFF_TOKEN
       - TRADING_LAB_SERVICE_TOKEN=TRADING_LAB_SERVICE_TOKEN
+      - ISSUER_DIRECTORY_TOKEN=PARTNER_LOOKUP_TOKEN
+      - CHANNEL_ASSERTION_SECRET=CHANNEL_ASSERTION_SECRET
     labels:
       - org.aiaiaiai.product=0xda-market
       - org.aiaiaiai.service=market-api
