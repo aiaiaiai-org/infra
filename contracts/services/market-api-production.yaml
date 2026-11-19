@@ -25,8 +25,6 @@ spec:
       # Seeds checkout and the 0x1 issuer API. Purchases still need an active
       # Special SKU in Market's catalog and Identity's issuer worker: both are
       # separate, authorized activations.
-      - ENABLE_NILX_SEEDS_CHECKOUT=1
-      - ENABLE_ISSUER_ORDER_ROUTES=1
       - CHANNEL_ASSERTION_PROVIDERS=telegram
       - ISSUER_DIRECTORY_URL=https://nilx.one/api/v1/partner/provider-lookup
       - ISSUER_DIRECTORY_PROVIDERS=telegram

@@ -41,7 +41,6 @@ abort "production Core must require explicitly dispatched delivery" unless deliv
 abort "secrets come from the envelope, not prepareEnv" if runtime.key?("prepareEnv")
 
 %w[
-  ENABLE_ISSUER_ORDER_ROUTES=1
   CHANNEL_ASSERTION_PROVIDERS=telegram
   ISSUER_DIRECTORY_URL=https://nilx.one/api/v1/partner/provider-lookup
   ISSUER_DIRECTORY_PROVIDERS=telegram
