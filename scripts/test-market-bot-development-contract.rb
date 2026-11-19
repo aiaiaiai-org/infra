@@ -21,13 +21,13 @@ route = edge.dig("spec", "routes").find { |r| r["service"] == "market-bot-test" 
 abort "wrong Caddy route" unless route && route["upstream"] == "market-bot-development:10000"
 abort "development must be isolated" unless runtime.fetch("environment").include?("DEPLOY_ENV=development")
 abort "test must not register webhooks during activation" unless runtime.fetch("environment").include?("REGISTER_TELEGRAM_WEBHOOK=0")
-abort "missing secrets" unless runtime.fetch("secrets").length == 4
+abort "missing secrets" unless runtime.fetch("secrets").sort == %w[TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN TELEGRAM_WEBHOOK_SECRET=TELEGRAM_WEBHOOK_SECRET MARKET_API_TOKEN=MARKET_API_TOKEN TRADING_LAB_TOKEN=TRADING_LAB_TOKEN NILX_PARTNER_TOKEN=PARTNER_LOOKUP_TOKEN CHANNEL_ASSERTION_SECRET=CHANNEL_ASSERTION_SECRET].sort
 abort "development bot must be delivered automatically" unless spec["delivery"] ==
   { "image" => "ghcr.io/0xda-market/telegram-bot", "branch" => "master", "signerWorkflow" => ".github/workflows/ci.yml" }
 abort "bot must call the development Trading Lab" unless
   runtime.fetch("environment").include?("TRADING_LAB_ORIGIN=http://market-trading-lab-development:1703") &&
   runtime.fetch("secrets").include?("TRADING_LAB_TOKEN=TRADING_LAB_TOKEN")
-abort "missing public vars" unless runtime.fetch("producerEnvironment").sort == %w[TELEGRAM_BOT_USERNAME MARKET_API_URL PUBLIC_URL].sort
+abort "missing public vars" unless runtime.fetch("producerEnvironment").sort == %w[TELEGRAM_BOT_USERNAME MARKET_API_URL PUBLIC_URL NILX_IDENTITY_URL NILX_LINK_URL].sort
 
 # Verify that the actual infra resolver and credential allowlist accept only configured names.
 cmd = File.join(root, "scripts/resolve-workload-target.rb")
@@ -42,7 +42,11 @@ envelope = {
   "TRADING_LAB_TOKEN" => "ci-only-lab",
   "TELEGRAM_BOT_USERNAME" => "zeroxda_market_test_bot",
   "MARKET_API_URL" => "http://market-api-development:10000",
-  "PUBLIC_URL" => "https://0xda-market.nilx.one/bot-test"
+  "PUBLIC_URL" => "https://0xda-market.nilx.one/bot-test",
+  "PARTNER_LOOKUP_TOKEN" => "p" * 64,
+  "CHANNEL_ASSERTION_SECRET" => "c" * 64,
+  "NILX_IDENTITY_URL" => "https://identity-dev.example",
+  "NILX_LINK_URL" => "https://identity-dev.example/"
 }
 Tempfile.create("market-test-credentials") do |f|
   f.write(envelope.map { |key, value| "#{key}=#{value}\n" }.join)

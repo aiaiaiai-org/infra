@@ -32,7 +32,8 @@ workloads.each do |id|
   if id == "market-api-development"
     abort "wrong API port" unless spec["port"] == 10000 && spec["health"] == "/health"
     abort "wrong API secrets" unless runtime.fetch("secrets").sort ==
-      %w[DATABASE_URL=DATABASE_URL PUBLIC_API_TOKEN=PUBLIC_API_TOKEN MANUAL_PROVIDER_TOKEN=MANUAL_PROVIDER_TOKEN NILX_BROWSER_HANDOFF_TOKEN=NILX_BROWSER_HANDOFF_TOKEN].sort
+      %w[DATABASE_URL=DATABASE_URL PUBLIC_API_TOKEN=PUBLIC_API_TOKEN MANUAL_PROVIDER_TOKEN=MANUAL_PROVIDER_TOKEN NILX_BROWSER_HANDOFF_TOKEN=NILX_BROWSER_HANDOFF_TOKEN ISSUER_DIRECTORY_TOKEN=PARTNER_LOOKUP_TOKEN CHANNEL_ASSERTION_SECRET=CHANNEL_ASSERTION_SECRET].sort
+    abort "unexpected directory URL source" unless runtime.fetch("producerEnvironment") == ["ISSUER_DIRECTORY_URL"]
   else
     abort "worker port must be private" unless spec["port"] == 1703 && spec["healthKind"] == "process"
     abort "unexpected worker command" unless runtime.fetch("command") == command.fetch(id)
@@ -54,6 +55,9 @@ workloads.each do |id|
     credentials["PUBLIC_API_TOKEN"] = "ci-only-api-token"
     credentials["MANUAL_PROVIDER_TOKEN"] = "ci-only-manual-token"
     credentials["NILX_BROWSER_HANDOFF_TOKEN"] = "h" * 64
+    credentials["PARTNER_LOOKUP_TOKEN"] = "p" * 64
+    credentials["CHANNEL_ASSERTION_SECRET"] = "c" * 64
+    credentials["ISSUER_DIRECTORY_URL"] = "https://identity-dev.example/api/v1/partner/provider-lookup"
   end
   Tempfile.create("market-core-credentials") do |f|
     credentials.each { |k,v| f.write("#{k}=#{v}\n") }
@@ -61,6 +65,7 @@ workloads.each do |id|
     env = {
       "WORKLOAD" => id,
       "WORKLOAD_SECRETS" => Base64.strict_encode64(runtime.fetch("secrets").join("\n") + "\n"),
+      "WORKLOAD_PRODUCER_ENVIRONMENT" => Base64.strict_encode64(Array(runtime["producerEnvironment"]).join("\n")),
       "WORKLOAD_SECRET_SOURCE_FILE" => f.path
     }
     packed, error, status = Open3.capture3(env, "ruby", File.join(root, "scripts/workload-secret-env.rb"))
