@@ -71,7 +71,12 @@ workloads.each do |id|
     packed, error, status = Open3.capture3(env, "ruby", File.join(root, "scripts/workload-secret-env.rb"))
     abort error unless status.success?
     values = Base64.strict_decode64(packed)
-    abort "credentials mismatch" unless credentials.all? { |k,v| values.include?("#{k}=#{v}\n") }
+    expected_runtime = runtime.fetch("secrets").map do |mapping|
+      name, source_name = mapping.split("=", 2)
+      "#{name}=#{credentials.fetch(source_name)}"
+    end
+    expected_runtime.concat(Array(runtime["producerEnvironment"]).map { |name| "#{name}=#{credentials.fetch(name)}" })
+    abort "credentials mismatch" unless values.lines.map(&:chomp).sort == expected_runtime.sort
     f.write("PRODUCTION_TOKEN=reject\n")
     f.flush
     _, _, status = Open3.capture3(env, "ruby", File.join(root, "scripts/workload-secret-env.rb"))

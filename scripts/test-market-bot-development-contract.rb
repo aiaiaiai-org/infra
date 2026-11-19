@@ -59,7 +59,12 @@ Tempfile.create("market-test-credentials") do |f|
   packed, error, result = Open3.capture3(env, "ruby", File.join(root, "scripts/workload-secret-env.rb"))
   abort "envelope rejected: #{error}" unless result.success?
   values = Base64.strict_decode64(packed)
-  abort "missing bot credentials" unless envelope.all? { |key, value| values.include?("#{key}=#{value}\n") }
+  expected_runtime = runtime.fetch("secrets").map do |mapping|
+    name, source_name = mapping.split("=", 2)
+    "#{name}=#{envelope.fetch(source_name)}"
+  end
+  expected_runtime.concat(Array(runtime["producerEnvironment"]).map { |name| "#{name}=#{envelope.fetch(name)}" })
+  abort "missing bot credentials" unless values.lines.map(&:chomp).sort == expected_runtime.sort
   f.write("UNKNOWN_KEY=reject\n")
   f.flush
   _, _, result = Open3.capture3(env, "ruby", File.join(root, "scripts/workload-secret-env.rb"))
