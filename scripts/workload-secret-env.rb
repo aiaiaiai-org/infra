@@ -74,14 +74,14 @@ if !source_file.empty?
     match[2]
   end.uniq
   identity = ENV.fetch("WORKLOAD", "") == "nilxone-identity"
-  provider_names = identity ? %w[TELOXIDE_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET NILX_BROWSER_HANDOFF_TOKEN] : []
+  provider_names = identity ? %w[TELOXIDE_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET NILX_BROWSER_HANDOFF_TOKEN PARTNER_LOOKUP_TOKEN] : []
   extras = secrets.keys - expected - producer_names - provider_names - %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
   missing = expected + producer_names + provider_names - secrets.keys
   # A workload that takes its secrets from another workload's envelope (runtime.secretsFrom)
   # receives a superset; only the names its own contract maps ever reach its runtime.
   subset = ENV.fetch("WORKLOAD_SECRETS_FROM", "") != ""
   # The first Market PostgreSQL deployment precedes Core's first successful delivery.
-  # Its explicitly supplied Core production envelope contains all six Core secrets,
+  # Its explicitly supplied Core production envelope contains Core secrets,
   # but the PostgreSQL container must receive only POSTGRES_PASSWORD. Admit exactly
   # that producer envelope shape for this one workload; other direct sources remain
   # strict and unrelated/malformed envelope keys are still rejected.
@@ -93,7 +93,7 @@ if !source_file.empty?
     ENV.fetch("WORKLOAD", "") == "market-postgres-production" &&
     mapping == ["POSTGRES_PASSWORD=MARKET_POSTGRES_PASSWORD"] &&
     producer_names.empty? &&
-    secrets.keys.sort == core_bootstrap_keys.sort &&
+    [core_bootstrap_keys.sort, (core_bootstrap_keys + %w[PARTNER_LOOKUP_TOKEN CHANNEL_ASSERTION_SECRET]).sort].include?(secrets.keys.sort) &&
     secrets.values.all? { |value| value.is_a?(String) && !value.empty? }
   abort("unexpected source credential names") unless extras.empty? || subset || market_postgres_bootstrap
   abort("missing contract-specified source credentials") unless missing.empty?
@@ -104,9 +104,15 @@ if !source_file.empty?
 end
 
 names = []
-if secrets.key?("NILX_BROWSER_HANDOFF_TOKEN")
-  token = secrets["NILX_BROWSER_HANDOFF_TOKEN"]
-  abort("NILX_BROWSER_HANDOFF_TOKEN must contain at least 32 bytes") unless token.is_a?(String) && token.bytesize >= 32
+%w[NILX_BROWSER_HANDOFF_TOKEN PARTNER_LOOKUP_TOKEN CHANNEL_ASSERTION_SECRET].each do |name|
+  next unless secrets.key?(name)
+  token = secrets[name]
+  abort("#{name} must contain at least 32 bytes") unless token.is_a?(String) && token.bytesize >= 32
+end
+if secrets.key?("PARTNER_LOOKUP_TOKEN")
+  %w[NILX_BROWSER_HANDOFF_TOKEN CHANNEL_ASSERTION_SECRET].each do |name|
+    abort("partner lookup key must be distinct from other authorities") if secrets[name] == secrets["PARTNER_LOOKUP_TOKEN"]
+  end
 end
 lines = mapping.map do |entry|
   match = MAPPING.match(entry) || abort("secret mapping must be ENV_NAME=SECRET_NAME")

@@ -32,6 +32,8 @@ environment = runtime.fetch("environment")
   REGISTER_TELEGRAM_WEBHOOK=0
   REGISTER_TELEGRAM_WEBAPP=0
   TRADING_LAB_ORIGIN=http://market-trading-lab:1927
+  NILX_IDENTITY_URL=https://nilx.one
+  NILX_LINK_URL=https://nilx.one/
 ].each { |key| abort "missing safe production environment #{key}" unless environment.include?(key) }
 abort "production credentials cannot be plain environment strings" if
   environment.any? { |line| line.start_with?("TELEGRAM_BOT_TOKEN=", "MARKET_API_TOKEN=") }
@@ -41,6 +43,8 @@ expected_secrets = %w[
   TELEGRAM_WEBHOOK_SECRET=TELEGRAM_WEBHOOK_SECRET
   MARKET_API_TOKEN=MARKET_API_TOKEN
   TRADING_LAB_TOKEN=TRADING_LAB_TOKEN
+  NILX_PARTNER_TOKEN=PARTNER_LOOKUP_TOKEN
+  CHANNEL_ASSERTION_SECRET=CHANNEL_ASSERTION_SECRET
 ]
 abort "unexpected secrets mapping" unless runtime.fetch("secrets").sort == expected_secrets.sort
 abort "production must supply its own bot identity, API and public URL" unless
@@ -71,3 +75,12 @@ abort "development bot health check must stay on test port" unless
   upstream_checks.include?("http://market-bot-development:10000/health")
 
 puts "production bot release contract verified (manual-only)"
+
+identity = load_contract.call("contracts/services/nilxone-identity.yaml")
+core = load_contract.call("contracts/services/market-api-production.yaml")
+abort "Identity must receive the same partner read token" unless identity.dig("spec", "delivery", "envelope").include?("PARTNER_LOOKUP_TOKEN")
+abort "Core must receive the same partner token" unless core.dig("spec", "runtime", "secrets").include?("ISSUER_DIRECTORY_TOKEN=PARTNER_LOOKUP_TOKEN")
+abort "Core must verify the bot's signed customer" unless core.dig("spec", "runtime", "secrets").include?("CHANNEL_ASSERTION_SECRET=CHANNEL_ASSERTION_SECRET")
+abort "the bot must never receive issuer debit authority" if runtime.fetch("secrets").any? { |entry| entry.include?("NILX_BROWSER_HANDOFF_TOKEN") || entry.include?("ISSUER_API_TOKEN") }
+abort "development must not acquire production wallet configuration" if
+  test_bot.dig("spec", "runtime", "environment").any? { |entry| entry.start_with?("NILX_IDENTITY_URL=", "NILX_LINK_URL=") }

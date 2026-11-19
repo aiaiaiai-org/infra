@@ -456,7 +456,7 @@ jobs:
             --volume "$PWD/deploy/edge/Caddyfile:/etc/caddy/Caddyfile:ro" \
             infra-edge-caddy:ci \
             caddy validate --config /etc/caddy/Caddyfile
-          test "$(grep -Fc 'reverse_proxy market-api-production:1927' deploy/edge/Caddyfile)" -eq 1
+          test "$(grep -Fc 'reverse_proxy market-api-production:1927' deploy/edge/Caddyfile)" -eq 2
           test "$(grep -Fc 'reverse_proxy market-api-development:10000' deploy/edge/Caddyfile)" -eq 1
           grep -Fq '@market_browser_development path /nilx-browser/handoffs /nilx-browser/exchange /nilx-browser/session /v1/webapp/bootstrap' deploy/edge/Caddyfile
           grep -Fq 'market-development) EDGE_SCOPE=market-development' .github/workflows/deploy.yml
@@ -549,6 +549,7 @@ jobs:
           }
 
           start_fixture infra-ci-market-api market-api-production 1927 market-api-production
+          docker exec infra-ci-market-api sh -ec 'mkdir -p /srv/issuer/v1/orders; printf market-api-production > /srv/issuer/v1/orders/index.html'
           # Production-sensitive APIs must not be routed to the development service.
           docker exec infra-ci-market-api sh -ec 'mkdir -p /srv/v1; printf market-api-production > /srv/v1/issuer-orders'
           start_fixture infra-ci-market-api-development market-api-development 10000 market-api-development
@@ -620,6 +621,7 @@ jobs:
             check_route market.localhost "$path" market-api-development
           done
           check_route market.localhost /v1/webapp/bootstrap market-api-development
+          check_route market.localhost /production-issuer/issuer/v1/orders/ market-api-production
           check_route market.localhost /v1/issuer-orders market-api-production
           check_route market.localhost /bot/health market-bot-production
           check_route market.localhost /bot-test/health market-bot-development

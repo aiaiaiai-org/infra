@@ -40,6 +40,12 @@ abort "production Core must require explicitly dispatched delivery" unless deliv
 }
 abort "secrets come from the envelope, not prepareEnv" if runtime.key?("prepareEnv")
 
+%w[
+  ENABLE_ISSUER_ORDER_ROUTES=1
+  CHANNEL_ASSERTION_PROVIDERS=telegram
+  ISSUER_DIRECTORY_URL=https://nilx.one/api/v1/partner/provider-lookup
+  ISSUER_DIRECTORY_PROVIDERS=telegram
+].each { |entry| abort "missing Telegram checkout contract #{entry}" unless environment.include?(entry) }
 expected = %w[
   DATABASE_URL=MARKET_DATABASE_URL
   PGPASSWORD=MARKET_POSTGRES_PASSWORD
@@ -47,6 +53,8 @@ expected = %w[
   MANUAL_PROVIDER_TOKEN=MANUAL_PROVIDER_TOKEN
   NILX_BROWSER_HANDOFF_TOKEN=NILX_BROWSER_HANDOFF_TOKEN
   TRADING_LAB_SERVICE_TOKEN=TRADING_LAB_SERVICE_TOKEN
+  ISSUER_DIRECTORY_TOKEN=PARTNER_LOOKUP_TOKEN
+  CHANNEL_ASSERTION_SECRET=CHANNEL_ASSERTION_SECRET
 ]
 abort "unexpected secret mapping: #{secrets.inspect}" unless secrets.sort == expected.sort
 database_secret = database.dig("spec", "runtime", "secrets").first.split("=", 2).last

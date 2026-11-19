@@ -33,6 +33,12 @@
 		}
 	}
 
+	@production_issuer path /production-issuer/issuer/v1/orders /production-issuer/issuer/v1/orders/*
+	handle @production_issuer {
+		uri strip_prefix /production-issuer
+		reverse_proxy market-api-production:1927
+	}
+
 	# Browser sessions, point addresses, checkout and issuer orders share the
 	# isolated Market development API until a separately reviewed production rollout.
 	# Keep all other APIs, payment/operator routes and bots on their existing paths.

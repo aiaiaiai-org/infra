@@ -91,13 +91,15 @@ Dir.mktmpdir("scoped-secrets") do |directory|
     abort("registry token leaked into diagnostics") if "#{out}#{err}".include?("short-lived")
   end
 
-  identity = registry + "TELOXIDE_TOKEN=t\nTELEGRAM_OIDC_CLIENT_SECRET=u\nDISCORD_CLIENT_SECRET=v\nNILX_BROWSER_HANDOFF_TOKEN=#{'h' * 64}\n"
+  identity = registry + "TELOXIDE_TOKEN=t\nTELEGRAM_OIDC_CLIENT_SECRET=u\nDISCORD_CLIENT_SECRET=v\nNILX_BROWSER_HANDOFF_TOKEN=#{'h' * 64}\nPARTNER_LOOKUP_TOKEN=#{'p' * 64}\n"
   _out, errors, status = run_unmapped.call(identity, "nilxone-identity")
   abort("encrypted identity rejected without legacy secrets: #{errors}") unless status.success?
   [
     identity.sub("DISCORD_CLIENT_SECRET=v\n", ""),
     identity.sub(/NILX_BROWSER_HANDOFF_TOKEN=.*\n/, ""),
     identity.sub('h' * 64, 'short'),
+    identity.sub(/PARTNER_LOOKUP_TOKEN=.*\n/, ""),
+    identity.sub('p' * 64, 'h' * 64),
     identity + "HUA_HUB_TOKEN=unapproved\n"
   ].each do |invalid|
     _, _, result = run_unmapped.call(invalid, "nilxone-identity")
@@ -146,7 +148,12 @@ Dir.mktmpdir("scoped-secrets") do |directory|
   abort("Market bootstrap leaked Core credentials") unless
     Base64.strict_decode64(out) == "POSTGRES_PASSWORD=#{market_password}\n"
 
+  extended = market_source + "PARTNER_LOOKUP_TOKEN=#{'p' * 64}\nCHANNEL_ASSERTION_SECRET=#{'c' * 64}\n"
+  out, err, status = postgres_run.call(extended)
+  abort("expanded Core envelope rejected: #{err}") unless status.success?
+  abort("checkout credentials leaked to PostgreSQL") unless Base64.strict_decode64(out) == "POSTGRES_PASSWORD=#{market_password}\n"
   [
+    [extended.sub('c' * 64, 'short'), "market-postgres-production", postgres_mapping],
     [market_source + "SSH_PRIVATE_KEY=unrelated\n", "market-postgres-production", postgres_mapping],
     [market_source.sub(/^PUBLIC_API_TOKEN=.*\n/, ""), "market-postgres-production", postgres_mapping],
     [market_source.sub(/^TRADING_LAB_SERVICE_TOKEN=.*$/, "TRADING_LAB_SERVICE_TOKEN="), "market-postgres-production", postgres_mapping],
