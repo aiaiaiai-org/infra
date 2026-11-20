@@ -103,6 +103,22 @@ jobs:
       - name: Check script syntax
         run: bash -n deploy/nilx-identity-fresh/activate.sh
 
+      - name: Verify AIS discovery issuer and signing keys (read-only)
+        run: |
+          set -Eeuo pipefail
+          discovery="$(curl --fail --silent --show-error --max-time 20 \
+            https://auth.aiaiaiai.org/.well-known/openid-configuration)"
+          jq -e '.issuer == "https://auth.aiaiaiai.org" and
+            (.authorization_endpoint | startswith("https://auth.aiaiaiai.org/")) and
+            (.token_endpoint | startswith("https://auth.aiaiaiai.org/")) and
+            (.jwks_uri | startswith("https://auth.aiaiaiai.org/"))' \
+            <<<"$discovery" >/dev/null
+          jwks="$(curl --fail --silent --show-error --max-time 20 \
+            https://auth.aiaiaiai.org/.well-known/jwks.json)"
+          jq -e '.keys | type == "array" and length > 0' <<<"$jwks" >/dev/null
+
+
+
       - name: Set up pinned SSH
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
