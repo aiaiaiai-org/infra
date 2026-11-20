@@ -22,7 +22,9 @@ if [[ "$operation" != rollback ]]; then
   test "$(docker inspect -f '{{.State.Running}}' aiaiaiai-site-archive)" = true
 fi
 test "$(docker inspect -f '{{if index .NetworkSettings.Networks "nilx-candidate"}}yes{{end}}' "$managed")" = yes
-test "$(docker inspect -f '{{if index .NetworkSettings.Networks "nilx-candidate"}}yes{{end}}' aiaiaiai-site-archive)" = yes
+if [[ "$operation" != rollback ]]; then
+  test "$(docker inspect -f '{{if index .NetworkSettings.Networks "nilx-candidate"}}yes{{end}}' aiaiaiai-site-archive)" = yes
+fi
 
 # Never replace nilx.one's working reverse proxy with an unreviewed one.
 cmp <(sed -n '/^nilx\.one {/,/^}/p' "$live") \

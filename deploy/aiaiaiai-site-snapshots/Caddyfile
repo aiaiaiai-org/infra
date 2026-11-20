@@ -1,7 +1,8 @@
 # © 2026 aiaiaiai · aiaiaiai.org
 # No public ports: the pre-existing nilx.one ingress proxies to this server.
 {
-    admin off
+    # Keep the admin API on its default container-local listener for atomic reloads.
+    # No admin port is published to the host.
     auto_https off
 }
 
