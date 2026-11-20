@@ -220,7 +220,6 @@ jobs:
                 { echo "candidate image mismatch for $client; refusing replacement" >&2; exit 1; }
               test "$(docker inspect --format '{{.State.Running}}' "$name")" = true ||
                 { echo "candidate stopped for $client; inspect before retry" >&2; exit 1; }
-              test "$(docker inspect --format '{{index .Config.Env 0}}' "$name")" != "" || exit 1
               docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$name" |
                 grep -qx "CLIENT_ROOT=$root" ||
                 { echo "candidate client root mismatch for $client" >&2; exit 1; }
