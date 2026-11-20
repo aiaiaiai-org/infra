@@ -21,6 +21,8 @@ spec:
       - PRISM_SIGNAL_ALERT_CHANNEL=alerts
       - PRISM_BOT_ORIGIN=https://api.aiaiaiai.org
       - PRISM_BOT_PATH_PREFIX=/hua-bot
+      # The one AIS origin this Hub trusts for product tokens. Hub has no default for it.
+      - PRISM_HUB_AIS_ISSUER=https://auth.aiaiaiai.org
     secrets:
       - PGPASSWORD=PRISM_POSTGRES_PASSWORD
       - SECRET_KEY_BASE=PRISM_HUB_SECRET_KEY_BASE
