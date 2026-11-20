@@ -5,10 +5,15 @@ metadata:
   name: edge-dev-1
   owner: aiaiaiai-org/infra
 spec:
-  state: provisioning
+  state: active
   provider: contabo
   role: development
   publicAddress: 158.220.74.54
+  edgeNetwork: nilx-dev-edge
+  publicPorts:
+    - 80/tcp
+    - 443/tcp
+    - 443/udp
   runtimeRoot: /opt/infra/targets/edge-dev-1
-  # No workload, edge network, or public service is approved at enrollment.
-  workloads: []
+  workloads:
+    - nilxone-web-development

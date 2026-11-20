@@ -272,6 +272,7 @@ end
 # Infrastructure owns both edges; products do not cross between them.
 # Only explicit infrastructure-owned and legacy product repository exceptions are allowed.
 def expected_target_for(owner, workload)
+  return "edge-dev-1" if owner == "nilx-one/web" && workload == "nilxone-web-development"
   return "edge-prod-1" if owner.start_with?("nilx-one/", "0xda-market/")
   return "edge-prod-2" if owner.start_with?("aiaiaiai-org/") && owner != "aiaiaiai-org/infra"
   return "edge-prod-2" if owner == "0x0sky/h-ua-bot"

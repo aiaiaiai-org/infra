@@ -1,0 +1,33 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: nilxone-web-development
+  owner: nilx-one/web
+spec:
+  deployment: test
+  network: nilx-dev-edge
+  aliases:
+    - nilxone-web-development
+  protocol: http
+  port: 1703
+  health: /health
+  runtime:
+    kind: container
+    environment:
+      - CLIENT_ROOT=/srv/site
+      - WEB_PORT=1703
+      - IDENTITY_UPSTREAM=nilxone-identity-development:1703
+      - MARKET_BOOTSTRAP_UPSTREAM=market-api-development:1703
+      - MARKET_BOOTSTRAP_HOST=market-api-development
+    prepareEnv: deploy/web/prepare-map-runtime.sh
+    volumes:
+      - nilxone-web-map-data:/srv/map-data:ro
+  public:
+    host: dev.nilx.one
+    pathPrefix: /
+  delivery:
+    image: ghcr.io/nilx-one/web
+    branch: master
+    signerWorkflow: .github/workflows/package-web.yml
+    mode: manual
