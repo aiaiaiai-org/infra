@@ -18,7 +18,9 @@ test -s "$live"
 test ! -L "$live"
 test "$(docker inspect -f '{{.State.Running}}' "$managed")" = true
 test "$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' "$managed")" = "$(realpath "$live")"
-test "$(docker inspect -f '{{.State.Running}}' aiaiaiai-site-archive)" = true
+if [[ "$operation" != rollback ]]; then
+  test "$(docker inspect -f '{{.State.Running}}' aiaiaiai-site-archive)" = true
+fi
 test "$(docker inspect -f '{{if index .NetworkSettings.Networks "nilx-candidate"}}yes{{end}}' "$managed")" = yes
 test "$(docker inspect -f '{{if index .NetworkSettings.Networks "nilx-candidate"}}yes{{end}}' aiaiaiai-site-archive)" = yes
 
@@ -26,7 +28,9 @@ test "$(docker inspect -f '{{if index .NetworkSettings.Networks "nilx-candidate"
 cmp <(sed -n '/^nilx\.one {/,/^}/p' "$live") \
     <(sed -n '/^nilx\.one {/,/^}/p' "$candidate")
 grep -Fq 'reverse_proxy aiaiaiai-site-archive:1927' "$candidate"
-docker exec "$managed" wget -q -T 10 -O /dev/null http://aiaiaiai-site-archive:1927/healthz
+if [[ "$operation" != rollback ]]; then
+  docker exec "$managed" wget -q -T 10 -O /dev/null http://aiaiaiai-site-archive:1927/healthz
+fi
 
 image="$(docker inspect -f '{{.Config.Image}}' "$managed")"
 docker run --rm --network nilx-candidate \
