@@ -67,29 +67,33 @@ jobs:
             exit 1
           fi
 
-          # We cannot infer old Market origin from the Web DNS or its Caddy.
-          # Require an explicit exact record that does not alias the apex.
-          if ! jq -e --arg zone "$zone" '
-            .success == true and
-            ([.result[] |
-              select(.name == ("0xda-market." + $zone) and
-                (.type == "A" or .type == "AAAA" or .type == "CNAME") and
-                (.type != "CNAME" or .content != $zone))
-             ] | length >= 1)
+          # Market is a page within 0x1. Its Core and Bot are on Render,
+          # not on the previous VPS. No exact DNS record is required: absent
+          # an exact record, the wildcard legitimately serves this hostname.
+          # If an exact record exists, its origin must be checked separately
+          # before cutover; DNS alone cannot prove correct Market routing.
+          if ! jq -e --arg name "0xda-market.$zone" '
+            .success == true and (.result | type == "array")
+            and all(.result[]; .name == $name)
           ' <<< "$market" >/dev/null; then
-            echo '::error::0xda-market.nilx.one needs its own non-apex origin before nilx.one changes.'
+            echo '::error::Could not verify Market exact-record inventory.'
             exit 1
           fi
+          market_count="$(jq -r '.result | length' <<< "$market")"
 
           {
             echo '### nilx.one production migration DNS prerequisites'
             echo
             echo '- apex origin record: present (content intentionally hidden)'
             echo '- wildcard: proxied CNAME to nilx.one'
-            echo '- Market: distinct exact DNS record exists (content intentionally hidden)'
+            if [[ "$market_count" == 0 ]]; then
+              echo '- Market page: inherits wildcard to nilx.one (no exact record)'
+            else
+              echo "- Market page: $market_count exact DNS record(s) override wildcard; verify target before cutover (origin hidden)"
+            fi
             echo '- migration target: 158.220.74.54 (not activated)'
             echo '- Cloudflare API operations: GET only'
             echo '- DNS records modified: none'
             echo
-            echo 'This does NOT verify the readiness of Web, Identity, map, TLS or the old Market reverse proxy.'
+            echo 'This does NOT verify Web, Identity, map, TLS, the 0x1 Market page, or Render-backed Core/Bot API routing.'
           } >> "$GITHUB_STEP_SUMMARY"
