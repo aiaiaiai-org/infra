@@ -1,0 +1,7 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+# Interim apex only: no Identity, Market or wildcard claim.
+nilx.one {
+    encode zstd gzip
+    reverse_proxy nilxone-web-candidate:1927
+}

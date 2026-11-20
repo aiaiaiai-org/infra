@@ -49,6 +49,11 @@ jobs:
       - name: Validate Web-origin client staging relay
         run: ruby scripts/test-nilx-client-relay.rb
 
+      - name: Test single-VPS public edge adoption
+        run: |
+          bash -n deploy/nilx-public-edge/adopt.sh
+          ruby scripts/test-nilx-public-edge-adoption.rb
+
       - name: Validate Web candidate workflow boundaries
         run: ruby scripts/test-nilx-web-candidate-workflow.rb
 
