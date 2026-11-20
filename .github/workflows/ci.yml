@@ -63,6 +63,7 @@ jobs:
           bash -n deploy/aiaiaiai-site-snapshots/ingress.sh
           docker run --rm -v "$PWD/deploy/aiaiaiai-site-snapshots/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
           docker run --rm -v "$PWD/deploy/nilx-public-edge/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+          bash scripts/test-aiaiaiai-snapshot-routing.sh
 
       - name: Validate Web candidate workflow boundaries
         run: ruby scripts/test-nilx-web-candidate-workflow.rb
