@@ -83,7 +83,7 @@ jobs:
           image='ghcr.io/aiaiaiai-org/aiaiaiai.org'
           manifest="$(docker buildx imagetools inspect "$image:$VERSION" --format '{{json .Manifest}}')"
           digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$"))' <<<"$manifest")"
-          signer="aiaiaiai-org/aiaiaiai.org/.github/workflows/publish-development.yml"
+          signer="aiaiaiai-org/aiaiaiai.org/.github/workflows/ci.yml"
           if [[ "$CHANNEL" == beta ]]; then
             gh attestation verify "oci://$image@$digest" \
               --repo aiaiaiai-org/aiaiaiai.org \

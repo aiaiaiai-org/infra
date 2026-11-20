@@ -26,4 +26,4 @@ spec:
     mode: manual
     image: ghcr.io/aiaiaiai-org/aiaiaiai.org
     branch: master
-    signerWorkflow: .github/workflows/publish-development.yml
+    signerWorkflow: .github/workflows/ci.yml

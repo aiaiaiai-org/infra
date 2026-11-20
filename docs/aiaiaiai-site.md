@@ -16,7 +16,7 @@ Do not re-enable automatic legacy delivery while migrating.
 
 The product's Full CI builds the static site. Validate packages and smoke-tests
 that output, then preserves the exact image artifact. For each green `master`
-push, the product's **Publish development image** workflow publishes that
+push, the product's **Full CI / Publish merge-SHA beta image** workflow publishes that
 artifact without rebuilding and attests its provenance. Infra then delivers it
 automatically (`docs/automatic-delivery.md`); the product holds no infra
 credential.
