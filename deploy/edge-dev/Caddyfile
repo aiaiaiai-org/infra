@@ -1,0 +1,14 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+dev.nilx.one {
+  encode zstd gzip
+  reverse_proxy nilxone-web-development:1703 {
+    health_uri /health
+    health_interval 30s
+    health_timeout 5s
+  }
+  log {
+    output stdout
+    format json
+  }
+}

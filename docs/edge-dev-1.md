@@ -27,8 +27,11 @@ Rollout prerequisites:
 - Explicitly dispatch Deploy workload for nilxone-web-development with the
   Web master image and source ref, then check the container health.
 - Create dev.nilx.one A record pointing to 158.220.74.54 in Cloudflare.
-- Activate a separate development Caddy edge on the new host; production
-  edge deployment workflows MUST NOT be used for dev.
+- After DNS is configured and the Web health check succeeds, manually dispatch
+  Activate 0x1 development HTTPS on master. It installs the isolated Caddy
+  edge on edge-dev-1 only. Production edge workflows MUST NOT be used for dev.
+- Docker Compose v2 must be installed on edge-dev-1. Allow TCP ports 80 and
+  443 through any host/provider firewall; no wildcard production DNS is used.
 
 SSH preflight uses Environment edge-dev-1 with secrets SSH_HOST, SSH_USER,
 SSH_PRIVATE_KEY, and vars SSH_PORT and SSH_HOST_ED25519_PUBKEY.

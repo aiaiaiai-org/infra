@@ -1,0 +1,125 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Activate 0x1 development HTTPS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nilx-development-https
+  cancel-in-progress: false
+
+jobs:
+  activate:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: edge-dev-1
+    env:
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify pinned SSH configuration
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = 158.220.74.54
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+
+      - name: Validate Caddy and Compose before host changes
+        run: |
+          set -Eeuo pipefail
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/deploy/edge-dev/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+          docker compose --file deploy/edge-dev/compose.yaml config --quiet
+
+      - name: Configure pinned SSH access
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          dir="$RUNNER_TEMP/edge-dev-ssh"
+          install -d -m 0700 "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          if [[ "$SSH_PORT" == 22 ]]; then
+            label="$SSH_HOST"
+          else
+            label="[$SSH_HOST]:$SSH_PORT"
+          fi
+          printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
+          chmod 600 "$dir/known_hosts"
+
+      - name: Verify ready development runtime (read-only)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/edge-dev-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/edge-dev-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" '
+              set -eu
+              test "$(hostname)" = edge-dev-1
+              test "$(id -un)" = deploy
+              docker compose version >/dev/null
+              docker network inspect nilx-dev-edge >/dev/null
+              test "$(docker inspect --format "{{.State.Running}}" nilxone-web-development)" = true
+              docker run --rm --network nilx-dev-edge curlimages/curl:latest \
+                --fail --silent http://nilxone-web-development:1703/health >/dev/null
+            '
+
+      - name: Activate isolated HTTPS edge
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          remote="$SSH_USER@$SSH_HOST"
+          dir=".local/share/aiaiaiai-infra/edge-dev"
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/edge-dev-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/edge-dev-ssh/id_ed25519" -p "$SSH_PORT" \
+            "$remote" "mkdir -p '$dir' && chmod 700 '$dir'"
+          scp -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/edge-dev-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/edge-dev-ssh/id_ed25519" -P "$SSH_PORT" \
+            deploy/edge-dev/Caddyfile deploy/edge-dev/compose.yaml "$remote:$dir/"
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/edge-dev-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/edge-dev-ssh/id_ed25519" -p "$SSH_PORT" \
+            "$remote" "cd '$dir' && docker compose up --detach --wait"
+
+      - name: Verify public HTTPS
+        run: |
+          set -Eeuo pipefail
+          curl --fail --show-error --silent --retry 4 --retry-delay 5 \
+            --max-time 15 https://dev.nilx.one/health >/dev/null
+          curl --fail --show-error --silent --retry 4 --retry-delay 5 \
+            --max-time 15 https://dev.nilx.one/ >/dev/null
+          echo 'Development HTTPS healthy: https://dev.nilx.one'
+
+      - name: Remove temporary SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/edge-dev-ssh"

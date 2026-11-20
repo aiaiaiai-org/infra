@@ -1,0 +1,36 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+name: nilx-dev-edge
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    init: true
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: [CMD, caddy, version]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  edge:
+    name: nilx-dev-edge
+    external: true
+
+volumes:
+  caddy_data:
+    name: edge-dev-1-caddy-data
+  caddy_config:
+    name: edge-dev-1-caddy-config

@@ -46,6 +46,13 @@ jobs:
       - name: Test provisioning server isolation
         run: ruby scripts/test-provisioning-servers.rb
 
+      - name: Validate isolated development HTTPS edge
+        run: |
+          docker run --rm \
+            -v "$PWD/deploy/edge-dev/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+          docker compose --file deploy/edge-dev/compose.yaml config --quiet
+
       - name: Test delivery planner
         run: ruby scripts/test-plan-deliveries.rb
 
