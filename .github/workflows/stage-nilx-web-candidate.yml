@@ -1,0 +1,203 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Stage 0x1 Web candidate on edge-dev-1
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+  attestations: read
+
+concurrency:
+  group: stage-nilx-web-edge-dev-1
+  cancel-in-progress: false
+
+jobs:
+  verify-image:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      image: ${{ steps.resolve.outputs.image }}
+      source_sha: ${{ steps.resolve.outputs.source_sha }}
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Verify immutable Web image and attestation
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          sha="$(gh api repos/nilx-one/web/branches/master --jq '.commit.sha')"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          source_image=ghcr.io/nilx-one/web
+          manifest="$(docker buildx imagetools inspect "$source_image:$sha" --format '{{json .Manifest}}')"
+          digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$"))' <<<"$manifest")"
+          gh attestation verify "oci://$source_image@$digest" \
+            --repo nilx-one/web \
+            --signer-workflow nilx-one/web/.github/workflows/package-web.yml \
+            --source-ref refs/heads/master \
+            --source-digest "$sha" \
+            --deny-self-hosted-runners
+          echo "image=$source_image@$digest" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$sha" >> "$GITHUB_OUTPUT"
+
+  stage:
+    needs: verify-image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: edge-dev-1
+    env:
+      IMAGE: ${{ needs.verify-image.outputs.image }}
+      SOURCE_SHA: ${{ needs.verify-image.outputs.source_sha }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - name: Validate pinned SSH target
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = 158.220.74.54
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+          [[ "$IMAGE" =~ ^ghcr.io/nilx-one/web@sha256:[0-9a-f]{64}$ ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+      - name: Configure pinned SSH transport
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          dir="$RUNNER_TEMP/nilx-candidate-ssh"
+          install -d -m 0700 "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          if [[ "$SSH_PORT" == 22 ]]; then
+            label="$SSH_HOST"
+          else
+            label="[$SSH_HOST]:$SSH_PORT"
+          fi
+          printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
+          chmod 600 "$dir/known_hosts"
+
+      - name: Check host and existing production containers
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-candidate-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/nilx-candidate-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" '
+              set -eu
+              test "$(hostname)" = edge-dev-1
+              test "$(id -un)" = deploy
+              docker info --format "{{.ServerVersion}}" >/dev/null
+              for name in nilxone-web nilxone-identity nilxone-telegram nilxone-discord; do
+                if docker inspect "$name" >/dev/null 2>&1; then
+                  echo "production container $name already exists: refusing" >&2
+                  exit 1
+                fi
+              done
+            '
+
+      - name: Pull signed image with ephemeral registry login
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          GH_TOKEN: ${{ github.token }}
+          GHCR_USER: ${{ github.actor }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$GHCR_USER" =~ ^[A-Za-z0-9_-]+$ ]]
+          test -n "$GH_TOKEN"
+          printf '%s' "$GH_TOKEN" |
+            ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$RUNNER_TEMP/nilx-candidate-ssh/known_hosts" \
+              -i "$RUNNER_TEMP/nilx-candidate-ssh/id_ed25519" \
+              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+              "set -eu; umask 077; dir=\$(mktemp -d); trap 'rm -rf \"\$dir\"' EXIT; export DOCKER_CONFIG=\"\$dir\"; docker login ghcr.io -u '$GHCR_USER' --password-stdin >/dev/null; docker pull '$IMAGE' >/dev/null"
+
+      - name: Start isolated Web candidate (no public listener)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-candidate-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/nilx-candidate-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            bash -s -- "$IMAGE" <<'REMOTE'
+          set -Eeuo pipefail
+          image="$1"
+          [[ "$image" =~ ^ghcr.io/nilx-one/web@sha256:[0-9a-f]{64}$ ]]
+          test "$(hostname)" = edge-dev-1
+          if ! docker network inspect nilx-candidate >/dev/null 2>&1; then
+            docker network create --driver bridge nilx-candidate >/dev/null
+          fi
+          if ! docker volume inspect nilx-candidate-map-data >/dev/null 2>&1; then
+            docker volume create nilx-candidate-map-data >/dev/null
+          fi
+          if docker inspect nilxone-web-candidate >/dev/null 2>&1; then
+            test "$(docker inspect --format '{{.Config.Image}}' nilxone-web-candidate)" = "$image" ||
+              { echo "candidate image differs; refuse to replace" >&2; exit 1; }
+            test "$(docker inspect --format '{{.State.Running}}' nilxone-web-candidate)" = true
+          else
+            docker run --detach \
+              --name nilxone-web-candidate \
+              --network nilx-candidate \
+              --restart unless-stopped \
+              --security-opt no-new-privileges:true \
+              --volume nilx-candidate-map-data:/srv/map-data:ro \
+              --env CLIENT_ROOT=/srv/site \
+              "$image" >/dev/null
+          fi
+          ready=false
+          for _ in $(seq 1 30); do
+            health="$(docker inspect --format '{{.State.Health.Status}}' nilxone-web-candidate)"
+            if [[ "$health" == healthy ]]; then ready=true; break; fi
+            if [[ "$health" == unhealthy ]]; then exit 1; fi
+            sleep 2
+          done
+          test "$ready" = true
+          for path in /health / /telegram/ /discord/; do
+            docker exec nilxone-web-candidate wget -q -O /dev/null "http://127.0.0.1:1927$path"
+          done
+          test -z "$(docker port nilxone-web-candidate)"
+          echo "Verified Web candidate healthy; no public ports"
+          REMOTE
+
+      - name: Report staged state
+        run: |
+          {
+            echo '### 0x1 Web candidate on Contabo'
+            echo "- Web source SHA: $SOURCE_SHA"
+            echo "- verified image: $IMAGE"
+            echo '- nilxone-web-candidate on nilx-candidate (host-local)'
+            echo '- no published ports, no DNS update'
+            echo '- Identity, map archive and Market API not migrated'
+            echo '- nilx.one cutover NOT ready'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove ephemeral SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/nilx-candidate-ssh"

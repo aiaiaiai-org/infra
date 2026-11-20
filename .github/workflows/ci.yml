@@ -46,6 +46,9 @@ jobs:
       - name: Test provisioning server isolation
         run: ruby scripts/test-provisioning-servers.rb
 
+      - name: Validate Web candidate workflow boundaries
+        run: ruby scripts/test-nilx-web-candidate-workflow.rb
+
       - name: Test delivery planner
         run: ruby scripts/test-plan-deliveries.rb
 
