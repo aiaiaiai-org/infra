@@ -137,45 +137,7 @@ if [[ "$channel" == all || "$channel" == beta ]]; then
   # runs were still publishing; all signed snapshots are retained, not just
   # whichever commit happens to be HEAD at the next scheduler tick.
   raw_commits="$(gh api "repos/$source_repo/commits?sha=master&per_page=100" --jq '.[].sha')"
-  mapfile -t commits < <(printf '%s\n' "$raw_commits" | grep -E '^[0-9a-f]{40}
-
-if [[ "$channel" == all || "$channel" == release ]]; then
-  # Enumerate ALL SemVer tags (not only latest), so every published release
-  # retains its stable /vX.Y.Z URL even after newer releases are published.
-  raw_tags="$(gh api --paginate "repos/$source_repo/tags?per_page=100" --jq '.[].name')"
-  mapfile -t tags < <(printf '%s\n' "$raw_tags" | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | sort -Vu)
-  latest_tag=""
-  latest_digest=""
-  latest_sha=""
-  for tag in "${tags[@]}"; do
-    sha="$(gh api "repos/$source_repo/commits/$tag" --jq '.sha')"
-    [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
-    if digest="$(digest_for "$tag")"; then
-      verify_artifact release "$tag" "$sha" "$digest"
-      stage_remote release "$tag" "$sha" "$digest"
-      latest_tag="$tag"
-      latest_digest="$digest"
-      latest_sha="$sha"
-    else
-      status=$?
-      if [[ "$status" != 1 ]]; then exit "$status"; fi
-    fi
-  done
-  if [[ -n "$latest_tag" ]]; then
-    # Re-validate the current tag target before moving the release alias.
-    current="$(gh api "repos/$source_repo/commits/$latest_tag" --jq '.sha')"
-    if [[ "$current" == "$latest_sha" ]]; then
-      activate_remote release "$latest_tag" "$latest_digest"
-      echo "Verified release/current -> $latest_tag ($latest_sha)"
-    else
-      echo "::error::Release tag changed during reconciliation; refusing activation" >&2
-      exit 1
-    fi
-  fi
-fi
-
-echo 'aiaiaiai.org snapshot reconciliation complete; DNS/ingress unchanged.'
- | awk '!seen[$0]++')
+  mapfile -t commits < <(printf '%s\n' "$raw_commits" | grep -E '^[0-9a-f]{40}$' | awk '!seen[$0]++')
   (( ${#commits[@]} > 0 )) && test "${commits[0]}" = "$master"
   beta_digest=""
   for ((i=${#commits[@]}-1; i>=0; i--)); do
