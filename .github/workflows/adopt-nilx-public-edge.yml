@@ -1,0 +1,127 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Adopt existing nilx.one ingress on edge-dev-1
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Validate, explicitly activate, or restore previous public edge
+        required: true
+        type: choice
+        default: validate
+        options: [validate, activate, rollback]
+      confirmation:
+        description: Type ACTIVATE or ROLLBACK for the selected action
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nilx-public-ingress-edge-dev-1
+  cancel-in-progress: false
+
+jobs:
+  adopt:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: edge-dev-1
+      deployment: ${{ inputs.operation != 'validate' }}
+    env:
+      OPERATION: ${{ inputs.operation }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - name: Verify operator intent and pinned target
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          case "$OPERATION" in
+            validate) test -z "$CONFIRMATION" ;;
+            activate) test "$CONFIRMATION" = ACTIVATE ;;
+            rollback) test "$CONFIRMATION" = ROLLBACK ;;
+            *) exit 1 ;;
+          esac
+          test "$SSH_HOST" = 158.220.74.54
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate handover script syntax
+        run: bash -n deploy/nilx-public-edge/adopt.sh
+
+      - name: Configure pinned SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          dir="$RUNNER_TEMP/nilx-managed-edge-ssh"
+          install -d -m 0700 "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          if [[ "$SSH_PORT" == 22 ]]; then label="$SSH_HOST"; else label="[$SSH_HOST]:$SSH_PORT"; fi
+          printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
+          chmod 600 "$dir/known_hosts"
+
+      - name: Stage reviewed config and handover script
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          dir='.local/share/aiaiaiai-infra/nilx-public-edge'
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-managed-edge-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/nilx-managed-edge-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "install -d -m 0700 '$dir'"
+          scp -q -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-managed-edge-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/nilx-managed-edge-ssh/id_ed25519" -P "$SSH_PORT" \
+            deploy/nilx-public-edge/Caddyfile deploy/nilx-public-edge/adopt.sh \
+            "$SSH_USER@$SSH_HOST:$dir/"
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-managed-edge-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/nilx-managed-edge-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "chmod 600 '$dir/Caddyfile'; chmod 700 '$dir/adopt.sh'"
+
+      - name: Run guarded handover
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-managed-edge-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/nilx-managed-edge-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "bash '.local/share/aiaiaiai-infra/nilx-public-edge/adopt.sh' '$OPERATION'"
+
+      - name: Verify external public HTTPS after activation
+        if: inputs.operation == 'activate'
+        run: |
+          set -Eeuo pipefail
+          curl --fail --silent --show-error --output /dev/null \
+            --connect-timeout 5 --max-time 20 https://nilx.one/
+
+      - name: Remove ephemeral SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/nilx-managed-edge-ssh"
