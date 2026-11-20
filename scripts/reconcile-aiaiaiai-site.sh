@@ -101,7 +101,7 @@ verify_artifact() {
     signer="$source_repo/.github/workflows/publish-development.yml"
     ref=refs/heads/master
   else
-    signer="$source_repo/.github/workflows/publish-release.yml"
+    signer="$source_repo/.github/workflows/ci.yml"
     ref="refs/tags/$version"
   fi
   gh attestation verify "oci://$image@$digest" \

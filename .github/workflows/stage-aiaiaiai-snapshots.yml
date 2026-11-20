@@ -92,16 +92,18 @@ jobs:
               --source-digest "$VERSION" \
               --deny-self-hosted-runners
           else
-            signer='aiaiaiai-org/aiaiaiai.org/.github/workflows/publish-release.yml'
-            # The publisher verifies a fixed SemVer tag and its Full CI artifact;
-            # Infra verifies the distinct release workflow provenance here.
+            signer='aiaiaiai-org/aiaiaiai.org/.github/workflows/ci.yml'
+            # The release is attested inside tag-triggered Full CI after
+            # Validate. Verify tag ref + resolved commit for annotated and
+            # lightweight tags alike.
+            tag_sha="$(gh api "repos/aiaiaiai-org/aiaiaiai.org/commits/$VERSION" --jq '.sha')"
+            [[ "$tag_sha" =~ ^[0-9a-f]{40}$ ]]
             gh attestation verify "oci://$image@$digest" \
               --repo aiaiaiai-org/aiaiaiai.org \
               --signer-workflow "$signer" \
+              --source-ref "refs/tags/$VERSION" \
+              --source-digest "$tag_sha" \
               --deny-self-hosted-runners
-            # Reject deleted/repointed lightweight tags and missing tags.
-            gh api "repos/aiaiaiai-org/aiaiaiai.org/git/ref/tags/$VERSION" \
-              --jq '.ref | select(. == "refs/tags/" + env.VERSION)' >/dev/null
           fi
           echo "image=$image@$digest" >> "$GITHUB_OUTPUT"
 

@@ -61,7 +61,7 @@ Short SHA aliases and SHA/tag subdomains are not part of this contract.
    package read permission is correct.
 3. Once the automatic publication policy is approved, `Reconcile aiaiaiai
    site snapshots` polls the verified master merge commit artifact and all
-   versioned releases, then stages and activates `current` aliases after
+   SemVer tag image releases, then stages and activates `current` aliases after
    successful checks. A manual dispatch with `channel=all` may trigger the
    same check earlier. Neither action changes public DNS.
 5. Run `Adopt aiaiaiai.org ingress on edge-dev-1` with `validate`; only
@@ -73,7 +73,7 @@ Short SHA aliases and SHA/tag subdomains are not part of this contract.
 7. Verify latest beta and full-SHA page, their own JS and CSS assets,
    canonical redirects, TLS, and that `nilx.one` still works.
 8. After a release tag is pushed, Full CI builds the version-scoped artifact,
-   the producer attests it, then Infra stages it without operator intervention
+   tag-triggered Full CI attests it, then Infra stages it without operator intervention
    and advances the release alias to the highest successfully verified SemVer.
    Confirm `aiaiaiai.org/` and `/<vX.Y.Z>/` are correct.
 9. Keep the old site origin and the reviewed ingress rollback until
