@@ -1,51 +1,53 @@
+<!-- © 2026 aiaiaiai · aiaiaiai.org -->
+
 # Telegram Special checkout for seeds
 
-The production bot submits a signed issuer order directly from a private chat.
-0x1 resolves the Telegram binding and atomically debits/grants through its existing
-issuer worker. No browser visit or xPing flight is required. USDT is unchanged.
+A buyer confirms a 0x1 Special in the private bot chat and pays in seeds. 0x1 debits and
+grants once; a repeated confirmation debits nothing more. USDT is unchanged.
 
-## Credential owners
+The buyer is authorized by an AIS permit, not by credentials shared between products. See
+[`credentials-and-configuration.md`](credentials-and-configuration.md) for who holds what.
 
-Provision these **production Environment secrets before merging the coordinated
-publisher changes**. Values must be random, single-line, at least 32 bytes and
-different from each other and from `NILX_BROWSER_HANDOFF_TOKEN`.
+## Flow
 
-| Secret | Repositories that need the identical value | Runtime purpose |
-| --- | --- | --- |
-| `PARTNER_LOOKUP_TOKEN` | `nilx-one/web`, `0xda-market/core`, `0xda-market/telegram-bot` | Identity read-only provider lookup/account summary |
-| `CHANNEL_ASSERTION_SECRET` | `0xda-market/core`, `0xda-market/telegram-bot` | Core verifies Bot-authenticated Telegram customers |
+```text
+bot ──confirmed order──▶ Market ──(order terms frozen)
+bot ──permit request───▶ AIS      (via Prism Hub; needs the product's grant)
+bot ◀──purchase+jwt────  AIS      (two minutes; buyer + exact terms)
+bot ──permit───────────▶ 0x1      POST /api/v1/identity/ais-purchase
+0x1 verifies the permit against AIS's keys, claims the Market order the permit names,
+matches the terms, debits and grants atomically, then confirms or rejects it in Market.
+```
 
-The Bot receives neither the handoff/issuer settlement key nor database credentials.
-Each producer encrypts its own envelope to edge-prod-1. Infra stores no secret values.
-Empty/malformed settings fail before candidate publication. The Identity provider
-preparer and secret handoff allowlists must deploy with the new envelope contract.
+- The permit is the only credential on the 0x1 route. A permit that does not match the
+  Market order, the buyer's Bond or AIS's signature is refused before anything is debited.
+- The Market worker no longer settles Telegram orders by polling; only a permit
+  authorizes one. A Telegram order stays `pending` until its permit arrives or Market
+  expires it.
+- The wallet operation is keyed by issuer, requesting product and order ID, so a repeat
+  confirms the same order again without a second debit.
 
-## Coordinated release
+## Configuration
 
-1. Verify all four PR heads and required CI. Provision the matching secrets without
-   placing their values in comments, logs, repository files or chat.
-2. Merge the coordinated Infra contracts and producers only with authorization.
-   Publication during a producer/consumer mismatch fails closed; running containers
-   remain unchanged. Publish/retry candidates only after the complete contract lands.
-3. With separate deployment authorization, deploy the nilx edge route for
-   `/production-issuer/issuer/v1/orders` and then deploy `nilxone-identity`, then
-   `market-api-production`, then `market-bot-production`, using their verified
-   candidates. All three workloads remain manual-only. Do not deploy the unrelated
-   telemetry work in infra#119 / telegram-bot#145 as part of this task.
-4. Confirm public health, matching partner lookup and customer assertion keys, the
-   Telegram provider binding and a running issuer worker pointing at production Core.
-5. Run Core's `bundle exec ruby bin/activate_nilx_seeds_checkout` without arguments
-   for read-only catalog preflight. Its existing activation policy selects only
-   `0x1_special_1m`; do not silently activate longer terms or Exclusive.
-   `--activate` is a separate explicitly authorized catalog change if still needed.
-6. With an isolated authorized test Bond, buy the offered Special term from the
-   private bot chat: verify price/recipient, one debit, one receipt, the correct
-   entitlement, repeat-tap replay and refresh. Verify low balance, existing Special,
-   stale confirmation and unchanged disabled USDT behavior.
+| Where | What |
+| --- | --- |
+| 0x1 identity service | `MARKET_TELEGRAM_ISSUER_URL` (Market's Telegram issuer queue) and its existing `NILX_BROWSER_HANDOFF_TOKEN`. AIS's origin is a constant in the service |
+| AIS | The registry grants `telegram.link.put` to 0x1 and `telegram.special.purchase` to the requesting product, for audience `prism-hub` |
+| Each product | Its own secrets, in its own envelope |
 
-No live acceptance purchase or catalogue mutation is performed by these changes.
-Development configuration remains isolated and is not given production wallet keys.
-If rolling the Bot back, keep Core's additive confirmed-terms API. Do not resume old
-unsigned chat confirmations; disable the Bot checkout settings if rollback requires it.
+`PARTNER_LOOKUP_TOKEN` and `CHANNEL_ASSERTION_SECRET` are not part of this checkout. Infra's
+identity-provider preparation still requires `PARTNER_LOOKUP_TOKEN` for the existing
+partner lookup; that is separate from authorizing a purchase.
 
-© 2026 aiaiaiai · aiaiaiai.org
+## Before enabling it
+
+- Reports of Telegram bindings from 0x1 to AIS, the Hub relay of the permit request, and
+  the bot and Market calling AIS are delivered by their own repositories.
+- The AIS registry names the client `0x1` and carries the grants above.
+- Run Core's `bundle exec ruby bin/activate_nilx_seeds_checkout` with no arguments for the
+  read-only catalog preflight; it selects only `0x1_special_1m`. `--activate` is a separate
+  authorized catalog change.
+- With an authorized test Bond, buy the offered term from the bot chat and verify one
+  debit, one receipt, the entitlement, a repeated tap, low balance and an existing Special.
+
+Deploying any of this is a separate, explicitly authorized step.
