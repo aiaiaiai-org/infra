@@ -31,7 +31,7 @@ matches the terms, debits and grants atomically, then confirms or rejects it in 
 
 | Where | What |
 | --- | --- |
-| 0x1 identity service | `MARKET_TELEGRAM_ISSUER_URL` (Market's Telegram issuer queue) and its existing `NILX_BROWSER_HANDOFF_TOKEN`. AIS's origin is a constant in the service |
+| 0x1 identity service | `MARKET_TELEGRAM_ISSUER_URL` (Market's Telegram issuer queue) and its existing `NILX_BROWSER_HANDOFF_TOKEN`. AIS's origin, the permitted product and AIS's keys are held in Core, not set per service |
 | AIS | The registry grants `telegram.link.put` to 0x1 and `telegram.special.purchase` to the requesting product, for audience `prism-hub` |
 | Each product | Its own secrets, in its own envelope |
 

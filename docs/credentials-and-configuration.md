@@ -45,6 +45,7 @@ resolved by AIS (`aiaiaiai-org/4x-ais`, `docs/hub-protocol.md`):
    permit names, matches the terms and settles it once.
 
 The only secrets involved are each product's own, delivered in its own envelope.
-AIS's address is a constant in the products that use it, so there is no setting for it
-and no secret that could be copied into the wrong environment. See
+AIS's address, the one product that may request a permit and AIS's key reading are values
+held in Core (Hub pins the address in its own code), so there is no setting for them and no
+secret that could be copied into the wrong environment. See
 [`telegram-seeds-checkout.md`](telegram-seeds-checkout.md).
