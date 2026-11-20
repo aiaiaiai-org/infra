@@ -38,7 +38,7 @@ jobs:
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$SOURCE_BRANCH" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]
           [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
-          case "$TARGET" in --all|--web|--telegram|--discord) ;; *) exit 1 ;; esac
+          case "$TARGET" in all|web|telegram|discord) ;; *) exit 1 ;; esac
 
           workflow_id="$(gh api repos/nilx-one/web/actions/workflows/stage-clients.yml --jq .id)"
           run="$(gh api "repos/nilx-one/web/actions/runs/$SOURCE_RUN_ID")"
@@ -106,7 +106,7 @@ jobs:
           (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
           [[ "$IMAGE" =~ ^ghcr.io/nilx-one/web@sha256:[0-9a-f]{64}$ ]]
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          case "$TARGET" in --all|--web|--telegram|--discord) ;; *) exit 1 ;; esac
+          case "$TARGET" in all|web|telegram|discord) ;; *) exit 1 ;; esac
 
       - name: Configure pinned SSH access
         env:
@@ -184,7 +184,7 @@ jobs:
           selected="$3"
           [[ "$image" =~ ^ghcr.io/nilx-one/web@sha256:[0-9a-f]{64}$ ]]
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
-          case "$selected" in --all|--web|--telegram|--discord) ;; *) exit 1 ;; esac
+          case "$selected" in all|web|telegram|discord) ;; *) exit 1 ;; esac
           test "$(hostname)" = edge-dev-1
           test "$(id -un)" = deploy
 
@@ -194,7 +194,7 @@ jobs:
           short="$(printf '%s' "$sha" | cut -c 1-12)"
 
           for client in web telegram discord; do
-            if [[ "$selected" != --all && "$selected" != "--$client" ]]; then
+            if [[ "$selected" != all && "$selected" != "$client" ]]; then
               continue
             fi
             case "$client" in

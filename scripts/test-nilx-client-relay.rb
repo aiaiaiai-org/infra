@@ -14,7 +14,7 @@ abort "must verify exact OCI image" unless source.include?("gh attestation verif
 abort "must use isolated target Environment" unless source.include?("name: edge-dev-1")
 abort "must pin SSH host identity" unless source.include?("StrictHostKeyChecking=yes") &&
   source.include?("SSH_HOST_ED25519_PUBKEY")
-abort "all client selectors required" unless %w[--all --web --telegram --discord].all? { |x| source.include?(x) }
+abort "all client selectors required" unless %w[all web telegram discord].all? { |x| source.include?(x) }
 abort "production container guard required" unless source.include?("for name in nilxone-web nilxone-telegram nilxone-discord nilxone-identity")
 abort "must use no public ports" if source.match?(/docker run[^\n]*(?:--publish|-p )/)
 abort "must not alter DNS" if source.include?("dns_records") || source.include?("cloudflare-wildcard.sh")
