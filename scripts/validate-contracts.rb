@@ -65,16 +65,27 @@ Dir.glob(SERVER_GLOB).sort.each do |path|
   spec = fetch!(contract, "spec", path)
   abort("#{path}: duplicate server id #{name}") if servers.key?(name)
   fetch!(spec, "role", path)
-  abort("#{path}: edgeNetwork must be the network of an edge") unless edge_networks.include?(spec["edgeNetwork"])
-
-  ports = Array(fetch!(spec, "publicPorts", path))
-  abort("#{path}: publicPorts must be non-empty strings") unless ports.any? && ports.all? { |value| value.is_a?(String) && !value.empty? }
+  state = spec.fetch("state", "active")
+  abort("#{path}: state must be active or provisioning") unless %w[active provisioning].include?(state)
 
   runtime_root = fetch!(spec, "runtimeRoot", path)
   abort("#{path}: runtimeRoot must be absolute") unless runtime_root.is_a?(String) && runtime_root.start_with?("/")
 
-  workloads = Array(fetch!(spec, "workloads", path))
-  abort("#{path}: workloads must be non-empty strings") unless workloads.any? && workloads.all? { |value| value.is_a?(String) && !value.empty? }
+  if state == "provisioning"
+    # An enrolled host is not a deployment target until its edge and workload
+    # contracts are reviewed. No implicit network or public exposure is allowed.
+    abort("#{path}: provisioning server must not declare an edge network") unless spec["edgeNetwork"].nil?
+    abort("#{path}: provisioning server must not expose public ports") unless spec["publicPorts"].nil?
+    abort("#{path}: provisioning server must declare empty workloads") unless spec["workloads"] == []
+  else
+    abort("#{path}: edgeNetwork must be the network of an edge") unless edge_networks.include?(spec["edgeNetwork"])
+
+    ports = Array(fetch!(spec, "publicPorts", path))
+    abort("#{path}: publicPorts must be non-empty strings") unless ports.any? && ports.all? { |value| value.is_a?(String) && !value.empty? }
+
+    workloads = Array(fetch!(spec, "workloads", path))
+    abort("#{path}: workloads must be non-empty strings") unless workloads.any? && workloads.all? { |value| value.is_a?(String) && !value.empty? }
+  end
 
   # The public half of this server's SSH_PRIVATE_KEY. Producers encrypt their secret
   # envelopes to it; it is public and is the only key material a contract may hold.
@@ -341,6 +352,7 @@ edges.each do |edge_name, edge|
   placement = fetch!(spec, "placement", path)
   target_name = fetch!(placement, "target", path)
   target = servers[target_name] || abort("#{path}: unknown server target #{target_name}")
+  abort("#{path}: server #{target_name} is still provisioning") if target.dig("spec", "state") == "provisioning"
   abort("#{path}: server #{target_name} already has an edge") if edge_on_server.key?(target_name)
   edge_on_server[target_name] = edge_name
   abort("#{path}: server #{target_name} must use edgeNetwork #{network_name}") unless target.dig("spec", "edgeNetwork") == network_name

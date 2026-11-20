@@ -43,6 +43,9 @@ jobs:
       - name: Validate YAML contracts
         run: ruby scripts/validate-contracts.rb
 
+      - name: Test provisioning server isolation
+        run: ruby scripts/test-provisioning-servers.rb
+
       - name: Test delivery planner
         run: ruby scripts/test-plan-deliveries.rb
 

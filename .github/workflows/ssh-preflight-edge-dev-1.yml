@@ -1,0 +1,84 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Check edge-dev-1 SSH access
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ssh-preflight-edge-dev-1
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: SSH identity and Docker (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: edge-dev-1
+    env:
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - name: Check configured target
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = '158.220.74.54'
+          test "$SSH_USER" = 'deploy'
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+
+      - name: Set up pinned SSH host key
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          ssh_dir="$RUNNER_TEMP/ssh-preflight-edge-dev-1"
+          install -m 0700 -d "$ssh_dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$ssh_dir/id_ed25519"
+          chmod 600 "$ssh_dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$ssh_dir/id_ed25519" >/dev/null
+          if [[ "$SSH_PORT" == 22 ]]; then
+            host_label="$SSH_HOST"
+          else
+            host_label="[$SSH_HOST]:$SSH_PORT"
+          fi
+          printf '%s %s\n' "$host_label" "$SSH_HOST_ED25519_PUBKEY" > "$ssh_dir/known_hosts"
+          chmod 600 "$ssh_dir/known_hosts"
+          ssh-keygen -lf "$ssh_dir/known_hosts" -E sha256 >/dev/null
+
+      - name: Probe SSH identity and Docker (read-only)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/ssh-preflight-edge-dev-1/known_hosts" \
+            -o ConnectTimeout=10 \
+            -o ConnectionAttempts=1 \
+            -i "$RUNNER_TEMP/ssh-preflight-edge-dev-1/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" '
+              set -eu
+              test "$(id -un)" = deploy
+              test "$(hostname)" = edge-dev-1
+              docker info --format "{{.ServerVersion}}" >/dev/null
+              echo "edge-dev-1 SSH identity and Docker verified"
+            '
+
+      - name: Remove temporary SSH material
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ssh-preflight-edge-dev-1"

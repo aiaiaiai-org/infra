@@ -1,0 +1,14 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: ServerContract
+metadata:
+  name: edge-dev-1
+  owner: aiaiaiai-org/infra
+spec:
+  state: provisioning
+  provider: contabo
+  role: development
+  publicAddress: 158.220.74.54
+  runtimeRoot: /opt/infra/targets/edge-dev-1
+  # No workload, edge network, or public service is approved at enrollment.
+  workloads: []
