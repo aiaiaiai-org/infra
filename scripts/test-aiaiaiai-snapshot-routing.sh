@@ -37,7 +37,7 @@ test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'Host: beta.aiaiaiai.org' "$u
 
 # Before the first release the apex redirects to the beta hostname, not /beta/.
 test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'Host: aiaiaiai.org' "$url/")" = 302
-test "$(curl -sS -o /dev/null -w '%{redirect_url}' -H 'Host: aiaiaiai.org' "$url/")" = https://beta.aiaiaiai.org
+test "$(curl -sS -o /dev/null -w '%{redirect_url}' -H 'Host: aiaiaiai.org' "$url/")" = https://beta.aiaiaiai.org/
 
 # Stable release path is available even before the apex latest alias is active.
 test "$(curl -fsS -H 'Host: aiaiaiai.org' "$url/$tag/")" = RELEASE-SNAPSHOT
