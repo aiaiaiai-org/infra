@@ -16,13 +16,19 @@ not `INFRA_DEPLOY_TOKEN` and not the retired VPS.
 - **validate** (default): stage reviewed files, verify the existing image,
   TLS volumes, private network and Web candidate digest, compare the live
   Caddy routes with the reviewed Caddyfile, and test trusted HTTPS.
+  A public GitHub-hosted probe fetches the HTML **and its versioned JS asset**,
+  requiring a JavaScript MIME type and non-trivial complete response.
   It does **not** stop any container.
 - **activate**: requires confirmation `ACTIVATE` plus a separate
   production deploy authorization. Stops `nilx-public-edge`, starts
   `nilx-public-edge-managed` with the existing certificate volumes,
-  and validates HTTPS. On failure the script attempts to restart the old
-  ingress. The old container is retained for rollback. Expect a brief
-  interruption while port 443 changes ownership.
+  and validates HTTPS. On local failure the script attempts to restart the old
+  ingress. A second public HTTPS + versioned-JS probe runs from the GitHub
+  runner; if that probe fails, the workflow also attempts to restore the
+  previous container using the SSH-pinned rollback command, then reports
+  failure. The old container is retained for rollback. SSH failure or workflow
+  cancellation can still prevent automated recovery; retain Termius/Contabo
+  console access. Expect a brief interruption while port 443 changes ownership.
 - **rollback**: requires `ROLLBACK` and separate authorization; restarts
   the original Caddy, tests HTTPS, and attempts to restore the managed
   container if that rollback fails.

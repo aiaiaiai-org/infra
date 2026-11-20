@@ -63,7 +63,9 @@ jobs:
           persist-credentials: false
 
       - name: Validate handover script syntax
-        run: bash -n deploy/nilx-public-edge/adopt.sh
+        run: |
+          bash -n deploy/nilx-public-edge/adopt.sh
+          bash -n deploy/nilx-public-edge/public-smoke.sh
 
       - name: Configure pinned SSH
         env:
@@ -115,12 +117,32 @@ jobs:
             -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
             "bash '.local/share/aiaiaiai-infra/nilx-public-edge/adopt.sh' '$OPERATION'"
 
-      - name: Verify external public HTTPS after activation
+      - name: Verify external public HTTPS and JavaScript for preflight
+        if: inputs.operation == 'validate'
+        run: bash deploy/nilx-public-edge/public-smoke.sh
+
+      - name: Verify external public HTTPS and JavaScript, or restore previous ingress
         if: inputs.operation == 'activate'
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           set -Eeuo pipefail
-          curl --fail --silent --show-error --output /dev/null \
-            --connect-timeout 5 --max-time 20 https://nilx.one/
+          if bash deploy/nilx-public-edge/public-smoke.sh; then
+            echo 'Managed public HTTPS and JavaScript are healthy.'
+            exit 0
+          fi
+          echo '::error::Managed ingress public smoke failed; attempting rollback on sole VPS.' >&2
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-managed-edge-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/nilx-managed-edge-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "bash '.local/share/aiaiaiai-infra/nilx-public-edge/adopt.sh' rollback" || {
+              echo '::error::Automated rollback failed; use the explicit manual rollback workflow.' >&2
+              exit 1
+            }
+          echo '::error::Previous ingress restored following failed external smoke.' >&2
+          exit 1
 
       - name: Remove ephemeral SSH key
         if: always()
