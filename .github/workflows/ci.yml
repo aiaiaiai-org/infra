@@ -55,6 +55,11 @@ jobs:
           bash -n deploy/nilx-public-edge/public-smoke.sh
           ruby scripts/test-nilx-public-edge-adoption.rb
 
+      - name: Validate fresh 0x1 Identity bootstrap boundaries
+        run: |
+          bash -n deploy/nilx-identity-fresh/activate.sh
+          ruby scripts/test-nilx-identity-fresh-bootstrap.rb
+
       - name: Validate Web candidate workflow boundaries
         run: ruby scripts/test-nilx-web-candidate-workflow.rb
 
