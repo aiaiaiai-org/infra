@@ -4,6 +4,10 @@ Canonical infrastructure contract for the `aiaiaiai-org` public edge.
 
 This repository owns the edge target, public ports, Caddy routing, deployment validation, activation, public verification, and rollback. Product repositories own their application runtime, data, secrets, images, and release lifecycle.
 
+## Credentials and configuration
+
+Infra holds only the credentials to reach a server (`SSH_*`, per server Environment). Images, secrets and everything a product needs at runtime come from the product, in its own attested image and encrypted envelope; infra stores no product secret. See [`docs/credentials-and-configuration.md`](docs/credentials-and-configuration.md).
+
 ## Standard workload ports
 
 See [`docs/workload-ports.md`](docs/workload-ports.md) for the normative workload-port policy and contract rules.
