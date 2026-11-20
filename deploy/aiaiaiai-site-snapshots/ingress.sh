@@ -19,8 +19,8 @@ test ! -L "$live"
 test "$(docker inspect -f '{{.State.Running}}' "$managed")" = true
 test "$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' "$managed")" = "$(realpath "$live")"
 test "$(docker inspect -f '{{.State.Running}}' aiaiaiai-site-archive)" = true
-test "$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.Name}}{{end}}' "$managed")" = nilx-candidate
-test "$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.Name}}{{end}}' aiaiaiai-site-archive)" = nilx-candidate
+test "$(docker inspect -f '{{if index .NetworkSettings.Networks "nilx-candidate"}}yes{{end}}' "$managed")" = yes
+test "$(docker inspect -f '{{if index .NetworkSettings.Networks "nilx-candidate"}}yes{{end}}' aiaiaiai-site-archive)" = yes
 
 # Never replace nilx.one's working reverse proxy with an unreviewed one.
 cmp <(sed -n '/^nilx\.one {/,/^}/p' "$live") \

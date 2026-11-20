@@ -1,62 +1,77 @@
 # © 2026 aiaiaiai · aiaiaiai.org
-# Internal read-only snapshot server; no host ports are published.
+# No public ports: the pre-existing nilx.one ingress proxies to this server.
 {
     admin off
     auto_https off
 }
 
 :1927 {
-    encode zstd gzip
     root * /srv/versions
+    encode zstd gzip
     header X-Content-Type-Options nosniff
     header Referrer-Policy strict-origin-when-cross-origin
     header Content-Security-Policy "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+
+    @beta_exact {
+        host beta.aiaiaiai.org
+        path_regexp beta_short ^/([0-9a-f]{40})$
+    }
+    redir @beta_exact /{re.beta_short.1}/ 308
+
+    @release_exact {
+        host aiaiaiai.org
+        path_regexp release_short ^/(v[0-9]+\.[0-9]+\.[0-9]+)$
+    }
+    redir @release_exact /{re.release_short.1}/ 308
+
+    @beta_version {
+        host beta.aiaiaiai.org
+        path_regexp beta_version ^/([0-9a-f]{40})(/.*)$
+    }
+    handle @beta_version {
+        rewrite * /beta/{re.beta_version.1}{re.beta_version.2}
+        file_server
+    }
+
+    @release_version {
+        host aiaiaiai.org
+        path_regexp release_version ^/(v[0-9]+\.[0-9]+\.[0-9]+)(/.*)$
+    }
+    handle @release_version {
+        rewrite * /release/{re.release_version.1}{re.release_version.2}
+        file_server
+    }
+
+    @beta_current {
+        host beta.aiaiaiai.org
+        path /
+    }
+    handle @beta_current {
+        rewrite * /beta/current/index.html
+        file_server
+    }
+
+    @release_current {
+        host aiaiaiai.org
+        path /
+        file /release/current/index.html
+    }
+    handle @release_current {
+        rewrite * /release/current/index.html
+        file_server
+    }
+
+    @release_unpublished {
+        host aiaiaiai.org
+        path /
+    }
+    handle @release_unpublished {
+        redir https://beta.aiaiaiai.org 302
+    }
+
     handle /healthz {
         respond "ok" 200
     }
-
-    @beta_host host beta.aiaiaiai.org
-    handle @beta_host {
-        @beta_bare path_regexp beta_bare ^/([0-9a-f]{40})$
-        redir @beta_bare /{re.beta_bare.1}/ 308
-
-        @beta_snapshot path_regexp beta_snapshot ^/([0-9a-f]{40})(/.*)$
-        handle @beta_snapshot {
-            rewrite * /beta/{re.beta_snapshot.1}{re.beta_snapshot.2}
-            file_server
-        }
-        handle / {
-            rewrite * /beta/current/index.html
-            file_server
-        }
-        handle {
-            respond "Not Found" 404
-        }
-    }
-
-    @release_host host aiaiaiai.org
-    handle @release_host {
-        @release_bare path_regexp release_bare ^/(v[0-9]+\.[0-9]+\.[0-9]+)$
-        redir @release_bare /{re.release_bare.1}/ 308
-
-        @release_snapshot path_regexp release_snapshot ^/(v[0-9]+\.[0-9]+\.[0-9]+)(/.*)$
-        handle @release_snapshot {
-            rewrite * /release/{re.release_snapshot.1}{re.release_snapshot.2}
-            file_server
-        }
-        @release_ready {
-            path /
-            file /release/current/index.html
-        }
-        handle @release_ready {
-            rewrite * /release/current/index.html
-            file_server
-        }
-        handle {
-            redir https://beta.aiaiaiai.org 302
-        }
-    }
-
     handle {
         respond "Not Found" 404
     }
