@@ -52,6 +52,7 @@ jobs:
       - name: Test single-VPS public edge adoption
         run: |
           bash -n deploy/nilx-public-edge/adopt.sh
+          bash -n deploy/nilx-public-edge/public-smoke.sh
           ruby scripts/test-nilx-public-edge-adoption.rb
 
       - name: Validate Web candidate workflow boundaries
