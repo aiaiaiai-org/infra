@@ -1,0 +1,51 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+# Automatic beta/release publication once this reviewed Infra policy is merged.
+# Master *merge commit SHA* and released SemVer tags are the only sources.
+name: Reconcile aiaiaiai site snapshots
+
+on:
+  schedule:
+    - cron: '4,19,34,49 * * * *'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Auto-reconcile both channels or force one channel check
+        required: false
+        default: all
+        type: choice
+        options: [all, beta, release]
+
+permissions:
+  contents: read
+  packages: read
+  attestations: read
+
+concurrency:
+  group: aiaiaiai-site-snapshot-edge-dev-1
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: edge-dev-1
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+      RECONCILE_CHANNEL: ${{ inputs.channel || 'all' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check snapshot reconciler syntax
+        run: |
+          bash -n scripts/reconcile-aiaiaiai-site.sh
+          bash -n deploy/aiaiaiai-site-snapshots/stage.sh
+      - name: Reconcile attested immutable snapshots and current aliases
+        run: bash scripts/reconcile-aiaiaiai-site.sh "$RECONCILE_CHANNEL"

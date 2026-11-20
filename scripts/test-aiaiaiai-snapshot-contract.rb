@@ -39,6 +39,7 @@ check(snapshot.include?('test -z "$(docker port aiaiaiai-site-archive)"'), "arch
 check(snapshot.include?('Version already exists with another digest'), "immutable version guard missing")
 check(snapshot.include?('mv -Tf "$alias_path.new.$$" "$alias_path"'), "alias switch must be atomic")
 check(snapshot.include?("previous alias restored"), "alias activation must roll back")
+check(snapshot.include?("Automatic release downgrade refused"), "release alias must be monotonic")
 
 %w[
   .github/workflows/stage-aiaiaiai-snapshots.yml
@@ -59,4 +60,20 @@ check(public_adoption.include?("ingress.previous.Caddyfile"), "missing rollback 
 check(public_adoption.include?("healthy_nilx"), "nilx.one smoke required")
 check(!public_adoption.include?("--publish") && !public_adoption.include?("docker network create"), "must not create second public ingress")
 
-puts "aiaiaiai.org site snapshot isolation and migration contract validated"
+auto = File.read(".github/workflows/reconcile-aiaiaiai-site.yml")
+reconciler = File.read("scripts/reconcile-aiaiaiai-site.sh")
+check(auto.include?("schedule:") && auto.include?("workflow_dispatch:"), "automatic publication must be scheduled")
+check(auto.include?("name: edge-dev-1"), "automatic publication must use pinned VPS environment")
+check(auto.include?("cancel-in-progress: false"), "reconciler must serialize")
+check(auto.include?("github.ref == 'refs/heads/master'"), "reconciler may only run from master")
+check(reconciler.include?("--source-digest"), "attestation must match source commit")
+check(reconciler.include?("--source-ref"), "attestation must match source ref")
+check(reconciler.include?("current_master"), "beta must follow merge commit master head")
+check(reconciler.include?("git/ref/tags") == false, "release check uses resolved tag commit")
+check(reconciler.include?('commits/$latest_tag'), "release tag target must be rechecked")
+check(reconciler.include?("sort -Vu"), "release versions must sort by SemVer")
+check(reconciler.include?("stage_remote") && reconciler.include?("activate_remote"), "publication must stage and activate")
+check(!reconciler.include?("INFRA_DEPLOY_TOKEN"), "no cross-repository personal token")
+check(!reconciler.include?("cloudflare") && !reconciler.include?("docker network create"), "no automatic DNS or ingress mutation")
+
+puts "aiaiaiai.org site snapshot isolation and automatic publication validated"

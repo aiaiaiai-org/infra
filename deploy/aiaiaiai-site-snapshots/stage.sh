@@ -96,7 +96,19 @@ if [[ "$mode" == activate ]]; then
   alias_path="$store/$channel/current"
   old=""
   if [[ -L "$alias_path" ]]; then old="$(readlink "$alias_path")"; fi
-  ln -s "$version" "$alias_path.new.$$"
+  if [[ "$old" == "$version" ]]; then
+    echo "$channel/current already points at $version; no activation necessary"
+    exit 0
+  fi
+  # Never let a delayed older release image silently downgrade the apex.
+  if [[ "$channel" == release && -n "$old" ]]; then
+    [[ "$old" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid existing release alias' >&2; exit 1; }
+    if [[ "$(printf '%s\n%s\n' "$old" "$version" | sort -V | head -n 1)" != "$old" ]]; then
+      echo "Automatic release downgrade refused: $old -> $version" >&2
+      exit 1
+    fi
+  fi
+  ln -s "$version" "$alias_path.new.$"
   mv -Tf "$alias_path.new.$$" "$alias_path"
   check=0
   if [[ "$channel" == beta ]]; then

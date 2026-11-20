@@ -35,18 +35,20 @@ archive can be staged and tested without changing DNS or public routes.
    master artifact is published.
 2. Use a verified image digest whose CI output embeds
    `/<full SHA>/_astro/` or `/<tag>/_astro/`.
-3. Stage a beta snapshot via the reviewed `Stage aiaiaiai snapshots`
-   workflow. It verifies GHCR attestation, pinned SSH host identity, and
-   makes no public listener.
-4. Activate the private beta alias (a separate manual action), verify both
-   `/{SHA}/` and the root via direct host matching on the server.
+3. Automatic `Reconcile aiaiaiai site snapshots` verifies the GHCR
+   attestation and exact master merge SHA, stages each immutable artifact and
+   advances the beta alias after health checks. It uses pinned SSH and does
+   not create a public listener.
+4. Confirm the private `/{SHA}/` snapshot and latest beta alias. Reconcile
+   repeats automatically on a best-effort 15-minute schedule.
 5. Independently activate the additional host routes on the existing 0x1
    ingress; preserve `nilx.one`, the old Caddy config and TLS volumes.
 6. Verify TLS readiness and DNS records; cut over the two aiaiaiai hostnames
    only with explicit authorization. Verify root, snapshot assets, rollback,
    and no changes to `nilx.one`, `auth.aiaiaiai.org` (Railway), or Prism.
-7. Publish an approved release tag separately. Stage, verify, and activate
-   its immutable digest. Never promote unverified master to release.
+7. Publish an approved release tag. The release publisher attests its
+   Full CI artifact; Infra automatically stages every verified SemVer tag
+   and advances the latest release alias without manual selection.
 
 The old `aiaiaiai-site` WorkloadContract remains on `edge-prod-2` for
 rollback during migration and is set to manual delivery. It is not the new
