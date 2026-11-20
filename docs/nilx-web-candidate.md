@@ -34,3 +34,12 @@ login, callbacks and maps against the new origin.
 Do not rename edge-dev-1 until the server hostname, GitHub Environment
 and SSH workflow checks can be changed together. No automatic or public
 deploy trigger is introduced by this stage.
+
+## Branch-specific client selection
+
+Use **Request 0x1 client staging** in nilx-one/web Actions, select the
+branch and one of `--all`, `--web`, `--telegram`, `--discord`. The
+protected master relay dispatches `stage-nilx-clients` to
+**Stage selected 0x1 clients from Web** in Infra. This workflow verifies
+the origin Web run and the image attestation, then stages only requested
+clients by exact SHA without public ports. No extra Web SSH secrets.

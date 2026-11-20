@@ -1,0 +1,256 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Stage selected 0x1 clients from Web
+
+on:
+  repository_dispatch:
+    types: [stage-nilx-clients]
+
+permissions:
+  contents: read
+  packages: read
+  attestations: read
+
+concurrency:
+  group: stage-nilx-web-edge-dev-1
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      sha: ${{ steps.origin.outputs.sha }}
+      target: ${{ steps.origin.outputs.target }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_SHA: ${{ github.event.client_payload.source_sha }}
+      SOURCE_BRANCH: ${{ github.event.client_payload.source_branch }}
+      SOURCE_RUN_ID: ${{ github.event.client_payload.source_run_id }}
+      TARGET: ${{ github.event.client_payload.target }}
+    steps:
+      - name: Authenticate source workflow and selected target
+        id: origin
+        run: |
+          set -Eeuo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$SOURCE_BRANCH" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
+          case "$TARGET" in --all|--web|--telegram|--discord) ;; *) exit 1 ;; esac
+
+          workflow_id="$(gh api repos/nilx-one/web/actions/workflows/stage-clients.yml --jq .id)"
+          run="$(gh api "repos/nilx-one/web/actions/runs/$SOURCE_RUN_ID")"
+          jq -e --argjson workflow_id "$workflow_id" \
+            --arg sha "$SOURCE_SHA" --arg branch "$SOURCE_BRANCH" '
+            .workflow_id == $workflow_id and
+            .head_repository.full_name == "nilx-one/web" and
+            .path == ".github/workflows/stage-clients.yml" and
+            .event == "workflow_dispatch" and
+            .conclusion == "success" and
+            .head_sha == $sha and
+            .head_branch == $branch
+          ' <<< "$run" >/dev/null
+          echo "sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Verify selected commit's signed immutable image
+        id: image
+        run: |
+          set -Eeuo pipefail
+          image=ghcr.io/nilx-one/web
+          manifest="$(docker buildx imagetools inspect "$image:$SOURCE_SHA" --format '{{json .Manifest}}')"
+          digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$"))' <<< "$manifest")"
+          gh attestation verify "oci://$image@$digest" \
+            --repo nilx-one/web \
+            --signer-workflow nilx-one/web/.github/workflows/package-web.yml \
+            --source-ref "refs/heads/$SOURCE_BRANCH" \
+            --source-digest "$SOURCE_SHA" \
+            --deny-self-hosted-runners
+          echo "image=$image@$digest" >> "$GITHUB_OUTPUT"
+
+  stage:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: edge-dev-1
+    env:
+      IMAGE: ${{ needs.verify.outputs.image }}
+      SOURCE_SHA: ${{ needs.verify.outputs.sha }}
+      TARGET: ${{ needs.verify.outputs.target }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - name: Validate pinned new VPS
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = 158.220.74.54
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+          [[ "$IMAGE" =~ ^ghcr.io/nilx-one/web@sha256:[0-9a-f]{64}$ ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          case "$TARGET" in --all|--web|--telegram|--discord) ;; *) exit 1 ;; esac
+
+      - name: Configure pinned SSH access
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          dir="$RUNNER_TEMP/nilx-clients-ssh"
+          install -d -m 0700 "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          if [[ "$SSH_PORT" == 22 ]]; then
+            label="$SSH_HOST"
+          else
+            label="[$SSH_HOST]:$SSH_PORT"
+          fi
+          printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
+          chmod 600 "$dir/known_hosts"
+
+      - name: Verify no production containers on candidate host
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-clients-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/nilx-clients-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" '
+              set -eu
+              test "$(hostname)" = edge-dev-1
+              test "$(id -un)" = deploy
+              docker info --format "{{.ServerVersion}}" >/dev/null
+              for name in nilxone-web nilxone-telegram nilxone-discord nilxone-identity; do
+                if docker inspect "$name" >/dev/null 2>&1; then
+                  echo "Production container $name already exists: refusing to stage" >&2
+                  exit 1
+                fi
+              done
+            '
+
+      - name: Pull immutable image with ephemeral registry token
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GHCR_USER: ${{ github.actor }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$GHCR_USER" =~ ^[A-Za-z0-9_-]+$ ]]
+          test -n "$GH_TOKEN"
+          printf '%s' "$GH_TOKEN" |
+            ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$RUNNER_TEMP/nilx-clients-ssh/known_hosts" \
+              -i "$RUNNER_TEMP/nilx-clients-ssh/id_ed25519" \
+              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+              "set -eu; umask 077; dir=\$(mktemp -d); trap 'rm -rf \"\$dir\"' EXIT; export DOCKER_CONFIG=\"\$dir\"; docker login ghcr.io -u '$GHCR_USER' --password-stdin >/dev/null; docker pull '$IMAGE' >/dev/null"
+
+      - name: Stage only selected candidates on private network
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-clients-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/nilx-clients-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            bash -s -- "$IMAGE" "$SOURCE_SHA" "$TARGET" <<'REMOTE'
+          set -Eeuo pipefail
+          image="$1"
+          sha="$2"
+          selected="$3"
+          [[ "$image" =~ ^ghcr.io/nilx-one/web@sha256:[0-9a-f]{64}$ ]]
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          case "$selected" in --all|--web|--telegram|--discord) ;; *) exit 1 ;; esac
+          test "$(hostname)" = edge-dev-1
+          test "$(id -un)" = deploy
+
+          if ! docker network inspect nilx-candidate >/dev/null 2>&1; then
+            docker network create --driver bridge nilx-candidate >/dev/null
+          fi
+          short="$(printf '%s' "$sha" | cut -c 1-12)"
+
+          for client in web telegram discord; do
+            if [[ "$selected" != --all && "$selected" != "--$client" ]]; then
+              continue
+            fi
+            case "$client" in
+              web) root=/srv/site ;;
+              telegram) root=/srv/telegram-mini-app ;;
+              discord) root=/srv/discord-activity ;;
+            esac
+
+            name="nilxone-$client-candidate-$short"
+            if docker inspect "$name" >/dev/null 2>&1; then
+              test "$(docker inspect --format '{{.Config.Image}}' "$name")" = "$image" || exit 1
+              test "$(docker inspect --format '{{.State.Running}}' "$name")" = true || exit 1
+              docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$name" |
+                grep -qx "CLIENT_ROOT=$root" || exit 1
+            else
+              if [[ "$client" == web ]]; then
+                if ! docker volume inspect nilx-candidate-map-data >/dev/null 2>&1; then
+                  docker volume create nilx-candidate-map-data >/dev/null
+                fi
+                docker run --detach --name "$name" --network nilx-candidate \
+                  --restart unless-stopped --security-opt no-new-privileges:true \
+                  --volume nilx-candidate-map-data:/srv/map-data:ro \
+                  --env "CLIENT_ROOT=$root" "$image" >/dev/null
+              else
+                docker run --detach --name "$name" --network nilx-candidate \
+                  --restart unless-stopped --security-opt no-new-privileges:true \
+                  --env "CLIENT_ROOT=$root" "$image" >/dev/null
+              fi
+            fi
+
+            healthy=false
+            for _ in $(seq 1 30); do
+              status="$(docker inspect --format '{{.State.Health.Status}}' "$name")"
+              if [[ "$status" == healthy ]]; then healthy=true; break; fi
+              if [[ "$status" == unhealthy ]]; then
+                echo "$client candidate is unhealthy" >&2
+                exit 1
+              fi
+              sleep 2
+            done
+            test "$healthy" = true
+            docker exec "$name" test -s "$root/index.html"
+            docker exec "$name" wget -q -O /dev/null http://127.0.0.1:1927/health
+            docker exec "$name" wget -q -O /dev/null http://127.0.0.1:1927/
+            test -z "$(docker port "$name")" || exit 1
+            echo "Staged $client at $sha privately"
+          done
+          REMOTE
+
+      - name: Report exact staging result
+        run: |
+          echo "Verified source: $SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "Attested image: $IMAGE" >> "$GITHUB_STEP_SUMMARY"
+          echo "Selected clients: $TARGET" >> "$GITHUB_STEP_SUMMARY"
+          echo 'Private candidates only. DNS and production Identity untouched.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove ephemeral SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/nilx-clients-ssh"
