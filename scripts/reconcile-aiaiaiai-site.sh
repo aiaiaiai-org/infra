@@ -121,20 +121,93 @@ current_master() {
 
 if [[ "$channel" == all || "$channel" == beta ]]; then
   master="$(current_master)"
-  if beta_digest="$(digest_for "$master")"; then
-    verify_artifact beta "$master" "$master" "$beta_digest"
-    stage_remote beta "$master" "$master" "$beta_digest"
-    # A newer merge during a long reconciliation may never be overridden by
-    # this older SHA. Wait until the next automatic run instead.
+
+  # Capture already archived SHAs in one SSH request; do not repeatedly pull
+  # old immutable images on every scheduled reconciliation.
+  manifest_list="$(ssh "${ssh_opts[@]}" "$SSH_USER@$SSH_HOST" \
+    'dir="$HOME/.local/share/aiaiaiai-infra/aiaiaiai-site/manifests/beta"; test -d "$dir" || exit 0; for f in "$dir"/*; do test -f "$f" || continue; printf "%s %s\n" "${f##*/}" "$(cat "$f")"; done')"
+  declare -A archived_beta=()
+  while read -r archived_sha archived_ref; do
+    if [[ "$archived_sha" =~ ^[0-9a-f]{40}$ && "$archived_ref" =~ ^ghcr\.io/aiaiaiai-org/aiaiaiai\.org@sha256:[0-9a-f]{64}$ ]]; then
+      archived_beta[$archived_sha]="${archived_ref##*@}"
+    fi
+  done <<<"$manifest_list"
+
+  # The most recent master history covers multiple PR merges while earlier CI
+  # runs were still publishing; all signed snapshots are retained, not just
+  # whichever commit happens to be HEAD at the next scheduler tick.
+  raw_commits="$(gh api "repos/$source_repo/commits?sha=master&per_page=100" --jq '.[].sha')"
+  mapfile -t commits < <(printf '%s\n' "$raw_commits" | grep -E '^[0-9a-f]{40}
+
+if [[ "$channel" == all || "$channel" == release ]]; then
+  # Enumerate ALL SemVer tags (not only latest), so every published release
+  # retains its stable /vX.Y.Z URL even after newer releases are published.
+  raw_tags="$(gh api --paginate "repos/$source_repo/tags?per_page=100" --jq '.[].name')"
+  mapfile -t tags < <(printf '%s\n' "$raw_tags" | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | sort -Vu)
+  latest_tag=""
+  latest_digest=""
+  latest_sha=""
+  for tag in "${tags[@]}"; do
+    sha="$(gh api "repos/$source_repo/commits/$tag" --jq '.sha')"
+    [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+    if digest="$(digest_for "$tag")"; then
+      verify_artifact release "$tag" "$sha" "$digest"
+      stage_remote release "$tag" "$sha" "$digest"
+      latest_tag="$tag"
+      latest_digest="$digest"
+      latest_sha="$sha"
+    else
+      status=$?
+      if [[ "$status" != 1 ]]; then exit "$status"; fi
+    fi
+  done
+  if [[ -n "$latest_tag" ]]; then
+    # Re-validate the current tag target before moving the release alias.
+    current="$(gh api "repos/$source_repo/commits/$latest_tag" --jq '.sha')"
+    if [[ "$current" == "$latest_sha" ]]; then
+      activate_remote release "$latest_tag" "$latest_digest"
+      echo "Verified release/current -> $latest_tag ($latest_sha)"
+    else
+      echo "::error::Release tag changed during reconciliation; refusing activation" >&2
+      exit 1
+    fi
+  fi
+fi
+
+echo 'aiaiaiai.org snapshot reconciliation complete; DNS/ingress unchanged.'
+ | awk '!seen[$0]++')
+  (( ${#commits[@]} > 0 )) && test "${commits[0]}" = "$master"
+  beta_digest=""
+  for ((i=${#commits[@]}-1; i>=0; i--)); do
+    version="${commits[i]}"
+    if [[ -n "${archived_beta[$version]:-}" ]]; then
+      # Re-verify the source attestation when considering an already archived
+      # image for the mutable latest alias; historical versions stay immutable.
+      if [[ "$version" == "$master" ]]; then
+        beta_digest="${archived_beta[$version]}"
+        verify_artifact beta "$version" "$version" "$beta_digest"
+      fi
+      continue
+    fi
+    if published_digest="$(digest_for "$version")"; then
+      verify_artifact beta "$version" "$version" "$published_digest"
+      stage_remote beta "$version" "$version" "$published_digest"
+      if [[ "$version" == "$master" ]]; then
+        beta_digest="$published_digest"
+      fi
+    else
+      status=$?
+      if [[ "$status" != 1 ]]; then exit "$status"; fi
+    fi
+  done
+  if [[ -n "$beta_digest" ]]; then
+    # Do not roll back a newer merge if master advances during this run.
     if [[ "$(current_master)" == "$master" ]]; then
       activate_remote beta "$master" "$beta_digest"
       echo "Verified beta/current -> $master"
     else
-      echo "::notice::Master moved after staging; skipping old beta activation"
+      echo "::notice::Master moved during staging; skip stale beta alias"
     fi
-  else
-    status=$?
-    if [[ "$status" != 1 ]]; then exit "$status"; fi
   fi
 fi
 
