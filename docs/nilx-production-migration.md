@@ -98,3 +98,9 @@ is no longer needed.
 
 **No production DNS update, data transfer, workload activation, merge or
 deployment is performed by this document or audit workflow.**
+
+## Staged Web image verification (2026-11-20)
+
+See [the internal Web candidate rollout](nilx-web-candidate.md).
+It verifies the real signed Web image on the new VPS without public
+ports and does **not** authorize moving DNS before Identity migration.
