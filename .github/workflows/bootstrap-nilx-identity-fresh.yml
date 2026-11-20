@@ -6,13 +6,18 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Validate only, or explicitly bootstrap a NEW 0x1 store
+        description: Generate host recipient, validate encrypted delivery, or activate
         type: choice
         required: true
-        default: validate
-        options: [validate, activate]
+        default: recipient
+        options: [recipient, validate, activate]
+      encrypted_secrets_image:
+        description: Product-signed encrypted envelope ghcr.io/nilx-one/0x1-identity-fresh-secrets@sha256:...
+        type: string
+        required: false
+        default: ''
       confirmation:
-        description: Type FRESH_IDENTITY for activate; leave blank for validate
+        description: Type FRESH_IDENTITY only when activate is authorized
         type: string
         required: false
         default: ''
@@ -40,7 +45,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - name: Verify exact tested identity source and signed image
+      - name: Verify pinned source and signed Identity runtime
         id: image
         env:
           GH_TOKEN: ${{ github.token }}
@@ -68,26 +73,36 @@ jobs:
     env:
       OPERATION: ${{ inputs.operation }}
       CONFIRMATION: ${{ inputs.confirmation }}
+      ENCRYPTED_SECRETS_IMAGE: ${{ inputs.encrypted_secrets_image }}
       IMAGE: ${{ needs.verify.outputs.image }}
       SSH_PORT: ${{ vars.SSH_PORT || '22' }}
     steps:
-      - name: Enforce target and single-use operator intention
+      - name: Check sole VPS and strictly product-owned secret delivery
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELOXIDE_TOKEN }}
         run: |
           set -Eeuo pipefail
           case "$OPERATION" in
-            validate) test -z "$CONFIRMATION" ;;
+            recipient)
+              test -z "$CONFIRMATION"
+              test -z "$ENCRYPTED_SECRETS_IMAGE"
+              ;;
+            validate)
+              test -z "$CONFIRMATION"
+              ;;
             activate)
               test "$CONFIRMATION" = FRESH_IDENTITY
-              test -n "$TELEGRAM_BOT_TOKEN"
               ;;
             *) exit 1 ;;
           esac
+          if [[ "$OPERATION" != recipient ]]; then
+            [[ "$ENCRYPTED_SECRETS_IMAGE" =~ ^ghcr\.io/nilx-one/0x1-identity-fresh-secrets@sha256:[0-9a-f]{64}$ ]] || {
+              echo 'Use the immutable product-signed encrypted envelope digest from nilx-one/web.' >&2; exit 1;
+            }
+          fi
           test "$SSH_HOST" = 158.220.74.54
           test "$SSH_USER" = deploy
           test -n "$SSH_PRIVATE_KEY"
@@ -100,10 +115,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check script syntax
+      - name: Validate script syntax
         run: bash -n deploy/nilx-identity-fresh/activate.sh
 
-      - name: Verify AIS discovery issuer and signing keys (read-only)
+      - name: Verify AIS discovery and signing keys (read-only)
         run: |
           set -Eeuo pipefail
           discovery="$(curl --fail --silent --show-error --max-time 20 \
@@ -117,9 +132,7 @@ jobs:
             https://auth.aiaiaiai.org/.well-known/jwks.json)"
           jq -e '.keys | type == "array" and length > 0' <<<"$jwks" >/dev/null
 
-
-
-      - name: Set up pinned SSH
+      - name: Set up pinned SSH with Infra transport credentials only
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -135,7 +148,7 @@ jobs:
           printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
           chmod 600 "$dir/known_hosts"
 
-      - name: Stage reviewed script (no live changes)
+      - name: Stage bootstrap script
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -155,7 +168,58 @@ jobs:
             -i "$RUNNER_TEMP/nilx-fresh-identity-ssh/id_ed25519" \
             -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "chmod 700 '$dir/activate.sh'"
 
-      - name: Validate new backend without changing live containers
+      - name: Create or display host-owned public AGE recipient
+        if: inputs.operation == 'recipient'
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-fresh-identity-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/nilx-fresh-identity-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "bash '.local/share/aiaiaiai-infra/nilx-identity-fresh/activate.sh' recipient '$IMAGE'"
+
+      - name: Fetch and verify signed product-encrypted package (never decrypt in Infra)
+        if: inputs.operation != 'recipient'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh attestation verify "oci://$ENCRYPTED_SECRETS_IMAGE" \
+            --repo nilx-one/web \
+            --signer-workflow nilx-one/web/.github/workflows/package-fresh-identity-secrets.yml \
+            --source-ref refs/heads/master \
+            --deny-self-hosted-runners
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin >/dev/null
+          docker pull --quiet "$ENCRYPTED_SECRETS_IMAGE" >/dev/null
+          cid="$(docker create "$ENCRYPTED_SECRETS_IMAGE" /envelope)"
+          trap 'docker rm "$cid" >/dev/null 2>&1 || true' EXIT
+          docker cp "$cid:/secrets.age" "$RUNNER_TEMP/identity-encrypted.age"
+          test -s "$RUNNER_TEMP/identity-encrypted.age"
+          chmod 600 "$RUNNER_TEMP/identity-encrypted.age"
+          docker logout ghcr.io >/dev/null
+
+      - name: Transfer ciphertext only to edge-dev-1
+        if: inputs.operation != 'recipient'
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          dir='.local/share/aiaiaiai-infra/nilx-identity-fresh'
+          scp -q -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-fresh-identity-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/nilx-fresh-identity-ssh/id_ed25519" -P "$SSH_PORT" \
+            "$RUNNER_TEMP/identity-encrypted.age" "$SSH_USER@$SSH_HOST:$dir/secrets.age.next"
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-fresh-identity-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/nilx-fresh-identity-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "chmod 600 '$dir/secrets.age.next' && mv -f '$dir/secrets.age.next' '$dir/secrets.age'"
+
+      - name: Validate product-issued encrypted secret on host without starting Identity
         if: inputs.operation == 'validate'
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -168,39 +232,35 @@ jobs:
             -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
             "bash '.local/share/aiaiaiai-infra/nilx-identity-fresh/activate.sh' validate '$IMAGE'"
 
-      - name: Pull verified image using ephemeral registry login
+      - name: Pull signed Identity image using ephemeral GHCR login
         if: inputs.operation == 'activate'
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           GH_TOKEN: ${{ github.token }}
-          GHCR_USER: ${{ github.actor }}
         run: |
           set -Eeuo pipefail
-          [[ "$GHCR_USER" =~ ^[A-Za-z0-9_-]+$ ]]
           printf '%s' "$GH_TOKEN" |
             ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile="$RUNNER_TEMP/nilx-fresh-identity-ssh/known_hosts" \
               -i "$RUNNER_TEMP/nilx-fresh-identity-ssh/id_ed25519" \
               -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-              "set -eu; umask 077; dir=\$(mktemp -d); trap 'rm -rf \"\$dir\"' EXIT; export DOCKER_CONFIG=\"\$dir\"; docker login ghcr.io -u '$GHCR_USER' --password-stdin >/dev/null; docker pull '$IMAGE' >/dev/null"
+              "set -eu; umask 077; dir=\$(mktemp -d); trap 'rm -rf \"\$dir\"' EXIT; export DOCKER_CONFIG=\"\$dir\"; docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin >/dev/null; docker pull '$IMAGE' >/dev/null"
 
-      - name: Explicitly activate fresh Identity
+      - name: Activate fresh Identity with host-only decryption
         if: inputs.operation == 'activate'
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELOXIDE_TOKEN }}
         run: |
           set -Eeuo pipefail
-          printf '%s\n' "$TELEGRAM_BOT_TOKEN" |
-            ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-              -o UserKnownHostsFile="$RUNNER_TEMP/nilx-fresh-identity-ssh/known_hosts" \
-              -i "$RUNNER_TEMP/nilx-fresh-identity-ssh/id_ed25519" \
-              -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-              "bash '.local/share/aiaiaiai-infra/nilx-identity-fresh/activate.sh' activate '$IMAGE'"
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-fresh-identity-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/nilx-fresh-identity-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "bash '.local/share/aiaiaiai-infra/nilx-identity-fresh/activate.sh' activate '$IMAGE'"
 
-      - name: Verify public API after activation
+      - name: Verify public 0x1 product API after activation
         if: inputs.operation == 'activate'
         run: |
           set -Eeuo pipefail
@@ -209,8 +269,8 @@ jobs:
           code="$(curl --silent --show-error --max-time 15 \
             --output /dev/null --write-out '%{http_code}' https://nilx.one/api/v1/auth/native/context)"
           case "$code" in 200|401|403) ;; *) echo "::error::Identity context returned HTTP $code"; exit 1 ;; esac
-          echo '0x1 Identity API and AIS product client configuration respond publicly.'
+          echo '0x1 Identity API responds and AIS client is enabled. Full sign-in still needs E2E.'
 
-      - name: Remove runner SSH material
+      - name: Clean encrypted package and temporary SSH key
         if: always()
-        run: rm -rf "$RUNNER_TEMP/nilx-fresh-identity-ssh"
+        run: rm -rf "$RUNNER_TEMP/nilx-fresh-identity-ssh" "$RUNNER_TEMP/identity-encrypted.age"
