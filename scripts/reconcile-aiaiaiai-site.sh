@@ -152,7 +152,16 @@ if [[ "$channel" == all || "$channel" == beta ]]; then
       continue
     fi
     if published_digest="$(digest_for "$version")"; then
-      verify_artifact beta "$version" "$version" "$published_digest"
+      # Pre-migration images may have valid but obsolete signer provenance.
+      # They cannot become immutable public snapshots under this contract.
+      if ! verify_artifact beta "$version" "$version" "$published_digest"; then
+        if [[ "$version" == "$master" ]]; then
+          echo "::error::Current master artifact has invalid provenance" >&2
+          exit 1
+        fi
+        echo "::notice::Skipping legacy/nonconforming beta image $version"
+        continue
+      fi
       stage_remote beta "$version" "$version" "$published_digest"
       if [[ "$version" == "$master" ]]; then
         beta_digest="$published_digest"
@@ -185,7 +194,10 @@ if [[ "$channel" == all || "$channel" == release ]]; then
     sha="$(gh api "repos/$source_repo/commits/$tag" --jq '.sha')"
     [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
     if digest="$(digest_for "$tag")"; then
-      verify_artifact release "$tag" "$sha" "$digest"
+      if ! verify_artifact release "$tag" "$sha" "$digest"; then
+        echo "::notice::Skipping unverified legacy release $tag"
+        continue
+      fi
       stage_remote release "$tag" "$sha" "$digest"
       latest_tag="$tag"
       latest_digest="$digest"
