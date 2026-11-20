@@ -1,0 +1,99 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Diagnose 0x1 ingress on edge-dev-1 (read-only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-nilx-ingress-edge-dev-1
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: edge-dev-1
+      deployment: false
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - name: Check public DNS and HTTPS (no writes)
+        run: |
+          set -Eeuo pipefail
+          echo 'Public DNS IPv4 (may show Cloudflare rather than the origin):'
+          getent ahostsv4 nilx.one | awk '!seen[$1]++ {print $1}' || true
+          code="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --connect-timeout 5 --max-time 15 https://nilx.one/ || true)"
+          echo "Public https://nilx.one/ HTTP status: ${code:-000}"
+          if [[ ! "${code:-000}" =~ ^[23][0-9][0-9]$ ]]; then
+            echo '::warning::Public HTTPS did not return 2xx/3xx; investigate DNS, TLS, routing and origin independently.'
+          fi
+          {
+            echo '## 0x1 edge-dev-1 read-only diagnosis'
+            echo "Public https://nilx.one/: HTTP ${code:-000}"
+            echo 'A proxied DNS answer does not prove which origin was contacted.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Validate pinned target and prepare SSH
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = 158.220.74.54
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+          dir="$RUNNER_TEMP/nilx-ingress-ssh"
+          install -d -m 0700 "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          if [[ "$SSH_PORT" == 22 ]]; then label="$SSH_HOST"; else label="[$SSH_HOST]:$SSH_PORT"; fi
+          printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
+          chmod 600 "$dir/known_hosts"
+
+      - name: Inspect new origin without changing anything
+        run: |
+          set -Eeuo pipefail
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-ingress-ssh/known_hosts" \
+            -o ConnectTimeout=10 -o ConnectionAttempts=1 \
+            -i "$RUNNER_TEMP/nilx-ingress-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash -s <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(hostname)" = edge-dev-1
+          test "$(id -un)" = deploy
+          echo '=== 80/443 listeners ==='
+          ss -ltn | awk 'NR == 1 || $4 ~ /:80$/ || $4 ~ /:443$/'
+          echo '=== Docker containers (names, states, ports only) ==='
+          docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+          echo '=== Docker networks (names, drivers only) ==='
+          docker network ls --format 'table {{.Name}}\t{{.Driver}}'
+          if ! ss -H -ltn | awk '{print $4}' | grep -Eq '(^|:)443$'; then
+            echo '::error::No local HTTPS listener on port 443; DNS cutover cannot serve this origin.'
+            exit 1
+          fi
+          code="$(curl --silent --show-error --insecure --output /dev/null \
+            --write-out '%{http_code}' --connect-timeout 4 --max-time 12 \
+            --resolve nilx.one:443:127.0.0.1 https://nilx.one/ || true)"
+          echo "Direct local HTTPS origin status: ${code:-000}"
+          if [[ ! "${code:-000}" =~ ^[23][0-9][0-9]$ ]]; then
+            echo '::error::Local HTTPS origin did not return 2xx/3xx; inspect Caddy and upstreams.'
+            exit 1
+          fi
+          echo 'Local HTTPS smoke succeeded; Identity, map, Market and external TLS remain unverified.'
+          REMOTE
+
+      - name: Remove ephemeral SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/nilx-ingress-ssh"
