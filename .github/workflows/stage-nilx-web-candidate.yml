@@ -1,6 +1,6 @@
 # © 2026 aiaiaiai · aiaiaiai.org
 
-name: Stage 0x1 Web candidate on edge-dev-1
+name: Stage 0x1 browser clients on edge-dev-1
 
 on:
   workflow_dispatch:
@@ -186,13 +186,82 @@ jobs:
           echo "Verified Web candidate healthy; no public ports"
           REMOTE
 
+      - name: Stage dedicated Telegram and Discord client candidates
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/nilx-candidate-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/nilx-candidate-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            bash -s -- "$IMAGE" <<'REMOTE'
+          set -Eeuo pipefail
+          image="$1"
+          [[ "$image" =~ ^ghcr.io/nilx-one/web@sha256:[0-9a-f]{64}$ ]]
+          test "$(hostname)" = edge-dev-1
+          docker network inspect nilx-candidate >/dev/null
+
+          for client in telegram discord; do
+            case "$client" in
+              telegram)
+                name=nilxone-telegram-candidate
+                root=/srv/telegram-mini-app
+                ;;
+              discord)
+                name=nilxone-discord-candidate
+                root=/srv/discord-activity
+                ;;
+            esac
+
+            if docker inspect "$name" >/dev/null 2>&1; then
+              test "$(docker inspect --format '{{.Config.Image}}' "$name")" = "$image" ||
+                { echo "candidate image mismatch for $client; refusing replacement" >&2; exit 1; }
+              test "$(docker inspect --format '{{.State.Running}}' "$name")" = true ||
+                { echo "candidate stopped for $client; inspect before retry" >&2; exit 1; }
+              test "$(docker inspect --format '{{index .Config.Env 0}}' "$name")" != "" || exit 1
+              docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$name" |
+                grep -qx "CLIENT_ROOT=$root" ||
+                { echo "candidate client root mismatch for $client" >&2; exit 1; }
+              test -z "$(docker port "$name")"
+            else
+              docker run --detach \
+                --name "$name" \
+                --network nilx-candidate \
+                --restart unless-stopped \
+                --security-opt no-new-privileges:true \
+                --env "CLIENT_ROOT=$root" \
+                "$image" >/dev/null
+            fi
+            ready=false
+            for _ in $(seq 1 30); do
+              health="$(docker inspect --format '{{.State.Health.Status}}' "$name")"
+              if [[ "$health" == healthy ]]; then ready=true; break; fi
+              if [[ "$health" == unhealthy ]]; then
+                echo "$client candidate is unhealthy" >&2
+                exit 1
+              fi
+              sleep 2
+            done
+            test "$ready" = true
+            docker exec "$name" test -s "$root/index.html"
+            docker exec "$name" wget -q -O /dev/null http://127.0.0.1:1927/health
+            docker exec "$name" wget -q -O /dev/null http://127.0.0.1:1927/
+            test -z "$(docker port "$name")" ||
+              { echo "candidate unexpectedly published a port" >&2; exit 1; }
+            echo "$client client healthy and private"
+          done
+          REMOTE
+
       - name: Report staged state
         run: |
           {
             echo '### 0x1 Web candidate on Contabo'
             echo "- Web source SHA: $SOURCE_SHA"
             echo "- verified image: $IMAGE"
-            echo '- nilxone-web-candidate on nilx-candidate (host-local)'
+            echo '- nilxone-web-candidate, nilxone-telegram-candidate, nilxone-discord-candidate'
+            echo '- all on nilx-candidate (host-local)'
             echo '- no published ports, no DNS update'
             echo '- Identity, map archive and Market API not migrated'
             echo '- nilx.one cutover NOT ready'
