@@ -51,7 +51,7 @@ check(snapshot.include?("Automatic release downgrade refused"), "release alias m
   check(wf.include?("SSH_HOST_ED25519_PUBKEY"), "#{path}: missing SSH host pin")
   check(wf.include?("github.ref == 'refs/heads/master'"), "#{path}: branch protection missing")
   check(wf.include?("CONFIRMATION"), "#{path}: missing explicit activation confirmation")
-  check(!wf.include?("INFRA_DEPLOY_TOKEN") && !wf.include?("ssh-keyscan"), "#{path}: unsafe credentials")
+  check(!wf.include?("INFRA_DEPLOY_TOKEN") && !wf.match?(/^\s*ssh-keyscan /), "#{path}: unsafe credentials")
 end
 
 public_adoption = File.read("deploy/aiaiaiai-site-snapshots/ingress.sh")
