@@ -1,0 +1,95 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Audit 0x1 DNS migration prerequisites
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Cloudflare DNS audit (read-only)
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: edge-prod-1
+      deployment: false
+    steps:
+      - name: Inspect DNS without writing records
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$CF_API_TOKEN"
+          api=https://api.cloudflare.com/client/v4
+          zone=nilx.one
+
+          cf_get() {
+            curl --fail --silent --show-error \
+              --header "Authorization: Bearer $CF_API_TOKEN" \
+              --header 'Content-Type: application/json' \
+              "$1"
+          }
+
+          zones="$(cf_get "$api/zones?name=$zone&status=active&per_page=50")"
+          zone_id="$(jq -er --arg zone "$zone" '
+            .result | map(select(.name == $zone)) | select(length == 1) | .[0].id
+          ' <<< "$zones")"
+
+          apex="$(cf_get "$api/zones/$zone_id/dns_records?name=$zone&per_page=100")"
+          wildcard="$(cf_get "$api/zones/$zone_id/dns_records?name=*.$zone&per_page=100")"
+          market="$(cf_get "$api/zones/$zone_id/dns_records?name=0xda-market.$zone&per_page=100")"
+
+          # A proxied wildcard points to the apex. Updating the apex without
+          # a specific Market record could silently reroute Market too.
+          if ! jq -e --arg zone "$zone" '
+            .success == true and (.result | length == 1) and
+            .result[0].type == "CNAME" and
+            .result[0].name == ("*." + $zone) and
+            .result[0].content == $zone and
+            .result[0].proxied == true
+          ' <<< "$wildcard" >/dev/null; then
+            echo '::error::Wildcard is missing or differs from the Infra CNAME contract.'
+            exit 1
+          fi
+
+          if ! jq -e --arg zone "$zone" '
+            .success == true and (
+              [.result[] | select(.name == $zone and (
+                .type == "A" or .type == "AAAA" or .type == "CNAME"
+              ))] | length >= 1
+            )
+          ' <<< "$apex" >/dev/null; then
+            echo '::error::nilx.one apex has no recognized origin record.'
+            exit 1
+          fi
+
+          # We cannot infer old Market origin from the Web DNS or its Caddy.
+          # Require an explicit exact record that does not alias the apex.
+          if ! jq -e --arg zone "$zone" '
+            .success == true and
+            ([.result[] |
+              select(.name == ("0xda-market." + $zone) and
+                (.type == "A" or .type == "AAAA" or .type == "CNAME") and
+                (.type != "CNAME" or .content != $zone))
+             ] | length >= 1)
+          ' <<< "$market" >/dev/null; then
+            echo '::error::0xda-market.nilx.one needs its own non-apex origin before nilx.one changes.'
+            exit 1
+          fi
+
+          {
+            echo '### nilx.one production migration DNS prerequisites'
+            echo
+            echo '- apex origin record: present (content intentionally hidden)'
+            echo '- wildcard: proxied CNAME to nilx.one'
+            echo '- Market: distinct exact DNS record exists (content intentionally hidden)'
+            echo '- migration target: 158.220.74.54 (not activated)'
+            echo '- Cloudflare API operations: GET only'
+            echo '- DNS records modified: none'
+            echo
+            echo 'This does NOT verify the readiness of Web, Identity, map, TLS or the old Market reverse proxy.'
+          } >> "$GITHUB_STEP_SUMMARY"
