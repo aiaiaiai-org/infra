@@ -11,7 +11,9 @@ abort "must use edge-dev-1 Environment" unless flow.dig("jobs", "stage", "enviro
 abort "SSH host key not pinned" unless source.include?("StrictHostKeyChecking=yes") && source.include?("vars.SSH_HOST_ED25519_PUBKEY")
 abort "source provenance not verified" unless source.include?("gh attestation verify") && source.include?("--source-digest") && source.include?("--deny-self-hosted-runners")
 abort "candidate image unpinned" unless source.include?("ghcr.io/nilx-one/web@sha256:")
-abort "candidate must not publish ports" if source.match?(/\s(?:-p|--publish|--publish-all)(?:\s|=)/)
+docker_run = source[/docker run --detach[\s\S]*?"\$image" >\/dev\/null/]
+abort "missing Docker candidate creation" unless docker_run
+abort "candidate must not publish ports" if docker_run.match?(/\s(?:-p|--publish|--publish-all)(?:\s|=)/)
 abort "candidate must not alter DNS" if source.include?("dns_records") || source.include?("cloudflare-wildcard.sh")
 abort "candidate must not replace Identity data" if source.include?("identity.db") || source.include?("nilxone-identity-data")
 abort "candidate must fail on different image" unless source.include?("refuse to replace")
