@@ -20,6 +20,9 @@ spec:
   # Infra delivers each verified master build on its own (docs/automatic-delivery.md).
   # The product holds no credential for infra.
   delivery:
+    # Freeze legacy edge-prod-2 auto-delivery during path-scoped VPS migration.
+    # Snapshot activation on edge-dev-1 is explicit and separate.
+    mode: manual
     image: ghcr.io/aiaiaiai-org/aiaiaiai.org
     branch: master
     signerWorkflow: .github/workflows/publish-development.yml

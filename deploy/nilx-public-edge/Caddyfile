@@ -5,3 +5,14 @@ nilx.one {
     encode zstd gzip
     reverse_proxy nilxone-web-candidate:1927
 }
+
+# aiaiaiai.org is a separate static snapshot service on the same private Docker
+# network; it does not replace or intercept the existing nilx.one route.
+aiaiaiai.org, beta.aiaiaiai.org {
+    encode zstd gzip
+    reverse_proxy aiaiaiai-site-archive:1927 {
+        health_uri /healthz
+        health_interval 30s
+        health_timeout 5s
+    }
+}
