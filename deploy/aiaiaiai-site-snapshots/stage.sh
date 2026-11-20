@@ -79,6 +79,15 @@ else
   test "$(docker inspect -f '{{.State.Running}}' aiaiaiai-site-archive)" = true
 fi
 test -z "$(docker port aiaiaiai-site-archive)"
+ready=false
+for attempt in $(seq 1 15); do
+  if docker exec aiaiaiai-site-archive wget -q -T 3 -O /dev/null http://127.0.0.1:1927/healthz; then
+    ready=true
+    break
+  fi
+  sleep 1
+done
+test "$ready" = true || { echo 'Private snapshot server did not become ready' >&2; exit 1; }
 docker exec aiaiaiai-site-archive caddy validate --config /etc/caddy/Caddyfile >/dev/null
 docker exec aiaiaiai-site-archive caddy reload --config /etc/caddy/Caddyfile >/dev/null
 

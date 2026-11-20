@@ -33,7 +33,7 @@ check(private_caddy.include?("/release/current/index.html"), "release alias miss
 check(private_caddy.include?("https://beta.aiaiaiai.org 302"), "unreleased apex redirect missing")
 
 snapshot = File.read("deploy/aiaiaiai-site-snapshots/stage.sh")
-check(snapshot.include?("ghcr\\.io/aiaiaiai-org/aiaiaiai\\.org@sha256:"), "only immutable image digests may be staged")
+check(snapshot.include?('ghcr\\.io/aiaiaiai-org/aiaiaiai\\.org@sha256:'), "only immutable image digests may be staged")
 check(snapshot.include?('test "$(hostname)" = edge-dev-1'), "archive must pin new host")
 check(snapshot.include?('test -z "$(docker port aiaiaiai-site-archive)"'), "archive must not publish ports")
 check(snapshot.include?('Version already exists with another digest'), "immutable version guard missing")
