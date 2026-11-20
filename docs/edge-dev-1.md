@@ -53,5 +53,5 @@ explicit request to **move the existing nilx.one production origin** to
 158.220.74.54 without creating dev.nilx.one. The SSH setup remains valid,
 but the old development-target assumptions must not be deployed. Follow
 [the production migration plan](nilx-production-migration.md), including
-Identity data and Market DNS separation. This server must remain in
+Identity data and Render-backed Market routing. This server must remain in
 provisioning until those conditions are satisfied.
