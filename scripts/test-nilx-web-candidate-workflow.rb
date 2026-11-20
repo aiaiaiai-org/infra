@@ -17,4 +17,9 @@ abort "candidate must not publish ports" if docker_run.match?(/\s(?:-p|--publish
 abort "candidate must not alter DNS" if source.include?("dns_records") || source.include?("cloudflare-wildcard.sh")
 abort "candidate must not replace Identity data" if source.include?("identity.db") || source.include?("nilxone-identity-data")
 abort "candidate must fail on different image" unless source.include?("refuse to replace")
+abort "Telegram candidate missing" unless source.include?("nilxone-telegram-candidate") && source.include?("/srv/telegram-mini-app")
+abort "Discord candidate missing" unless source.include?("nilxone-discord-candidate") && source.include?("/srv/discord-activity")
+abort "client staging must use the verified digest" unless source.include?('bash -s -- "$IMAGE"')
+abort "client staging may not publish Docker ports" if source.scan(/docker run --detach[\s\S]*?"\$image" >\/dev\/null/).any? { |cmd| cmd.match?(/\s(?:-p|--publish|--publish-all)(?:\s|=)/) }
+
 puts "candidate contract is manual, attested, isolated, read-only outside its own runtime"
