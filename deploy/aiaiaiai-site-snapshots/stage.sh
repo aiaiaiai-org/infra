@@ -108,7 +108,7 @@ if [[ "$mode" == activate ]]; then
       exit 1
     fi
   fi
-  ln -s "$version" "$alias_path.new.$"
+  ln -s "$version" "$alias_path.new.$$"
   mv -Tf "$alias_path.new.$$" "$alias_path"
   check=0
   if [[ "$channel" == beta ]]; then
