@@ -30,11 +30,12 @@ archive can be staged and tested without changing DNS or public routes.
 
 ## Deployment order and gates
 
-1. Merge the website path-scoped build and release publisher, and freeze the
-   legacy `edge-prod-2` site delivery (`mode: manual`) **before** the next
-   master artifact is published.
-2. Use a verified image digest whose CI output embeds
-   `/<full SHA>/_astro/` or `/<tag>/_astro/`.
+1. Merge Infra PR #143 first, freezing the legacy `edge-prod-2` delivery
+   (`mode: manual`) before any new path-scoped image is published. Keep the
+   new ingress inactive until separately authorized.
+2. Merge website PR #13 next; verify the first master image is signed by the
+   new publisher and its CI output embeds `/<full SHA>/_astro/`. For a SemVer
+   release, verify the equivalent `/<tag>/_astro/` assets.
 3. Automatic `Reconcile aiaiaiai site snapshots` verifies the GHCR
    attestation and exact master merge SHA, stages each immutable artifact and
    advances the beta alias after health checks. It uses pinned SSH and does
