@@ -73,7 +73,7 @@ Short SHA aliases and SHA/tag subdomains are not part of this contract.
 7. Verify latest beta and full-SHA page, their own JS and CSS assets,
    canonical redirects, TLS, and that `nilx.one` still works.
 8. After a release tag is pushed, Full CI builds the version-scoped artifact,
-   tag-triggered Full CI attests it, then Infra stages it without operator intervention
+   tag-triggered push-only Publish workflow attests it after Full CI, then Infra stages it without operator intervention
    and advances the release alias to the highest successfully verified SemVer.
    Confirm `aiaiaiai.org/` and `/<vX.Y.Z>/` are correct.
 9. Keep the old site origin and the reviewed ingress rollback until
