@@ -1,0 +1,221 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+# Staging a verified immutable site artifact never changes public DNS/ingress.
+# Activating a current alias is an explicit manual operation on the private archive.
+name: Stage aiaiaiai site snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Select beta commit or approved release
+        required: true
+        type: choice
+        options: [beta, release]
+      version:
+        description: Full 40-character SHA for beta, or vX.Y.Z for release
+        required: true
+        type: string
+      operation:
+        description: Stage immutable snapshot, or activate previously staged alias
+        required: true
+        default: stage
+        type: choice
+        options: [stage, activate]
+      confirmation:
+        description: Type ACTIVATE to move a current alias (no production DNS changes)
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  packages: read
+  attestations: read
+
+concurrency:
+  group: aiaiaiai-site-snapshot-edge-dev-1
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    if: github.ref == 'refs/heads/master'
+    name: Verify signed site artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      version: ${{ steps.params.outputs.version }}
+      channel: ${{ steps.params.outputs.channel }}
+    steps:
+      - name: Validate requested version and explicit activation
+        id: params
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          VERSION: ${{ inputs.version }}
+          OPERATION: ${{ inputs.operation }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -Eeuo pipefail
+          case "$OPERATION" in
+            stage) test -z "$CONFIRMATION" ;;
+            activate) test "$CONFIRMATION" = ACTIVATE ;;
+            *) exit 1 ;;
+          esac
+          case "$CHANNEL" in
+            beta) [[ "$VERSION" =~ ^[0-9a-f]{40}$ ]] ;;
+            release) [[ "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] ;;
+            *) exit 1 ;;
+          esac
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+      - name: Authenticate to GHCR for manifest inspection
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Resolve attested image digest
+        id: image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANNEL: ${{ steps.params.outputs.channel }}
+          VERSION: ${{ steps.params.outputs.version }}
+        run: |
+          set -Eeuo pipefail
+          image='ghcr.io/aiaiaiai-org/aiaiaiai.org'
+          manifest="$(docker buildx imagetools inspect "$image:$VERSION" --format '{{json .Manifest}}')"
+          digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$"))' <<<"$manifest")"
+          signer="aiaiaiai-org/aiaiaiai.org/.github/workflows/publish.yml"
+          if [[ "$CHANNEL" == beta ]]; then
+            gh attestation verify "oci://$image@$digest" \
+              --repo aiaiaiai-org/aiaiaiai.org \
+              --signer-workflow "$signer" \
+              --source-ref refs/heads/master \
+              --source-digest "$VERSION" \
+              --deny-self-hosted-runners
+          else
+            signer='aiaiaiai-org/aiaiaiai.org/.github/workflows/publish.yml'
+            # The release is attested in the tag-triggered push-only Publish workflow after
+            # Validate. Verify tag ref + resolved commit for annotated and
+            # lightweight tags alike.
+            tag_sha="$(gh api "repos/aiaiaiai-org/aiaiaiai.org/commits/$VERSION" --jq '.sha')"
+            [[ "$tag_sha" =~ ^[0-9a-f]{40}$ ]]
+            gh attestation verify "oci://$image@$digest" \
+              --repo aiaiaiai-org/aiaiaiai.org \
+              --signer-workflow "$signer" \
+              --source-ref "refs/tags/$VERSION" \
+              --source-digest "$tag_sha" \
+              --deny-self-hosted-runners
+          fi
+          echo "image=$image@$digest" >> "$GITHUB_OUTPUT"
+
+  stage:
+    name: ${{ inputs.operation }} ${{ inputs.channel }} / ${{ inputs.version }}
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: edge-dev-1
+    env:
+      IMAGE: ${{ needs.resolve.outputs.image }}
+      CHANNEL: ${{ needs.resolve.outputs.channel }}
+      VERSION: ${{ needs.resolve.outputs.version }}
+      OPERATION: ${{ inputs.operation }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify pinned SSH target and artifact inputs
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = 158.220.74.54
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]] && ((SSH_PORT >= 1 && SSH_PORT <= 65535))
+          [[ "$IMAGE" =~ ^ghcr\.io/aiaiaiai-org/aiaiaiai\.org@sha256:[0-9a-f]{64}$ ]]
+          bash -n deploy/aiaiaiai-site-snapshots/stage.sh
+      - name: Configure pinned SSH (no ssh-keyscan)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          dir="$RUNNER_TEMP/aiaiaiai-site-ssh"
+          install -d -m 0700 "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          if [[ "$SSH_PORT" == 22 ]]; then label="$SSH_HOST"; else label="[$SSH_HOST]:$SSH_PORT"; fi
+          printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
+          chmod 600 "$dir/known_hosts"
+      - name: Stage archive config and script
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          base=".local/share/aiaiaiai-infra/aiaiaiai-site"
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/aiaiaiai-site-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/aiaiaiai-site-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "install -d -m 0700 '$base'"
+          scp -q -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/aiaiaiai-site-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/aiaiaiai-site-ssh/id_ed25519" -P "$SSH_PORT" \
+            deploy/aiaiaiai-site-snapshots/Caddyfile \
+            "$SSH_USER@$SSH_HOST:$base/archive.Caddyfile"
+          scp -q -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/aiaiaiai-site-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/aiaiaiai-site-ssh/id_ed25519" -P "$SSH_PORT" \
+            deploy/aiaiaiai-site-snapshots/stage.sh \
+            "$SSH_USER@$SSH_HOST:$base/stage.sh"
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/aiaiaiai-site-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/aiaiaiai-site-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "chmod 600 '$base/archive.Caddyfile'; chmod 700 '$base/stage.sh'"
+      - name: Pull exact verified image to private host
+        if: inputs.operation == 'stage'
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          GH_TOKEN: ${{ github.token }}
+          GHCR_USER: ${{ github.actor }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$GHCR_USER" =~ ^[A-Za-z0-9_-]+$ ]]
+          printf '%s' "$GH_TOKEN" | ssh -T -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/aiaiaiai-site-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/aiaiaiai-site-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "set -eu; umask 077; dir=\$(mktemp -d); trap 'rm -rf \"\$dir\"' EXIT; export DOCKER_CONFIG=\"\$dir\"; docker login ghcr.io -u '$GHCR_USER' --password-stdin >/dev/null; docker pull '$IMAGE' >/dev/null"
+      - name: Stage or activate private snapshot
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$RUNNER_TEMP/aiaiaiai-site-ssh/known_hosts" \
+            -i "$RUNNER_TEMP/aiaiaiai-site-ssh/id_ed25519" \
+            -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "bash '.local/share/aiaiaiai-infra/aiaiaiai-site/stage.sh' '$OPERATION' '$CHANNEL' '$VERSION' '$IMAGE'"
+      - name: Report private archive state
+        run: |
+          {
+            echo '### aiaiaiai.org immutable snapshot'
+            echo "- operation: \`$OPERATION\`"
+            echo "- channel/version: \`$CHANNEL/$VERSION\`"
+            echo "- attested image: \`$IMAGE\`"
+            echo '- No DNS change or public route activation'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Erase ephemeral SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/aiaiaiai-site-ssh"

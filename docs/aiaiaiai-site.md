@@ -1,6 +1,6 @@
 <!-- © 2026 aiaiaiai · aiaiaiai.org -->
 
-# aiaiaiai.org website on edge-prod-2
+# Legacy aiaiaiai.org website on edge-prod-2
 
 `aiaiaiai-site` is a static container workload owned by
 `aiaiaiai-org/aiaiaiai.org`. Its container listens on `1927`, serves `/healthz`,
@@ -8,9 +8,15 @@ and joins `aiaiaiai-edge` on `edge-prod-2`. The apex host `aiaiaiai.org` routes
 to it; `api.aiaiaiai.org` and all existing Prism/HUA paths remain independent.
 There are no model services, databases, volumes or application secrets.
 
+This is the pre-migration origin retained for rollback. The new versioned
+snapshot candidate on Contabo is documented in
+[the edge-dev-1 migration plan](aiaiaiai-snapshots-edge-dev-1.md) and
+[the canonical versioning contract](aiaiaiai-versioned-deployments.md).
+Do not re-enable automatic legacy delivery while migrating.
+
 The product's Full CI builds the static site. Validate packages and smoke-tests
 that output, then preserves the exact image artifact. For each green `master`
-push, the product's **Publish development image** workflow publishes that
+push, the product's **Full CI / Publish merge-SHA beta image** workflow publishes that
 artifact without rebuilding and attests its provenance. Infra then delivers it
 automatically (`docs/automatic-delivery.md`); the product holds no infra
 credential.
