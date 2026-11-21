@@ -59,6 +59,15 @@ jobs:
         run: |
           bash -n deploy/nilx-identity-fresh/activate.sh
           ruby scripts/test-nilx-identity-fresh-bootstrap.rb
+      - name: Validate immutable aiaiaiai snapshots and shared ingress
+        run: |
+          set -Eeuo pipefail
+          ruby scripts/test-aiaiaiai-snapshot-contract.rb
+          bash -n deploy/aiaiaiai-site-snapshots/stage.sh
+          bash -n deploy/aiaiaiai-site-snapshots/ingress.sh
+          docker run --rm -v "$PWD/deploy/aiaiaiai-site-snapshots/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+          docker run --rm -v "$PWD/deploy/nilx-public-edge/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+          bash -x scripts/test-aiaiaiai-snapshot-routing.sh
 
       - name: Validate Web candidate workflow boundaries
         run: ruby scripts/test-nilx-web-candidate-workflow.rb

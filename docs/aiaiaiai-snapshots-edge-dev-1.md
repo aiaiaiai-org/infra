@@ -1,0 +1,62 @@
+<!-- © 2026 aiaiaiai · aiaiaiai.org -->
+
+# aiaiaiai.org snapshots on edge-dev-1
+
+This is the isolated site migration **candidate**, not a deployed public origin.
+`nilx.one` already owns public 80/443 on this VPS. Never run a second
+public Caddy. The existing `nilx-public-edge-managed` ingress can proxy two
+additional hosts to the independent private `aiaiaiai-site-archive` container
+on the existing `nilx-candidate` Docker network.
+
+## Routes
+
+| Host/path | Meaning |
+|---|---|
+| `beta.aiaiaiai.org/` | latest activated beta |
+| `beta.aiaiaiai.org/{full 40-char SHA}/` | immutable beta |
+| `aiaiaiai.org/` | latest approved release, otherwise HTTP 302 to beta |
+| `aiaiaiai.org/{vX.Y.Z}/` | immutable release |
+
+The archive preserves full static site content and per-version assets under
+`$HOME/.local/share/aiaiaiai-infra/aiaiaiai-site/versions`; each version has
+a verified image-digest manifest outside the public root. Existing versions
+with a different digest are rejected. Only `current` symlinks are mutable.
+Preserve archive and manifests in VPS backups.
+
+The public ingress config is in `deploy/nilx-public-edge/Caddyfile`. Changing
+this file in Git **does not** update the running ingress; it requires a
+separately authorized activation with rollback and TLS validation. The private
+archive can be staged and tested without changing DNS or public routes.
+
+## Deployment order and gates
+
+1. Merge Infra PR #143 first, freezing the legacy `edge-prod-2` delivery
+   (`mode: manual`) before any new path-scoped image is published. Keep the
+   new ingress inactive until separately authorized.
+2. Merge website PR #13 next; verify the first master image is signed by the
+   push-only `.github/workflows/publish.yml` and its CI output embeds
+   `/<full SHA>/_astro/`. For a SemVer release, verify the equivalent
+   `/<tag>/_astro/` assets. Both channels trust that exact signer workflow.
+3. Run an explicitly authorized manual `Reconcile aiaiaiai site snapshots`
+   dispatch to verify private GHCR provenance, stage immutable artifacts and
+   test the beta alias without opening public ports. Automatic cron runs are
+   disabled until the one-time cutover is approved.
+4. Confirm the private `/{SHA}/` snapshot and latest beta alias. Following
+   the approved cutover, verify the `edge-dev-1` Environment permits unattended
+   execution and set repository variable `AIAIAIAI_SITE_AUTO_RECONCILE=enabled`
+   to opt in to best-effort 15-minute reconciliation.
+5. Independently activate the additional host routes on the existing 0x1
+   ingress; preserve `nilx.one`, the old Caddy config and TLS volumes.
+6. Verify TLS readiness and DNS records; cut over the two aiaiaiai hostnames
+   only with explicit authorization. Verify root, snapshot assets, rollback,
+   and no changes to `nilx.one`, `auth.aiaiaiai.org` (Railway), or Prism.
+7. Publish an approved release tag. The release publisher attests its
+   Full CI artifact; Infra automatically stages every verified SemVer tag
+   and advances the latest release alias without manual selection.
+
+The old `aiaiaiai-site` WorkloadContract remains on `edge-prod-2` for
+rollback during migration and is set to manual delivery. It is not the new
+archive workload. A later independent cleanup removes legacy routing only
+after the new origin has been verified.
+
+No merge, DNS change, rollout, or deployment is implied by this PR.
