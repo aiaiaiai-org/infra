@@ -98,10 +98,10 @@ activate_remote() {
 verify_artifact() {
   local kind="$1" version="$2" sha="$3" digest="$4" signer ref
   if [[ "$kind" == beta ]]; then
-    signer="$source_repo/.github/workflows/ci.yml"
+    signer="$source_repo/.github/workflows/publish.yml"
     ref=refs/heads/master
   else
-    signer="$source_repo/.github/workflows/ci.yml"
+    signer="$source_repo/.github/workflows/publish.yml"
     ref="refs/tags/$version"
   fi
   gh attestation verify "oci://$image@$digest" \
