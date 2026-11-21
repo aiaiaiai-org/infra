@@ -65,6 +65,8 @@ check(!public_adoption.include?("--publish") && !public_adoption.include?("docke
 auto = File.read(".github/workflows/reconcile-aiaiaiai-site.yml")
 reconciler = File.read("scripts/reconcile-aiaiaiai-site.sh")
 check(auto.include?("schedule:") && auto.include?("workflow_dispatch:"), "automatic publication must be scheduled")
+check(auto.include?("vars.AIAIAIAI_SITE_AUTO_RECONCILE == 'enabled'"), "scheduled VPS changes require explicit enablement")
+check(auto.include?("github.event_name == 'workflow_dispatch'"), "manual stage must remain possible before automatic activation")
 check(auto.include?("name: edge-dev-1"), "automatic publication must use pinned VPS environment")
 check(auto.include?("cancel-in-progress: false"), "reconciler must serialize")
 check(auto.include?("github.ref == 'refs/heads/master'"), "reconciler may only run from master")
