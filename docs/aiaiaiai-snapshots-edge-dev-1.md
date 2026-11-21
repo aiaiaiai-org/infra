@@ -37,12 +37,14 @@ archive can be staged and tested without changing DNS or public routes.
    push-only `.github/workflows/publish.yml` and its CI output embeds
    `/<full SHA>/_astro/`. For a SemVer release, verify the equivalent
    `/<tag>/_astro/` assets. Both channels trust that exact signer workflow.
-3. Automatic `Reconcile aiaiaiai site snapshots` verifies the GHCR
-   attestation and exact master merge SHA, stages each immutable artifact and
-   advances the beta alias after health checks. It uses pinned SSH and does
-   not create a public listener.
-4. Confirm the private `/{SHA}/` snapshot and latest beta alias. Reconcile
-   repeats automatically on a best-effort 15-minute schedule.
+3. Run an explicitly authorized manual `Reconcile aiaiaiai site snapshots`
+   dispatch to verify private GHCR provenance, stage immutable artifacts and
+   test the beta alias without opening public ports. Automatic cron runs are
+   disabled until the one-time cutover is approved.
+4. Confirm the private `/{SHA}/` snapshot and latest beta alias. Following
+   the approved cutover, verify the `edge-dev-1` Environment permits unattended
+   execution and set repository variable `AIAIAIAI_SITE_AUTO_RECONCILE=enabled`
+   to opt in to best-effort 15-minute reconciliation.
 5. Independently activate the additional host routes on the existing 0x1
    ingress; preserve `nilx.one`, the old Caddy config and TLS volumes.
 6. Verify TLS readiness and DNS records; cut over the two aiaiaiai hostnames
