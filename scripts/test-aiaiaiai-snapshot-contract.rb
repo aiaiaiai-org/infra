@@ -37,6 +37,7 @@ check(snapshot.include?('ghcr\\.io/aiaiaiai-org/aiaiaiai\\.org@sha256:'), "only 
 check(snapshot.include?('test "$(hostname)" = edge-dev-1'), "archive must pin new host")
 check(snapshot.include?('test -z "$(docker port aiaiaiai-site-archive)"'), "archive must not publish ports")
 check(snapshot.include?('Version already exists with another digest'), "immutable version guard missing")
+check(snapshot.include?('ln -s "$version" "$alias_path.new.$$"'), "alias temp link must use the same unique path")
 check(snapshot.include?('mv -Tf "$alias_path.new.$$" "$alias_path"'), "alias switch must be atomic")
 check(snapshot.include?("previous alias restored"), "alias activation must roll back")
 check(snapshot.include?("Automatic release downgrade refused"), "release alias must be monotonic")
