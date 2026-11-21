@@ -10,6 +10,7 @@ end
 
 site = YAML.safe_load(File.read("contracts/services/aiaiaiai-site.yaml"))
 check(site.dig("spec", "delivery", "mode") == "manual", "legacy site auto-delivery must be frozen")
+check(site.dig("spec", "delivery", "signerWorkflow") == ".github/workflows/publish.yml", "legacy contract must recognize the push-only signer")
 check(site.dig("spec", "port") == 1927, "site port changed")
 old = YAML.safe_load(File.read("contracts/servers/edge-prod-2.yaml"))
 check(old.dig("spec", "workloads").include?("aiaiaiai-site"), "retire old site only after rollback no longer needed")
@@ -67,6 +68,12 @@ check(auto.include?("schedule:") && auto.include?("workflow_dispatch:"), "automa
 check(auto.include?("name: edge-dev-1"), "automatic publication must use pinned VPS environment")
 check(auto.include?("cancel-in-progress: false"), "reconciler must serialize")
 check(auto.include?("github.ref == 'refs/heads/master'"), "reconciler may only run from master")
+signer = "aiaiaiai-org/aiaiaiai.org/.github/workflows/publish.yml"
+manual_stage = File.read(".github/workflows/stage-aiaiaiai-snapshots.yml")
+check(manual_stage.scan(signer).length == 2, "manual beta and release must trust publish.yml")
+check(!manual_stage.include?("aiaiaiai-org/aiaiaiai.org/.github/workflows/ci.yml"), "manual stage trusts unprivileged CI signer")
+check(reconciler.scan("$source_repo/.github/workflows/publish.yml").length == 2, "beta and release reconciler must trust publish.yml")
+check(!reconciler.include?("$source_repo/.github/workflows/ci.yml"), "reconciler trusts unprivileged CI signer")
 check(reconciler.include?("--source-digest"), "attestation must match source commit")
 check(reconciler.include?("--source-ref"), "attestation must match source ref")
 check(reconciler.include?("current_master"), "beta must follow merge commit master head")
