@@ -83,7 +83,7 @@ jobs:
           image='ghcr.io/aiaiaiai-org/aiaiaiai.org'
           manifest="$(docker buildx imagetools inspect "$image:$VERSION" --format '{{json .Manifest}}')"
           digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$"))' <<<"$manifest")"
-          signer="aiaiaiai-org/aiaiaiai.org/.github/workflows/ci.yml"
+          signer="aiaiaiai-org/aiaiaiai.org/.github/workflows/publish.yml"
           if [[ "$CHANNEL" == beta ]]; then
             gh attestation verify "oci://$image@$digest" \
               --repo aiaiaiai-org/aiaiaiai.org \
@@ -92,8 +92,8 @@ jobs:
               --source-digest "$VERSION" \
               --deny-self-hosted-runners
           else
-            signer='aiaiaiai-org/aiaiaiai.org/.github/workflows/ci.yml'
-            # The release is attested inside tag-triggered Full CI after
+            signer='aiaiaiai-org/aiaiaiai.org/.github/workflows/publish.yml'
+            # The release is attested in the tag-triggered push-only Publish workflow after
             # Validate. Verify tag ref + resolved commit for annotated and
             # lightweight tags alike.
             tag_sha="$(gh api "repos/aiaiaiai-org/aiaiaiai.org/commits/$VERSION" --jq '.sha')"
