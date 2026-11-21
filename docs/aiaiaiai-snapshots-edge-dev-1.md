@@ -34,8 +34,9 @@ archive can be staged and tested without changing DNS or public routes.
    (`mode: manual`) before any new path-scoped image is published. Keep the
    new ingress inactive until separately authorized.
 2. Merge website PR #13 next; verify the first master image is signed by the
-   new publisher and its CI output embeds `/<full SHA>/_astro/`. For a SemVer
-   release, verify the equivalent `/<tag>/_astro/` assets.
+   push-only `.github/workflows/publish.yml` and its CI output embeds
+   `/<full SHA>/_astro/`. For a SemVer release, verify the equivalent
+   `/<tag>/_astro/` assets. Both channels trust that exact signer workflow.
 3. Automatic `Reconcile aiaiaiai site snapshots` verifies the GHCR
    attestation and exact master merge SHA, stages each immutable artifact and
    advances the beta alias after health checks. It uses pinned SSH and does
