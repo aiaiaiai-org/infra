@@ -20,6 +20,8 @@ test "$SSH_USER" = deploy
 
 source_repo=aiaiaiai-org/aiaiaiai.org
 image=ghcr.io/aiaiaiai-org/aiaiaiai.org
+# First master push signed by publish.yml (website PR #13 merge commit).
+beta_first_conforming_sha=1aa5c00a12045ed51911297cdf861deb4b25fab9
 ssh_dir="$(mktemp -d)"
 cleanup() { rm -rf "$ssh_dir"; }
 trap cleanup EXIT
@@ -139,6 +141,17 @@ if [[ "$channel" == all || "$channel" == beta ]]; then
   raw_commits="$(gh api "repos/$source_repo/commits?sha=master&per_page=100" --jq '.[].sha')"
   mapfile -t commits < <(printf '%s\n' "$raw_commits" | grep -E '^[0-9a-f]{40}$' | awk '!seen[$0]++')
   (( ${#commits[@]} > 0 )) && test "${commits[0]}" = "$master"
+  # Nothing older than the first master push signed by publish.yml can ever
+  # become a snapshot: earlier images carry the legacy signer, and commits
+  # brought in by a merge never had a master push, so never got an image.
+  # Re-probing them on every run only burns registry and API calls. If the
+  # cutoff is outside the 100-commit window, nothing is dropped.
+  for i in "${!commits[@]}"; do
+    if [[ "${commits[i]}" == "$beta_first_conforming_sha" ]]; then
+      commits=("${commits[@]:0:$((i + 1))}")
+      break
+    fi
+  done
   beta_digest=""
   for ((i=${#commits[@]}-1; i>=0; i--)); do
     version="${commits[i]}"

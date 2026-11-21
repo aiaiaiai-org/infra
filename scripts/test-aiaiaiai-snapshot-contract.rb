@@ -79,6 +79,8 @@ check(!reconciler.include?("$source_repo/.github/workflows/ci.yml"), "reconciler
 check(reconciler.include?("--source-digest"), "attestation must match source commit")
 check(reconciler.include?("--source-ref"), "attestation must match source ref")
 check(reconciler.include?("current_master"), "beta must follow merge commit master head")
+check(reconciler.include?("beta_first_conforming_sha=1aa5c00a12045ed51911297cdf861deb4b25fab9"), "beta history must be cut off at the first publish.yml master push")
+check(reconciler.include?('commits=("${commits[@]:0:$((i + 1))}")'), "beta loop must drop commits older than the cutoff")
 check(reconciler.include?("git/ref/tags") == false, "release check uses resolved tag commit")
 check(reconciler.include?('commits/$latest_tag'), "release tag target must be rechecked")
 check(reconciler.include?("sort -Vu"), "release versions must sort by SemVer")
