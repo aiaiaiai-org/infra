@@ -48,7 +48,7 @@ Relationship evidence has been recovered.
    `operation=activate`, `confirmation=FRESH_IDENTITY`, and the
    same encrypted digest. Infra pulls and verifies the signed Identity
    image from `nilx-one/web` commit
-   `c7533e05f4c12b2a1d425cfb72fb717ec40b71f2`,
+   `260af14f493783ee773e5df832d5aede2a04eae8`,
    transfers ciphertext to the host and activates a private Identity
    container using the first-use 0x1 store.
 8. Verify the public `/api/v1/auth/aiaiaiai/config` returns
@@ -80,7 +80,7 @@ Relationship evidence has been recovered.
   `NILX_BROWSER_HANDOFF_TOKEN`, no
   `MARKET_TELEGRAM_ISSUER_URL`, no paid-order fulfillment.
 - The first-use database does not recreate old Bond relations or accounts.
-  0x1 continues to use AIS as the issuer (`nilx-one` public client);
+  0x1 uses AIS as the issuer (`0x1` public client; `nilx-one` is retired);
   its product profiles and sessions are owned by 0x1 Core.
 - The old `edge-prod-1` Infrastructure placement contracts remain
   separate work, and must **not** be blindly deployed against this

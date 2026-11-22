@@ -51,7 +51,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
-          sha=c7533e05f4c12b2a1d425cfb72fb717ec40b71f2
+          sha=260af14f493783ee773e5df832d5aede2a04eae8
           source_image=ghcr.io/nilx-one/0x1-identity
           manifest="$(docker buildx imagetools inspect "$source_image:$sha" --format '{{json .Manifest}}')"
           digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$"))' <<<"$manifest")"
