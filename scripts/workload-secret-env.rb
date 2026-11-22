@@ -74,7 +74,7 @@ if !source_file.empty?
     match[2]
   end.uniq
   identity = ENV.fetch("WORKLOAD", "") == "nilxone-identity"
-  provider_names = identity ? %w[TELOXIDE_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET NILX_BROWSER_HANDOFF_TOKEN PARTNER_LOOKUP_TOKEN] : []
+  provider_names = identity ? %w[TELEGRAM_BOT_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET NILX_BROWSER_HANDOFF_TOKEN PARTNER_LOOKUP_TOKEN] : []
   extras = secrets.keys - expected - producer_names - provider_names - %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
   missing = expected + producer_names + provider_names - secrets.keys
   # A workload that takes its secrets from another workload's envelope (runtime.secretsFrom)

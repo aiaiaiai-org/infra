@@ -130,7 +130,7 @@ spec:
     branch: master
     signerWorkflow: .github/workflows/package-identity-service.yml
     envelope:
-      - TELOXIDE_TOKEN
+      - TELEGRAM_BOT_TOKEN
       - ...
 ```
 

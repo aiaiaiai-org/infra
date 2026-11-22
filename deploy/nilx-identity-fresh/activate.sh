@@ -56,18 +56,18 @@ credential="$(mktemp "$dir/.credential.XXXXXXXX")"
 trap 'rm -f "$credential"' EXIT
 age --decrypt --identity "$key_file" --output "$credential" "$cipher_file" >/dev/null
 line="$(cat "$credential")"
-[[ "$line" =~ ^TELOXIDE_TOKEN=[0-9]{6,12}:[A-Za-z0-9_-]{30,}$ ]] || {
-  echo 'Encrypted product package must contain only one valid TELOXIDE_TOKEN.' >&2
+[[ "$line" =~ ^TELEGRAM_BOT_TOKEN=[0-9]{6,12}:[A-Za-z0-9_-]{30,}$ ]] || {
+  echo 'Encrypted product package must contain only one valid TELEGRAM_BOT_TOKEN.' >&2
   exit 1
 }
-token="${line#TELOXIDE_TOKEN=}"
+token="${line#TELEGRAM_BOT_TOKEN=}"
 unset line
 
 random_secret() { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
 if [[ -e "$env_file" ]]; then
   [[ -f "$env_file" && ! -L "$env_file" ]]
   test "$(stat -c '%a' "$env_file")" = 600
-  previous_token="$(sed -n 's/^TELOXIDE_TOKEN=//p' "$env_file")"
+  previous_token="$(sed -n 's/^TELEGRAM_BOT_TOKEN=//p' "$env_file")"
   test "$previous_token" = "$token" || {
     echo 'Existing product bot credential differs: refusing implicit rotation.' >&2
     exit 1
@@ -100,7 +100,7 @@ if [[ ! -e "$env_file" ]]; then
     printf 'HTTP_BIND=0.0.0.0:1927\n'
     printf 'PUBLIC_ORIGIN=https://nilx.one\n'
     printf 'AIAIAIAI_SIGN_IN_ISSUER=https://auth.aiaiaiai.org\n'
-    printf 'TELOXIDE_TOKEN=%s\n' "$token"
+    printf 'TELEGRAM_BOT_TOKEN=%s\n' "$token"
     printf 'NATIVE_AUTH_SECRET=%s\n' "$(random_secret)"
     printf 'PASSWORD_PEPPER=%s\n' "$(random_secret)"
     printf 'GITHUB_EVIDENCE_ENCRYPTION_KEY=%s\n' "$(random_secret)"
