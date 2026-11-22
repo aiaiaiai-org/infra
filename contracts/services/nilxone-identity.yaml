@@ -25,7 +25,7 @@ spec:
     branch: master
     signerWorkflow: .github/workflows/package-identity-service.yml
     envelope:
-      - TELOXIDE_TOKEN
+      - TELEGRAM_BOT_TOKEN
       - TELEGRAM_OIDC_CLIENT_ID
       - TELEGRAM_OIDC_CLIENT_SECRET
       - DISCORD_CLIENT_ID

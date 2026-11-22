@@ -23,7 +23,7 @@ contract(wf.include?('ghcr.io/nilx-one/0x1-identity-fresh-secrets@sha256'), 'imm
 contract(wf.include?('c7533e05f4c12b2a1d425cfb72fb717ec40b71f2'), 'pinned runtime source')
 contract(wf.include?('jq -e'), 'real AIS product client check')
 contract(!wf.include?('INFRA_DEPLOY_TOKEN'), 'no PAT needed')
-contract(!wf.include?('secrets.TELOXIDE_TOKEN'), 'bot token must not come from Infra')
+contract(!wf.include?('secrets.TELEGRAM_BOT_TOKEN'), 'bot token must not come from Infra')
 contract(!wf.include?('TELEGRAM_BOT_TOKEN'), 'no product token in Infra action environment')
 contract(wf.include?('docker cp "$cid:/secrets.age"'), 'encrypted artifact only')
 contract(wf.include?('scp -q'), 'SSH-pinned encrypted delivery')

@@ -18,7 +18,7 @@ File.foreach(source, chomp: true) do |entry|
   secrets[name] = value
 end
 
-required = %w[TELOXIDE_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET NILX_BROWSER_HANDOFF_TOKEN PARTNER_LOOKUP_TOKEN]
+required = %w[TELEGRAM_BOT_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET NILX_BROWSER_HANDOFF_TOKEN PARTNER_LOOKUP_TOKEN]
 optional = %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
 # The public client IDs come in the producer's envelope (delivery.envelope), or, for a caller that
 # still dispatches, in PROVIDER_* variables. The envelope wins; one source never mixes with the other.
@@ -39,7 +39,7 @@ abort("missing GHCR credential") if optional.any? { |name| secrets[name] == "" }
 
 lines = [
   "PUBLIC_ORIGIN=https://nilx.one",
-  "TELOXIDE_TOKEN=#{secrets.fetch('TELOXIDE_TOKEN')}",
+  "TELEGRAM_BOT_TOKEN=#{secrets.fetch('TELEGRAM_BOT_TOKEN')}",
   "TELEGRAM_OIDC_CLIENT_ID=#{ids.fetch('TELEGRAM_OIDC_CLIENT_ID')}",
   "TELEGRAM_OIDC_CLIENT_SECRET=#{secrets.fetch('TELEGRAM_OIDC_CLIENT_SECRET')}",
   "DISCORD_CLIENT_ID=#{ids.fetch('DISCORD_CLIENT_ID')}",

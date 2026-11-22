@@ -2,7 +2,7 @@
 
 # Fresh 0x1 Identity on edge-dev-1: product-owned credentials
 
-**No product tokens in Infra GitHub Secrets.** `TELOXIDE_TOKEN` is held only by
+**No product tokens in Infra GitHub Secrets.** `TELEGRAM_BOT_TOKEN` is held only by
 the `nilx-one/web` GitHub **production** Environment. Infra uses only scoped
 SSH transport credentials, the Actions-generated registry token, a signed
 encrypted OCI envelope and the VPS public AGE recipient. Infra never
@@ -29,7 +29,7 @@ Relationship evidence has been recovered.
    It does not start Identity or touch Web/HTTPS.
 4. Store that *public* recipient in `nilx-one/web` production
    Environment variable `EDGE_DEV_1_IDENTITY_AGE_RECIPIENT`.
-   Store the genuine **@nilxone_bot** `TELOXIDE_TOKEN` as a secret
+   Store the genuine **@nilxone_bot** `TELEGRAM_BOT_TOKEN` as a secret
    **in that same product Environment only**.
 5. On `nilx-one/web` master run **Package fresh 0x1 Identity secret
    envelope**. It encrypts only the bot token to that host's public

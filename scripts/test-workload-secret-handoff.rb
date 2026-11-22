@@ -80,7 +80,7 @@ Dir.mktmpdir("scoped-secrets") do |directory|
     registry + "SSH_PRIVATE_KEY=unexpected\n",
     registry + "GHCR_PULL_TOKEN=duplicate\n",
     registry.sub("GHCR_PULL_TOKEN=short-lived\n", ""),
-    registry + "TELOXIDE_TOKEN=not-for-web\n",
+    registry + "TELEGRAM_BOT_TOKEN=not-for-web\n",
     registry + "UNRELATED=bad\n",
     registry + ("X" * 33_000),
     registry + "INVALID=carriage\rreturn\n",
@@ -91,7 +91,7 @@ Dir.mktmpdir("scoped-secrets") do |directory|
     abort("registry token leaked into diagnostics") if "#{out}#{err}".include?("short-lived")
   end
 
-  identity = registry + "TELOXIDE_TOKEN=t\nTELEGRAM_OIDC_CLIENT_SECRET=u\nDISCORD_CLIENT_SECRET=v\nNILX_BROWSER_HANDOFF_TOKEN=#{'h' * 64}\nPARTNER_LOOKUP_TOKEN=#{'p' * 64}\n"
+  identity = registry + "TELEGRAM_BOT_TOKEN=t\nTELEGRAM_OIDC_CLIENT_SECRET=u\nDISCORD_CLIENT_SECRET=v\nNILX_BROWSER_HANDOFF_TOKEN=#{'h' * 64}\nPARTNER_LOOKUP_TOKEN=#{'p' * 64}\n"
   _out, errors, status = run_unmapped.call(identity, "nilxone-identity")
   abort("encrypted identity rejected without legacy secrets: #{errors}") unless status.success?
   [

@@ -6,7 +6,7 @@ require "yaml"
 
 SCRIPT = File.expand_path("prepare-identity-provider-env.rb", __dir__)
 DEFAULT = [
-  "TELOXIDE_TOKEN=bot-secret",
+  "TELEGRAM_BOT_TOKEN=bot-secret",
   "TELEGRAM_OIDC_CLIENT_SECRET=telegram-secret",
   "DISCORD_CLIENT_SECRET=discord-secret",
   "NILX_BROWSER_HANDOFF_TOKEN=#{'h' * 64}",
@@ -48,10 +48,10 @@ Dir.mktmpdir("identity-secret-contract") do |dir|
     DEFAULT.sub('p' * 64, 'h' * 64),
     DEFAULT.sub('h' * 64, 'x' * 31),
     DEFAULT + "SSH_PRIVATE_KEY=never\n",
-    DEFAULT + "TELOXIDE_TOKEN=duplicate\n",
+    DEFAULT + "TELEGRAM_BOT_TOKEN=duplicate\n",
     DEFAULT.sub("DISCORD_CLIENT_SECRET=discord-secret\n", ""),
     DEFAULT.sub("GHCR_PULL_TOKEN=ephemeral\n", ""),
-    DEFAULT.sub("TELOXIDE_TOKEN=", "TELOXIDE_TOKEN=bad\nTELOXIDE_TOKEN=")
+    DEFAULT.sub("TELEGRAM_BOT_TOKEN=", "TELEGRAM_BOT_TOKEN=bad\nTELEGRAM_BOT_TOKEN=")
   ].each do |payload|
     stdout, stderr, status = run.call(payload)
     abort("invalid provider payload accepted") if status.success?
@@ -106,7 +106,7 @@ workflow_path = File.expand_path("../.github/workflows/deploy-workload.yml", __d
 workflow = YAML.load_file(workflow_path)
 job = workflow.fetch("jobs").fetch("deploy")
 env = job.fetch("env")
-%w[PROVIDER_TELOXIDE_TOKEN PROVIDER_TELEGRAM_OIDC_CLIENT_SECRET PROVIDER_DISCORD_CLIENT_SECRET].each do |name|
+%w[PROVIDER_TELEGRAM_BOT_TOKEN PROVIDER_TELEGRAM_OIDC_CLIENT_SECRET PROVIDER_DISCORD_CLIENT_SECRET].each do |name|
   abort("legacy infra provider secret dependency restored: #{name}") if env.key?(name)
 end
 step = job.fetch("steps").find { |item| item["name"] == "Prepare container environment" }

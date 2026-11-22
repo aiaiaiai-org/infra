@@ -44,11 +44,11 @@ abort("identity contract lost its envelope") unless contract.include?("    envel
 end
 
 %w[NATIVE_AUTH_SECRET PASSWORD_PEPPER GITHUB_EVIDENCE_ENCRYPTION_KEY].each do |name|
-  refused("server-owned #{name}", /server-owned #{name}/) { |text| text.sub("      - TELOXIDE_TOKEN\n", "      - TELOXIDE_TOKEN\n      - #{name}\n") }
+  refused("server-owned #{name}", /server-owned #{name}/) { |text| text.sub("      - TELEGRAM_BOT_TOKEN\n", "      - TELEGRAM_BOT_TOKEN\n      - #{name}\n") }
 end
-refused("registry credential", /GHCR_ credentials never travel/) { |text| text.sub("      - TELOXIDE_TOKEN\n", "      - TELOXIDE_TOKEN\n      - GHCR_PULL_TOKEN\n") }
-refused("duplicate name", /names a variable twice/) { |text| text.sub("      - TELOXIDE_TOKEN\n", "      - TELOXIDE_TOKEN\n      - TELOXIDE_TOKEN\n") }
-refused("lowercase name", /non-empty array of NAMES/) { |text| text.sub("      - TELOXIDE_TOKEN\n", "      - teloxide_token\n") }
+refused("registry credential", /GHCR_ credentials never travel/) { |text| text.sub("      - TELEGRAM_BOT_TOKEN\n", "      - TELEGRAM_BOT_TOKEN\n      - GHCR_PULL_TOKEN\n") }
+refused("duplicate name", /names a variable twice/) { |text| text.sub("      - TELEGRAM_BOT_TOKEN\n", "      - TELEGRAM_BOT_TOKEN\n      - TELEGRAM_BOT_TOKEN\n") }
+refused("lowercase name", /non-empty array of NAMES/) { |text| text.sub("      - TELEGRAM_BOT_TOKEN\n", "      - teloxide_token\n") }
 refused("empty envelope", /non-empty array of NAMES/) { |text| text.sub(/    envelope:\n(      - [A-Z_]+\n)+/, "    envelope: []\n") }
 refused("no prepareEnv", /needs runtime.prepareEnv/) { |text| text.sub(/^    prepareEnv: .*\n/, "") }
 refused("with runtime.secrets", /mutually exclusive/) { |text| text.sub("    labels:\n", "    secrets:\n      - TOKEN=TOKEN\n    labels:\n") }
