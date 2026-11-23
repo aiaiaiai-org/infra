@@ -39,12 +39,11 @@ archive can be staged and tested without changing DNS or public routes.
    `/<tag>/_astro/` assets. Both channels trust that exact signer workflow.
 3. Run an explicitly authorized manual `Reconcile aiaiaiai site snapshots`
    dispatch to verify private GHCR provenance, stage immutable artifacts and
-   test the beta alias without opening public ports. Automatic cron runs are
-   disabled until the one-time cutover is approved.
-4. Confirm the private `/{SHA}/` snapshot and latest beta alias. Following
-   the approved cutover, verify the `edge-dev-1` Environment permits unattended
-   execution and set repository variable `AIAIAIAI_SITE_AUTO_RECONCILE=enabled`
-   to opt in to best-effort 15-minute reconciliation.
+   test the beta alias without opening public ports.
+4. Confirm the private `/{SHA}/` snapshot and latest beta alias. The workflow
+   also runs on a best-effort 15-minute schedule from `master` with no
+   repository variable; the `edge-dev-1` Environment permits unattended
+   execution (verified by the manual run in step 3).
 5. Independently activate the additional host routes on the existing 0x1
    ingress; preserve `nilx.one`, the old Caddy config and TLS volumes.
 6. Verify TLS readiness and DNS records; cut over the two aiaiaiai hostnames

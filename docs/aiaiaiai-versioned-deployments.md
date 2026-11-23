@@ -39,7 +39,7 @@ Short SHA aliases and SHA/tag subdomains are not part of this contract.
   attestation and signer workflow; an existing version with a different digest
   is rejected rather than overwritten.
 - Once this delivery policy is approved and merged, Infra reconciles at most
-  every 15 minutes (GitHub Actions schedule is best-effort and enabled only when the repository variable AIAIAIAI_SITE_AUTO_RECONCILE equals enabled). It stages attested
+  every 15 minutes (GitHub Actions schedule is best-effort; it needs no repository variable, and a manual dispatch is still possible). It stages attested
   versions and atomically updates `current` after private health checks.
 - A newer master commit may never be replaced by a stale pending beta publish;
   an older SemVer tag may never automatically downgrade the release alias.
