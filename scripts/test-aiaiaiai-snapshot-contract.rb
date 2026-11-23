@@ -64,12 +64,11 @@ check(!public_adoption.include?("--publish") && !public_adoption.include?("docke
 
 auto = File.read(".github/workflows/reconcile-aiaiaiai-site.yml")
 reconciler = File.read("scripts/reconcile-aiaiaiai-site.sh")
-check(auto.include?("schedule:") && auto.include?("workflow_dispatch:"), "automatic publication must be scheduled")
+check(auto.match?(/^on:\n  schedule:\n    - cron: .+\n  workflow_dispatch:/), "scheduled and manually dispatched reconciliation must both be enabled")
 check(!auto.include?("AUTO_RECONCILE"), "scheduled reconciliation must not depend on a repository variable")
-check(auto.match?(/^  schedule:\n    - cron: /), "scheduled reconciliation needs a cron trigger")
+check(auto.match?(/^jobs:\n  reconcile:\n    if: github\.ref == 'refs\/heads\/master'$/), "reconciler job must be gated by master only")
 check(auto.include?("name: edge-dev-1"), "automatic publication must use pinned VPS environment")
 check(auto.include?("cancel-in-progress: false"), "reconciler must serialize")
-check(auto.include?("github.ref == 'refs/heads/master'"), "reconciler may only run from master")
 signer = "aiaiaiai-org/aiaiaiai.org/.github/workflows/publish.yml"
 manual_stage = File.read(".github/workflows/stage-aiaiaiai-snapshots.yml")
 check(manual_stage.scan(signer).length == 2, "manual beta and release must trust publish.yml")
