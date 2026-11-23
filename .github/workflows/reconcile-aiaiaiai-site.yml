@@ -1,5 +1,6 @@
 # © 2026 aiaiaiai · aiaiaiai.org
-# Automatic beta/release reconciliation after explicitly authorized site activation.
+# Automatic beta/release reconciliation. Runs on schedule from master with no
+# repository variable; pause it by disabling this workflow or reverting the cron.
 # Master *merge commit SHA* and released SemVer tags are the only sources.
 name: Reconcile aiaiaiai site snapshots
 
@@ -26,7 +27,7 @@ concurrency:
 
 jobs:
   reconcile:
-    if: github.ref == 'refs/heads/master' && (github.event_name == 'workflow_dispatch' || vars.AIAIAIAI_SITE_AUTO_RECONCILE == 'enabled')
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
