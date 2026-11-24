@@ -1,0 +1,67 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Activate 0x1 Telegram runtime on edge-dev-1
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Validate prerequisites or activate the staged release
+        type: choice
+        options: [validate, activate]
+        default: validate
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stage-telegram-runtime-edge-dev-1
+  cancel-in-progress: false
+
+jobs:
+  runtime:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: edge-dev-1
+      deployment: false
+    env:
+      OPERATION: ${{ inputs.operation }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate pinned target and prepare SSH
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = 158.220.74.54
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+          dir="$RUNNER_TEMP/telegram-runtime-ssh"
+          install -d -m 0700 "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          if [[ "$SSH_PORT" == 22 ]]; then label="$SSH_HOST"; else label="[$SSH_HOST]:$SSH_PORT"; fi
+          printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
+          chmod 600 "$dir/known_hosts"
+      - name: Validate or activate Telegram runtime
+        run: |
+          set -Eeuo pipefail
+          case "$OPERATION" in validate|activate) ;; *) exit 2 ;; esac
+          dir="$RUNNER_TEMP/telegram-runtime-ssh"
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$dir/known_hosts" -o ConnectTimeout=10 \
+            -i "$dir/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            bash -s -- "$OPERATION" < deploy/telegram-runtime/activate.sh
+      - name: Remove ephemeral SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/telegram-runtime-ssh"

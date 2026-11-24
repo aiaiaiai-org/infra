@@ -59,6 +59,8 @@ jobs:
         run: |
           bash -n deploy/nilx-identity-fresh/activate.sh
           ruby scripts/test-nilx-identity-fresh-bootstrap.rb
+      - name: Validate Telegram runtime activation syntax
+        run: bash -n deploy/telegram-runtime/activate.sh
       - name: Validate immutable aiaiaiai snapshots and shared ingress
         run: |
           set -Eeuo pipefail
