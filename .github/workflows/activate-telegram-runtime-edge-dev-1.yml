@@ -6,14 +6,15 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Validate prerequisites or activate the staged release
+        description: Repair Identity, validate prerequisites or activate the staged release
         type: choice
-        options: [validate, activate]
+        options: [repair-identity, validate, activate]
         default: validate
         required: true
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: stage-telegram-runtime-edge-dev-1
@@ -23,7 +24,7 @@ jobs:
   runtime:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     environment:
       name: edge-dev-1
       deployment: false
@@ -36,6 +37,8 @@ jobs:
       SSH_PORT: ${{ vars.SSH_PORT || '22' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Validate pinned target and prepare SSH
         run: |
           set -Eeuo pipefail
@@ -53,7 +56,46 @@ jobs:
           if [[ "$SSH_PORT" == 22 ]]; then label="$SSH_HOST"; else label="[$SSH_HOST]:$SSH_PORT"; fi
           printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
           chmod 600 "$dir/known_hosts"
+      - name: Verify Identity image with polling handoff
+        if: inputs.operation == 'repair-identity'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          sha=4377be9e3b5540afacb70150324ae5b246a3c73c
+          source_image=ghcr.io/nilx-one/0x1-identity
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin >/dev/null
+          trap 'docker logout ghcr.io >/dev/null' EXIT
+          manifest="$(docker buildx imagetools inspect "$source_image:$sha" --format '{{json .Manifest}}')"
+          digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$"))' <<<"$manifest")"
+          gh attestation verify "oci://$source_image@$digest" --repo nilx-one/web \
+            --signer-workflow nilx-one/web/.github/workflows/package-identity-service.yml \
+            --source-ref refs/heads/master --source-digest "$sha" --deny-self-hosted-runners
+          echo "IDENTITY_IMAGE=$source_image@$digest" >> "$GITHUB_ENV"
+      - name: Pull verified Identity image on edge-dev-1
+        if: inputs.operation == 'repair-identity'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$IDENTITY_IMAGE" =~ ^ghcr\.io/nilx-one/0x1-identity@sha256:[0-9a-f]{64}$ ]]
+          dir="$RUNNER_TEMP/telegram-runtime-ssh"
+          printf '%s' "$GH_TOKEN" | ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$dir/known_hosts" -o ConnectTimeout=10 \
+            -i "$dir/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "set -eu; umask 077; dir=\$(mktemp -d); trap 'rm -rf \"\$dir\"' EXIT; export DOCKER_CONFIG=\"\$dir\"; docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin >/dev/null; docker pull '$IDENTITY_IMAGE' >/dev/null"
+      - name: Repair existing Identity on edge-dev-1
+        if: inputs.operation == 'repair-identity'
+        run: |
+          set -Eeuo pipefail
+          [[ "$IDENTITY_IMAGE" =~ ^ghcr\.io/nilx-one/0x1-identity@sha256:[0-9a-f]{64}$ ]]
+          dir="$RUNNER_TEMP/telegram-runtime-ssh"
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$dir/known_hosts" -o ConnectTimeout=10 \
+            -i "$dir/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            bash -s -- "$IDENTITY_IMAGE" < deploy/telegram-runtime/repair-identity.sh
       - name: Validate or activate Telegram runtime
+        if: inputs.operation != 'repair-identity'
         run: |
           set -Eeuo pipefail
           case "$OPERATION" in validate|activate) ;; *) exit 2 ;; esac
