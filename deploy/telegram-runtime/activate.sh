@@ -22,7 +22,46 @@ fail() { echo "::error::$*" >&2; exit 1; }
 test -d "$release" && test ! -L "$release" || fail 'Verified Telegram release is missing.'
 (cd "$release" && sha256sum -c SHA256SUMS)
 test "$(sha256sum "$release/SHA256SUMS" | cut -d ' ' -f 1)" = "${release##*/}"
-test "$(docker inspect -f '{{.State.Health.Status}}' "$identity")" = healthy || fail 'Identity must be healthy before Telegram activation.'
+if [[ "$(docker inspect -f '{{.State.Health.Status}}' "$identity")" != healthy ]]; then
+  docker inspect -f 'Identity status={{.State.Status}} exit={{.State.ExitCode}} restarts={{.RestartCount}} image={{.Config.Image}}' "$identity"
+  # Report only fixed application error labels, not arbitrary startup logs.
+  startup_log=$(docker logs --tail 200 "$identity" 2>&1 || true)
+  for reason in \
+    'TELEGRAM_BOT_TOKEN must be configured' \
+    'NATIVE_AUTH_SECRET must be configured' \
+    'PASSWORD_PEPPER must be configured' \
+    'GITHUB_EVIDENCE_ENCRYPTION_KEY must be configured' \
+    'GITHUB_EVIDENCE_ENCRYPTION_KEY must be a 32-byte hexadecimal key' \
+    'native authentication secrets must satisfy the minimum length' \
+    'identity database must initialize' \
+    'the 0x1 product tables must initialize' \
+    'AIS Bonds need legacy and product tables in one SQLite store' \
+    'Telegram command menu must register for private chats' \
+    'Telegram default chat menu button must open the command list' \
+    'Telegram login requires the trusted public AIS Ed25519 signing JWK' \
+    'Telegram chat sign-in requires a valid host AIS key' \
+    'TELEGRAM_POLLING must be enabled or disabled' \
+    'identity HTTP listener must bind' \
+    'aiaiaiai sign-in configuration:' \
+    'AIS Bond sign-in configuration:' \
+    'database is locked' \
+    'unable to open database file' \
+    'no such column' \
+    'Permission denied'; do
+    if grep -Fq -- "$reason" <<<"$startup_log"; then
+      printf 'Identity startup diagnostic: %s\n' "$reason"
+    fi
+  done
+  unset startup_log
+  for key in TELEGRAM_BOT_TOKEN DATABASE_URL NATIVE_AUTH_SECRET PASSWORD_PEPPER GITHUB_EVIDENCE_ENCRYPTION_KEY TELEGRAM_POLLING; do
+    if docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$identity" | grep -E "^${key}=.+" >/dev/null; then
+      printf '%s is configured\n' "$key"
+    else
+      printf '%s is missing or empty\n' "$key"
+    fi
+  done
+  fail 'Identity must be healthy before Telegram activation.'
+fi
 docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$identity" | grep -Fxq 'TELEGRAM_POLLING=disabled' || fail 'Deploy current Identity with TELEGRAM_POLLING=disabled first.'
 docker logs --tail 500 "$identity" 2>&1 | grep -F 'Telegram polling is disabled: the 0x1 bot owns @nilxone_bot updates' >/dev/null || fail 'Identity has not confirmed the polling handoff.'
 docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$identity" | grep -Fxq 'DATABASE_URL=sqlite:///data/identity.db' || fail 'Identity database configuration differs.'
