@@ -1,4 +1,4 @@
-<!-- © 2026 aiaiaiai · aiaiaiai.org -->
+
 
 # Moving the aiaiaiai edge from edge-prod-2 to edge-dev-1
 
@@ -40,3 +40,29 @@ credentials arrive in its own producer envelope), so none are taken from it.
   example prism-hubot's `production`), and that Environment still has to hold the values.
 - It does not restore, start, route or switch anything. Import and restore on edge-dev-1, the contracts
   and ingress routes for edge-dev-1, and the DNS cutover are separate, separately authorized changes.
+
+## Step 2: run the core on edge-dev-1 (this change)
+
+**Migrate aiaiaiai core to edge-dev-1** (manual, type `MIGRATE`, `master` only) runs one stage per dispatch. It
+uses `deploy/workload/deploy.sh` and the values of the same reviewed contracts as Deploy workload, on edge-dev-1's
+private network `nilx-candidate`, so nothing is published on a host port. Images are pinned to a digest and their
+build provenance (`gh attestation verify`, signer `publish.yml`) is verified first. The sealed export is checked
+against its manifest again before anything uses it, and secrets reach the containers through the same
+`workload-secret-env.rb` as a normal deploy, taken from the export by `scripts/export-credentials-env.rb` (the contract's
+`ENV=SOURCE` lines inverted; only declared names, nothing missing or empty).
+
+| Stage | What it does |
+| --- | --- |
+| `data` | prism-postgres (image pinned by its contract), restores `prism_hub` from the export when the database is empty, then prism-hub; checks `/healthz` through the ingress container |
+| `route-validate` | proves the `api.aiaiaiai.org` route on the live ingress without changing it |
+| `route-activate` | appends the route to the live Caddy file (everything that was there stays byte for byte), reloads, requires nilx.one to stay healthy or restores the old file, then waits for TLS on `api.aiaiaiai.org` |
+| `hubot` | restores `prism-hubot-state` when empty, then prism-hubot, which registers its Telegram webhook and command menu on start |
+| `route-rollback` | restores the ingress file from before the route |
+
+Order: `data`, `route-validate`, `route-activate`, `hubot`. The route comes before hubot because Telegram checks
+the webhook's TLS when the bot registers it. It reuses the one public Caddy (never a second), and its candidate is
+validated in CI together with the live file. `prism-hub` and `prism-hubot` are set to manual delivery so that
+nothing keeps deploying them to edge-prod-2. edge-prod-2 is left running and untouched until the new core is
+verified; the contracts still place these workloads on it, and a later change moves them for good.
+
+<!-- © 2026 aiaiaiai · aiaiaiai.org -->

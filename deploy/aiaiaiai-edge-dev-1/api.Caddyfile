@@ -1,0 +1,37 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+# api.aiaiaiai.org on edge-dev-1's existing public Caddy, for prism-hub and prism-hubot only. The routes
+# are the ones the old edge served (deploy/edge-aiaiaiai/Caddyfile), on the same private Docker network
+# as this ingress. h-ua-bot and the other prefixes are added when their workloads move.
+api.aiaiaiai.org {
+	encode zstd gzip
+
+	@prism_hub_root path /prism-hub
+	redir @prism_hub_root /prism-hub/ 308
+
+	handle_path /prism-hub/* {
+		reverse_proxy prism-hub:1927 {
+			health_uri /healthz
+			health_interval 30s
+			health_timeout 5s
+			lb_try_duration 5s
+		}
+	}
+
+	@prism_hubot_root path /prism-hubot
+	redir @prism_hubot_root /prism-hubot/ 308
+
+	# Telegram posts to /prism-hubot/telegram/webhook; the bot serves /telegram/webhook.
+	handle_path /prism-hubot/* {
+		reverse_proxy prism-hubot:1927 {
+			health_uri /healthz
+			health_interval 30s
+			health_timeout 5s
+			lb_try_duration 5s
+		}
+	}
+
+	handle {
+		respond "not found" 404
+	}
+}
