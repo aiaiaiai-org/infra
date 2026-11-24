@@ -1,0 +1,152 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Inventory aiaiaiai migration (read-only)
+
+# Read-only facts for moving the aiaiaiai edge from edge-prod-2 to edge-dev-1: what runs, which
+# secret names each container holds (never their values), how large the PostgreSQL database is,
+# and what edge-dev-1 can already serve. Nothing is changed, copied or restarted.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inventory-aiaiaiai-migration
+  cancel-in-progress: false
+
+jobs:
+  edge-prod-2:
+    name: edge-prod-2 (source)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: edge-prod-2
+      deployment: false
+    env:
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+      EXPECTED_HOST_FINGERPRINT: SHA256:B66nNmPvaJBwlsjKwqbr4/hEArInm8pAeJoaSqsMwmA
+    steps:
+      - name: Verify the pinned source server
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = '62.238.19.244'
+          test "$SSH_USER" = 'deploy'
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          dir="$RUNNER_TEMP/inventory-source"
+          install -m 0700 -d "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          ssh-keyscan -T 10 -p "$SSH_PORT" -t ed25519 "$SSH_HOST" > "$dir/known_hosts" 2>/dev/null
+          test "$(ssh-keygen -lf "$dir/known_hosts" -E sha256 | awk '{ print $2 }')" = "$EXPECTED_HOST_FINGERPRINT"
+          chmod 600 "$dir/known_hosts"
+
+      - name: Inventory (names, sizes and set/empty only)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          dir="$RUNNER_TEMP/inventory-source"
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$dir/known_hosts" -o ConnectTimeout=10 \
+            -i "$dir/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" '
+              set -eu
+              test "$(hostname)" = edge-prod-2
+              echo "== containers (name, image, status)"
+              docker ps -a --format "{{.Names}}\t{{.Image}}\t{{.Status}}"
+              echo "== volumes (name, size)"
+              docker system df -v --format "{{json .}}" 2>/dev/null \
+                | ruby -rjson -e "j = JSON.parse(STDIN.read); (j[\"Volumes\"] || []).each { |v| puts [v[\"Name\"], v[\"Size\"]].join(\"\t\") }" 2>/dev/null \
+                || docker volume ls --format "{{.Name}}"
+              echo "== secret names per container (value: set/empty, never printed)"
+              for c in $(docker ps -a --format "{{.Names}}"); do
+                echo "-- $c"
+                docker inspect "$c" --format "{{range .Config.Env}}{{println .}}{{end}}" \
+                  | awk -F= "NF && \$1 ~ /(TOKEN|SECRET|PASSWORD|KEY|DATABASE_URL|CREDENTIAL)/ { print \$1, (length(\$0) > length(\$1) + 1 ? \"set\" : \"EMPTY\") }" \
+                  | sort
+              done
+              echo "== prism-postgres size"
+              if docker inspect prism-postgres >/dev/null 2>&1; then
+                docker exec prism-postgres sh -c "psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"select version(); select pg_size_pretty(pg_database_size(current_database()))\""
+              else
+                echo "prism-postgres container not found"
+              fi
+              echo "== host"
+              df -h / | tail -1
+              ls /opt/infra/targets/edge-prod-2 2>/dev/null | head -20
+            '
+
+      - name: Remove temporary SSH material
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/inventory-source"
+
+  edge-dev-1:
+    name: edge-dev-1 (target)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: edge-dev-1
+      deployment: false
+    env:
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - name: Verify the pinned target server
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = 158.220.74.54
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          dir="$RUNNER_TEMP/inventory-target"
+          install -m 0700 -d "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          if [[ "$SSH_PORT" == 22 ]]; then label="$SSH_HOST"; else label="[$SSH_HOST]:$SSH_PORT"; fi
+          printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
+          chmod 600 "$dir/known_hosts"
+
+      - name: Inventory (what the target can already serve)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          dir="$RUNNER_TEMP/inventory-target"
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$dir/known_hosts" -o ConnectTimeout=10 \
+            -i "$dir/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" '
+              set -eu
+              test "$(hostname)" = edge-dev-1
+              echo "== os / resources"
+              . /etc/os-release && echo "$PRETTY_NAME"
+              df -h / | tail -1
+              free -m | sed -n 2p
+              echo "== docker"
+              docker info --format "{{.ServerVersion}}"
+              docker compose version --short
+              echo "== containers (name, image, status)"
+              docker ps -a --format "{{.Names}}\t{{.Image}}\t{{.Status}}"
+              echo "== listeners on 80, 443, 22, 22022"
+              (ss -ltnH 2>/dev/null || true) | awk "{ print \$4 }" | grep -E ":(80|443|22|22022)\$" | sort -u || echo "none"
+              echo "== runtime root"
+              ls -la /opt/infra/targets 2>/dev/null || echo "no /opt/infra/targets"
+            '
+
+      - name: Remove temporary SSH material
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/inventory-target"
