@@ -265,6 +265,9 @@ jobs:
           ! age --decrypt --identity "$RUNNER_TEMP/other" "$RUNNER_TEMP/payload.age" > /dev/null 2>&1
           ! grep -Fq 'TOKEN=isolated' "$RUNNER_TEMP/payload.age"
 
+      - name: Test migration export tools
+        run: ruby scripts/test-migration-export-tools.rb
+
       - name: Validate workload placement resolver
         run: |
           set -Eeuo pipefail

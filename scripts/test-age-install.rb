@@ -15,13 +15,16 @@ require "open3"
 require "tmpdir"
 
 ROOT = File.expand_path("..", __dir__)
-FILES = %w[ci.yml deploy-workload.yml backup-prism-postgres.yml].map { |name| File.join(ROOT, ".github", "workflows", name) }
+FILES = %w[ci.yml deploy-workload.yml backup-prism-postgres.yml export-aiaiaiai-migration.yml].map { |name| File.join(ROOT, ".github", "workflows", name) }
 
 def block_of(path)
   text = File.read(path, encoding: "UTF-8")
   found = text.scan(/^[ ]*# BEGIN install-age.*?^[ ]*# END install-age$/m)
-  abort("#{path}: expected exactly one install-age block, found #{found.length}") unless found.length == 1
-  found.first.lines.map(&:strip).join("\n")
+  abort("#{path}: expected an install-age block, found none") if found.empty?
+  # A workflow with several jobs that need age carries the block once per job, and they must agree.
+  distinct = found.map { |block| block.lines.map(&:strip).join("\n") }.uniq
+  abort("#{path}: its install-age blocks differ from each other") unless distinct.length == 1
+  distinct.first
 end
 
 blocks = FILES.map { |path| [path, block_of(path)] }
