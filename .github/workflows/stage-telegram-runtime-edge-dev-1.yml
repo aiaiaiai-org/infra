@@ -43,8 +43,8 @@ jobs:
             unzip -p "$stage/$binary.zip" "$binary" > "$stage/$binary"
             test -s "$stage/$binary"
           }
-          download core 14821839639 801052806d9f06939d6eb91617c3562cff040879280bc592a8579e559cbd1931 nilxone-telegram-login-host
-          download bot 14820494696 2aa764ed15ec59aa81b0948bb7bb886cc93171e28190637159c357a994ed0185 nilx-one-bot
+          download core 14942059179 3ca9869e1304817d2e615e6383ea77b593708aa1efa13d1744334cffcedc9b92 nilxone-telegram-login-host
+          download bot 14897655438 0a4ee15851b7ff2b4dd5ab5776790fd8d80abdce9520ef7d919296a9dd61e8e6 nilx-one-bot
           cd "$stage"
           sha256sum nilxone-telegram-login-host nilx-one-bot > SHA256SUMS
           tar -cf bundle.tar nilxone-telegram-login-host nilx-one-bot SHA256SUMS
