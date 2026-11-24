@@ -1,0 +1,249 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Export aiaiaiai edge for migration
+
+# Takes what the aiaiaiai edge on edge-prod-2 would lose with the server: every PostgreSQL database
+# and its roles, the secrets the workload contracts declare, and the two state volumes. Everything is
+# sealed with age to the public half of edge-dev-1's deploy key while it streams, so no plaintext is
+# ever written to either server or to the runner, and only ciphertext reaches the artifact. A last job
+# decrypts it on edge-dev-1's identity and checks it against the manifest, which proves the recipient
+# and the data before any import. Nothing on edge-prod-2 is stopped, changed or removed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type EXPORT to seal and export the data of edge-prod-2
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: export-aiaiaiai-migration
+  cancel-in-progress: false
+
+jobs:
+  recipient:
+    name: Recipient (edge-dev-1 public key)
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: edge-dev-1
+      deployment: false
+    outputs:
+      recipient: ${{ steps.derive.outputs.recipient }}
+    steps:
+      - name: Require explicit confirmation
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: test "$CONFIRMATION" = EXPORT || { echo '::error::type EXPORT to continue' >&2; exit 1; }
+
+      - name: Derive the public recipient
+        id: derive
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          test -n "$SSH_PRIVATE_KEY"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "${RUNNER_TEMP:?}/deploy-key"
+          trap 'rm -f "${RUNNER_TEMP:?}/deploy-key"' EXIT
+          recipient="$(ssh-keygen -y -P '' -f "$RUNNER_TEMP/deploy-key" | awk '{ print $1 " " $2 }')"
+          [[ "$recipient" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+$ ]] || { echo '::error::the deploy key is not an ssh-ed25519 key' >&2; exit 1; }
+          echo "recipient=$recipient" >> "$GITHUB_OUTPUT"
+
+  export:
+    name: Export and seal (edge-prod-2)
+    needs: recipient
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: edge-prod-2
+      deployment: false
+    env:
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+      EXPECTED_HOST_FINGERPRINT: SHA256:B66nNmPvaJBwlsjKwqbr4/hEArInm8pAeJoaSqsMwmA
+      RECIPIENT: ${{ needs.recipient.outputs.recipient }}
+    steps:
+      - name: Require explicit confirmation
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: test "$CONFIRMATION" = EXPORT || { echo '::error::type EXPORT to continue' >&2; exit 1; }
+
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install age encryption tool
+        run: |
+          set -Eeuo pipefail
+          # BEGIN install-age (identical in ci.yml, deploy-workload.yml and backup-prism-postgres.yml;
+          # scripts/test-age-install.rb keeps them so and runs this block against stubbed tools)
+          # Every call is bounded: a mirror whose DNS fails retries for minutes, longer than a job's
+          # timeout, so without a cap the fallback below would never get to run.
+          install_age() {
+            timeout -k 5 90 sudo apt-get -o Acquire::Retries=2 update -qq &&
+              timeout -k 5 90 sudo apt-get -o Acquire::Retries=2 install -y -qq --no-install-recommends age
+          }
+          if ! install_age; then
+            # Ubuntu's mirrors can be unreachable for a long while: on 2026-11-11 the runner could not
+            # resolve azure.archive.ubuntu.com or archive.ubuntu.com, so no other ubuntu.com host helps.
+            # age is a Go program and the runner has Go. Build the pinned release from the Go module
+            # proxy, whose answers Go checks against sum.golang.org, so no checksum is pinned here.
+            echo "::warning::apt cannot reach Ubuntu's mirrors; building age v1.2.1 from the Go module proxy"
+            command -v go >/dev/null
+            mkdir -p "$HOME/.local/bin"
+            GOBIN="$HOME/.local/bin" timeout -k 5 240 go install filippo.io/age/cmd/age@v1.2.1
+            export PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+          command -v age >/dev/null
+          # END install-age
+          age --version
+          ruby scripts/test-migration-export-tools.rb
+
+      - name: Verify the pinned source server
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = '62.238.19.244'
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          [[ "$RECIPIENT" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+$ ]]
+          dir="${RUNNER_TEMP:?}/export-ssh"
+          install -m 0700 -d "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          ssh-keyscan -T 10 -p "$SSH_PORT" -t ed25519 "$SSH_HOST" > "$dir/known_hosts" 2>/dev/null
+          test "$(ssh-keygen -lf "$dir/known_hosts" -E sha256 | awk '{ print $2 }')" = "$EXPECTED_HOST_FINGERPRINT"
+          chmod 600 "$dir/known_hosts"
+
+      - name: Seal databases, secrets and volumes
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          dir="${RUNNER_TEMP:?}/export-ssh"
+          out="${RUNNER_TEMP:?}/export"
+          install -d -m 0700 "$out"
+          ssh_argv=(ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
+            -o "UserKnownHostsFile=$dir/known_hosts" -o ConnectTimeout=10 -i "$dir/id_ed25519" -p "$SSH_PORT"
+            "$SSH_USER@$SSH_HOST")
+          remote() { "${ssh_argv[@]}" "$@"; }
+          # Plaintext only ever lives in the pipe into seal; its hash and size land beside the ciphertext.
+          seal() { ruby scripts/seal-stdin.rb "$RECIPIENT" "$out/$1.age" > "$out/$1.plain.json"; }
+
+          remote 'test "$(hostname)" = edge-prod-2'
+          remote 'test "$(docker inspect -f "{{.State.Running}}" prism-postgres)" = true'
+
+          # Roles first (they are small), then every database as a custom-format, consistent dump.
+          remote 'docker exec prism-postgres pg_dumpall --username=prism_hub --globals-only' | seal postgres-globals
+          databases="$(remote 'docker exec prism-postgres psql -U prism_hub -d prism_hub -Atc "select datname from pg_database where not datistemplate order by 1"')"
+          printf 'databases: %s\n' "$(echo $databases)"
+          exported_databases=()
+          for db in $databases; do
+            [[ "$db" =~ ^[a-z0-9_]+$ ]] || { echo "::error::unexpected database name" >&2; exit 1; }
+            [[ "$db" == postgres ]] && continue
+            remote "docker exec prism-postgres pg_dump --username=prism_hub --dbname=$db --format=custom --no-owner --no-acl" | seal "db-$db"
+            exported_databases+=("$db")
+          done
+          test "${#exported_databases[@]}" -gt 0 || { echo "::error::no application database found" >&2; exit 1; }
+
+          # Only the secrets each workload contract declares; the report shows names and counts, never values.
+          EXPORT_SSH_ARGV_JSON="$(ruby -rjson -e 'puts JSON.generate(ARGV)' "${ssh_argv[@]}")" \
+            ruby scripts/extract-workload-secrets.rb prism-postgres prism-hub prism-hubot h-ua-bot 4x-ais 4x-errors | seal secrets
+
+          # State volumes, read-only, no network, bounded to 256 MiB each.
+          for volume in prism-hubot-state 4x-ais-data; do
+            size_kb="$(remote "docker run --rm --network none -v $volume:/v:ro caddy:2-alpine du -sk /v" | cut -f1)"
+            [[ "$size_kb" =~ ^[0-9]+$ ]] && (( size_kb <= 262144 )) || { echo "::error::volume $volume is missing or larger than 256 MiB" >&2; exit 1; }
+            remote "docker run --rm --network none -v $volume:/v:ro caddy:2-alpine tar -C /v -cf - ." | seal "volume-$volume"
+          done
+
+          ruby scripts/build-export-manifest.rb "$out"
+          for plain in "${out:?}"/*.plain.json; do rm -f "$plain"; done
+
+      - name: Upload the sealed export
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiaiaiai-migration-export-${{ github.run_id }}
+          path: ${{ runner.temp }}/export
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Remove temporary SSH material
+        if: always()
+        run: rm -rf "${RUNNER_TEMP:?}/export-ssh" "${RUNNER_TEMP:?}/export"
+
+  verify:
+    name: Open and check (edge-dev-1 identity)
+    needs: [recipient, export]
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: edge-dev-1
+      deployment: false
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install age encryption tool
+        run: |
+          set -Eeuo pipefail
+          # BEGIN install-age (identical in ci.yml, deploy-workload.yml and backup-prism-postgres.yml;
+          # scripts/test-age-install.rb keeps them so and runs this block against stubbed tools)
+          # Every call is bounded: a mirror whose DNS fails retries for minutes, longer than a job's
+          # timeout, so without a cap the fallback below would never get to run.
+          install_age() {
+            timeout -k 5 90 sudo apt-get -o Acquire::Retries=2 update -qq &&
+              timeout -k 5 90 sudo apt-get -o Acquire::Retries=2 install -y -qq --no-install-recommends age
+          }
+          if ! install_age; then
+            # Ubuntu's mirrors can be unreachable for a long while: on 2026-11-11 the runner could not
+            # resolve azure.archive.ubuntu.com or archive.ubuntu.com, so no other ubuntu.com host helps.
+            # age is a Go program and the runner has Go. Build the pinned release from the Go module
+            # proxy, whose answers Go checks against sum.golang.org, so no checksum is pinned here.
+            echo "::warning::apt cannot reach Ubuntu's mirrors; building age v1.2.1 from the Go module proxy"
+            command -v go >/dev/null
+            mkdir -p "$HOME/.local/bin"
+            GOBIN="$HOME/.local/bin" timeout -k 5 240 go install filippo.io/age/cmd/age@v1.2.1
+            export PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+          command -v age >/dev/null
+          # END install-age
+          age --version
+
+      - name: Download the sealed export
+        uses: actions/download-artifact@v4
+        with:
+          name: aiaiaiai-migration-export-${{ github.run_id }}
+          path: ${{ runner.temp }}/in
+
+      - name: Decrypt in memory and compare with the manifest
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          test -n "$SSH_PRIVATE_KEY"
+          in="${RUNNER_TEMP:?}/in"
+          identity="${RUNNER_TEMP:?}/identity"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$identity"
+          trap 'rm -f "${RUNNER_TEMP:?}/identity"' EXIT
+          ruby scripts/verify-export.rb "$in" "$identity"
