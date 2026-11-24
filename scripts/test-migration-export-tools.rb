@@ -150,6 +150,27 @@ Dir.mktmpdir("export-tools") do |dir|
   _, err, status = run("ruby", "#{ROOT}/scripts/verify-export.rb", not_a_dump, identity)
   check(!status.success? && err.include?("not a PostgreSQL custom-format dump"), "a database item that is not a dump must fail")
   check(File.exist?(manifest_path), "the manifest file exists")
+
+  # --- export-credentials-env: the contract's mapping, inverted, and nothing else
+  doc = JSON.generate(
+    "prism-hub" => {"PGPASSWORD" => "pg-pw", "SECRET_KEY_BASE" => "skb", "PRISM_BOT_DELIVERY_SECRET" => "del", "DATABASE_URL" => "must-not-leak"},
+    "prism-postgres" => {"POSTGRES_PASSWORD" => "pg-pw"},
+    "prism-hubot" => {"PRISM_BOT_TELEGRAM_TOKEN" => "tg", "PRISM_BOT_TELEGRAM_WEBHOOK_SECRET" => "whs", "PRISM_HUB_API_TOKEN" => "", "PRISM_BOT_DELIVERY_SECRET" => "d"}
+  )
+  out, err, status = run("ruby", "#{ROOT}/scripts/export-credentials-env.rb", "prism-hub", stdin: doc)
+  check(status.success?, "prism-hub credentials: #{err}")
+  check(out.lines.map(&:chomp).sort == %w[PRISM_BOT_DELIVERY_SECRET=del PRISM_HUB_SECRET_KEY_BASE=skb PRISM_POSTGRES_PASSWORD=pg-pw], "source names, not container names: #{out}")
+  check(!out.include?("must-not-leak"), "an undeclared variable must not reach the file")
+  check(err.lines.count { _1.start_with?("::add-mask::") } == 3, "values are registered for masking")
+  out, = run("ruby", "#{ROOT}/scripts/export-credentials-env.rb", "prism-postgres", stdin: doc)
+  check(out == "PRISM_POSTGRES_PASSWORD=pg-pw\n", "postgres maps to the same source name as the hub")
+  _, err, status = run("ruby", "#{ROOT}/scripts/export-credentials-env.rb", "prism-hubot", stdin: doc)
+  visible = err.lines.reject { _1.start_with?("::add-mask::") }.join
+  check(!status.success? && visible.include?("PRISM_HUB_API_TOKEN is missing or empty") && !visible.include?("whs"), "an empty value fails by name only")
+  _, _, status = run("ruby", "#{ROOT}/scripts/export-credentials-env.rb", "h-ua-bot", stdin: doc)
+  check(!status.success?, "a workload the export holds nothing for must fail")
+  _, _, status = run("ruby", "#{ROOT}/scripts/export-credentials-env.rb", "prism-hub; id", stdin: doc)
+  check(!status.success?, "an invalid workload name must fail")
 end
 
 puts "migration export tools are valid"

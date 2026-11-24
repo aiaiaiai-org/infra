@@ -268,6 +268,18 @@ jobs:
       - name: Test migration export tools
         run: ruby scripts/test-migration-export-tools.rb
 
+      - name: Validate the aiaiaiai core migration to edge-dev-1
+        run: |
+          set -Eeuo pipefail
+          bash -n deploy/aiaiaiai-edge-dev-1/migrate.sh
+          bash -n deploy/aiaiaiai-edge-dev-1/route.sh
+          # The route is appended to the live ingress file; the result must validate, and what was
+          # there must stay byte for byte at its start.
+          { cat deploy/nilx-public-edge/Caddyfile; printf '\n'; cat deploy/aiaiaiai-edge-dev-1/api.Caddyfile; } > "$RUNNER_TEMP/ingress-with-api.Caddyfile"
+          docker run --rm -v "$RUNNER_TEMP/ingress-with-api.Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+          cmp -s -n "$(stat -c %s deploy/nilx-public-edge/Caddyfile)" deploy/nilx-public-edge/Caddyfile "$RUNNER_TEMP/ingress-with-api.Caddyfile"
+          ruby scripts/test-migration-workflow-contract.rb
+
       - name: Validate workload placement resolver
         run: |
           set -Eeuo pipefail

@@ -36,6 +36,9 @@ spec:
   # Infra delivers each verified master build on its own (docs/automatic-delivery.md). Its
   # secrets arrive only in prism-hubot's attested envelope; infra stores none of them.
   delivery:
+    # Frozen while the aiaiaiai core moves from edge-prod-2 to edge-dev-1 (docs/aiaiaiai-edge-migration.md):
+    # an automatic delivery would keep deploying to the old server.
+    mode: manual
     image: ghcr.io/aiaiaiai-org/prism-hubot
     branch: master
     signerWorkflow: .github/workflows/publish.yml

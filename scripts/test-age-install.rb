@@ -15,7 +15,7 @@ require "open3"
 require "tmpdir"
 
 ROOT = File.expand_path("..", __dir__)
-FILES = %w[ci.yml deploy-workload.yml backup-prism-postgres.yml export-aiaiaiai-migration.yml].map { |name| File.join(ROOT, ".github", "workflows", name) }
+FILES = %w[ci.yml deploy-workload.yml backup-prism-postgres.yml export-aiaiaiai-migration.yml migrate-aiaiaiai-edge-dev-1.yml].map { |name| File.join(ROOT, ".github", "workflows", name) }
 
 def block_of(path)
   text = File.read(path, encoding: "UTF-8")

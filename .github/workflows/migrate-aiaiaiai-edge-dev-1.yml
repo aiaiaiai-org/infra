@@ -1,0 +1,240 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Migrate aiaiaiai core to edge-dev-1
+
+# Brings prism-postgres, prism-hub and prism-hubot up on edge-dev-1 from a sealed export of edge-prod-2
+# (see "Export aiaiaiai edge for migration"), one stage per run, and routes api.aiaiaiai.org to them
+# through the EXISTING public Caddy there. It uses the same deploy/workload/deploy.sh and the values of the
+# same reviewed contracts as Deploy workload, on edge-dev-1's private Docker network. Images are pinned to a
+# digest and their build provenance is verified first. Nothing on edge-prod-2 is touched.
+#
+#   data           prism-postgres, restore the database, prism-hub (private; no public route yet)
+#   route-validate prove the api.aiaiaiai.org route on the live ingress without changing it
+#   route-activate add the route (certificate included); restores the old file if nilx.one is hurt
+#   hubot          prism-hubot, which registers its Telegram webhook and command menu on start
+#   route-rollback restore the ingress file from before the route
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Stage to run
+        required: true
+        type: choice
+        options: [data, route-validate, route-activate, hubot, route-rollback]
+      confirmation:
+        description: Type MIGRATE to run the stage on edge-dev-1
+        required: true
+        type: string
+      export_run_id:
+        description: Run id of "Export aiaiaiai edge for migration" (data and hubot)
+        required: false
+        type: string
+      hub_sha:
+        description: Full commit SHA of the prism-hub image to run (data)
+        required: false
+        type: string
+      hubot_sha:
+        description: Full commit SHA of the prism-hubot image to run (hubot)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+  actions: read
+
+concurrency:
+  group: migrate-aiaiaiai-edge-dev-1
+  cancel-in-progress: false
+
+jobs:
+  workload:
+    name: Workloads (data, hubot)
+    if: github.ref == 'refs/heads/master' && (inputs.operation == 'data' || inputs.operation == 'hubot')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: edge-dev-1
+      deployment: false
+    env:
+      OPERATION: ${{ inputs.operation }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      EXPORT_RUN_ID: ${{ inputs.export_run_id }}
+      HUB_SHA: ${{ inputs.hub_sha }}
+      HUBOT_SHA: ${{ inputs.hubot_sha }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - name: Require explicit confirmation and valid inputs
+        run: |
+          set -Eeuo pipefail
+          test "$CONFIRMATION" = MIGRATE || { echo '::error::type MIGRATE to continue' >&2; exit 1; }
+          [[ "$EXPORT_RUN_ID" =~ ^[0-9]{6,20}$ ]] || { echo '::error::export_run_id must be a run id' >&2; exit 1; }
+          [[ "$HUB_SHA" =~ ^[0-9a-f]{40}$ && "$HUBOT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::hub_sha and hubot_sha must be full commit SHAs' >&2; exit 1; }
+
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install age encryption tool
+        run: |
+          set -Eeuo pipefail
+          # BEGIN install-age (identical in ci.yml, deploy-workload.yml and backup-prism-postgres.yml;
+          # scripts/test-age-install.rb keeps them so and runs this block against stubbed tools)
+          # Every call is bounded: a mirror whose DNS fails retries for minutes, longer than a job's
+          # timeout, so without a cap the fallback below would never get to run.
+          install_age() {
+            timeout -k 5 90 sudo apt-get -o Acquire::Retries=2 update -qq &&
+              timeout -k 5 90 sudo apt-get -o Acquire::Retries=2 install -y -qq --no-install-recommends age
+          }
+          if ! install_age; then
+            # Ubuntu's mirrors can be unreachable for a long while: on 2026-11-11 the runner could not
+            # resolve azure.archive.ubuntu.com or archive.ubuntu.com, so no other ubuntu.com host helps.
+            # age is a Go program and the runner has Go. Build the pinned release from the Go module
+            # proxy, whose answers Go checks against sum.golang.org, so no checksum is pinned here.
+            echo "::warning::apt cannot reach Ubuntu's mirrors; building age v1.2.1 from the Go module proxy"
+            command -v go >/dev/null
+            mkdir -p "$HOME/.local/bin"
+            GOBIN="$HOME/.local/bin" timeout -k 5 240 go install filippo.io/age/cmd/age@v1.2.1
+            export PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+          command -v age >/dev/null
+          # END install-age
+          age --version
+          bash -n deploy/aiaiaiai-edge-dev-1/migrate.sh
+          ruby scripts/test-migration-export-tools.rb
+
+      - name: Configure the pinned SSH identity
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = 158.220.74.54
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          dir="${RUNNER_TEMP:?}/migrate-ssh"
+          install -m 0700 -d "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          if [[ "$SSH_PORT" == 22 ]]; then label="$SSH_HOST"; else label="[$SSH_HOST]:$SSH_PORT"; fi
+          printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
+          chmod 600 "$dir/known_hosts"
+
+      - name: Sign in to the registry for the digest and provenance checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin >/dev/null
+
+      - name: Download the sealed export
+        uses: actions/download-artifact@v4
+        with:
+          name: aiaiaiai-migration-export-${{ inputs.export_run_id }}
+          run-id: ${{ inputs.export_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/export-in
+
+      - name: Check the export, then run the stage
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          identity="${RUNNER_TEMP:?}/migrate-identity"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$identity"
+          trap 'rm -f "${RUNNER_TEMP:?}/migrate-identity"' EXIT
+          # The export must still open with this identity and match its manifest before anything uses it.
+          ruby scripts/verify-export.rb "$RUNNER_TEMP/export-in" "$identity" > /dev/null
+          SSH_DIR="$RUNNER_TEMP/migrate-ssh" EXPORT_DIR="$RUNNER_TEMP/export-in" IDENTITY="$identity" \
+            HUB_IMAGE="ghcr.io/aiaiaiai-org/prism-hub:$HUB_SHA" HUBOT_IMAGE="ghcr.io/aiaiaiai-org/prism-hubot:$HUBOT_SHA" \
+            GHCR_USER="$GITHUB_ACTOR" \
+            bash deploy/aiaiaiai-edge-dev-1/migrate.sh "$OPERATION"
+
+      - name: Remove temporary material
+        if: always()
+        run: rm -rf "${RUNNER_TEMP:?}/migrate-ssh" "${RUNNER_TEMP:?}/export-in"
+
+  route:
+    name: Route api.aiaiaiai.org on the existing ingress
+    if: github.ref == 'refs/heads/master' && startsWith(inputs.operation, 'route-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: edge-dev-1
+      deployment: ${{ inputs.operation != 'route-validate' }}
+    env:
+      OPERATION: ${{ inputs.operation }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - name: Require explicit confirmation
+        run: test "$CONFIRMATION" = MIGRATE || { echo '::error::type MIGRATE to continue' >&2; exit 1; }
+
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate reviewed shell
+        run: bash -n deploy/aiaiaiai-edge-dev-1/route.sh
+
+      - name: Configure the pinned SSH identity
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = 158.220.74.54
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          dir="${RUNNER_TEMP:?}/route-ssh"
+          install -m 0700 -d "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          if [[ "$SSH_PORT" == 22 ]]; then label="$SSH_HOST"; else label="[$SSH_HOST]:$SSH_PORT"; fi
+          printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
+          chmod 600 "$dir/known_hosts"
+
+      - name: Copy the reviewed route, leave the active ingress untouched
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          dir="${RUNNER_TEMP:?}/route-ssh"
+          opts=(-o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$dir/known_hosts" -i "$dir/id_ed25519")
+          base='.local/share/aiaiaiai-infra/aiaiaiai-api'
+          ssh -T "${opts[@]}" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" "install -d -m 0700 '$base'"
+          scp -q "${opts[@]}" -P "$SSH_PORT" deploy/aiaiaiai-edge-dev-1/api.Caddyfile "$SSH_USER@$SSH_HOST:$base/api.Caddyfile"
+          scp -q "${opts[@]}" -P "$SSH_PORT" deploy/aiaiaiai-edge-dev-1/route.sh "$SSH_USER@$SSH_HOST:$base/route.sh"
+
+      - name: Validate, activate or roll back, with automatic restoration
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          dir="${RUNNER_TEMP:?}/route-ssh"
+          op="${OPERATION#route-}"
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$dir/known_hosts" -i "$dir/id_ed25519" -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" "bash '.local/share/aiaiaiai-infra/aiaiaiai-api/route.sh' '$op'"
+
+      - name: Remove temporary SSH material
+        if: always()
+        run: rm -rf "${RUNNER_TEMP:?}/route-ssh"
