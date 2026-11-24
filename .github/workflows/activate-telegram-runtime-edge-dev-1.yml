@@ -11,10 +11,15 @@ on:
         options: [repair-identity, validate, activate]
         default: validate
         required: true
+      credential_run_id:
+        description: Successful Package 0x1 Telegram credential run ID from nilx-one/bot
+        type: string
+        required: false
 
 permissions:
   contents: read
   packages: read
+  actions: read
 
 concurrency:
   group: stage-telegram-runtime-edge-dev-1
@@ -94,16 +99,44 @@ jobs:
             -o UserKnownHostsFile="$dir/known_hosts" -o ConnectTimeout=10 \
             -i "$dir/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
             bash -s -- "$IDENTITY_IMAGE" < deploy/telegram-runtime/repair-identity.sh
+      - name: Fetch ciphertext from the approved Bot workflow
+        if: inputs.operation != 'repair-identity'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.credential_run_id }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$RUN_ID" =~ ^[0-9]{1,20}$ ]] || { echo '::error::Provide the Bot credential workflow run ID.'; exit 1; }
+          api=repos/nilx-one/bot/actions/runs/$RUN_ID
+          gh api "$api" | jq -e '
+            .conclusion == "success" and .event == "workflow_dispatch" and
+            .head_branch == "master" and .head_repository.full_name == "nilx-one/bot" and
+            .path == ".github/workflows/package-telegram-credential.yml"
+          ' >/dev/null
+          artifact=$(gh api "$api/artifacts?name=telegram-credential-edge-dev-1" | jq -ce '
+            [.artifacts[] | select(.expired == false and .name == "telegram-credential-edge-dev-1")] |
+            select(length == 1) | .[0] | select(.digest | test("^sha256:[0-9a-f]{64}$"))
+          ')
+          id=$(jq -er '.id | tostring | select(test("^[0-9]+$"))' <<<"$artifact")
+          digest=$(jq -er '.digest | sub("^sha256:"; "")' <<<"$artifact")
+          dir="$RUNNER_TEMP/telegram-runtime-ssh"
+          gh api "repos/nilx-one/bot/actions/artifacts/$id/zip" > "$dir/envelope.zip"
+          printf '%s  %s\n' "$digest" "$dir/envelope.zip" | sha256sum -c -
+          test "$(unzip -Z1 "$dir/envelope.zip")" = telegram-credential.age
+          unzip -p "$dir/envelope.zip" telegram-credential.age > "$dir/telegram-credential.age"
+          cp deploy/telegram-runtime/activate.sh "$dir/activate.sh"
+
       - name: Validate or activate Telegram runtime
         if: inputs.operation != 'repair-identity'
         run: |
           set -Eeuo pipefail
           case "$OPERATION" in validate|activate) ;; *) exit 2 ;; esac
           dir="$RUNNER_TEMP/telegram-runtime-ssh"
-          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+          tar -C "$dir" -cf - activate.sh telegram-credential.age | \
+            ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$dir/known_hosts" -o ConnectTimeout=10 \
             -i "$dir/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-            bash -s -- "$OPERATION" < deploy/telegram-runtime/activate.sh
+            "set -eu; umask 077; dir=\$(mktemp -d); trap 'rm -f -- \"\$dir/activate.sh\" \"\$dir/telegram-credential.age\"; rmdir -- \"\$dir\"' EXIT; tar -xf - -C \"\$dir\" -- activate.sh telegram-credential.age; bash \"\$dir/activate.sh\" '$OPERATION' \"\$dir/telegram-credential.age\""
       - name: Remove ephemeral SSH key
         if: always()
         run: rm -rf "$RUNNER_TEMP/telegram-runtime-ssh"
