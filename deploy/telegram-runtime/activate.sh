@@ -16,7 +16,6 @@ network=nilx-candidate
 host=nilxone-telegram-login-host
 bot=nilx-one-bot
 live="$root/nilx-public-edge/Caddyfile"
-credentials="$root/workloads/nilxone-identity/runtime.env"
 
 fail() { echo "::error::$*" >&2; exit 1; }
 test -d "$release" && test ! -L "$release" || fail 'Verified Telegram release is missing.'
@@ -73,10 +72,6 @@ test "$(docker inspect -f '{{.State.Running}}' "$ingress")" = true
 test "$(docker inspect -f '{{if index .NetworkSettings.Networks "nilx-candidate"}}yes{{end}}' "$ingress")" = yes
 test "$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' "$ingress")" = "$live"
 test -f "$live" && test ! -L "$live"
-test -f "$credentials" && test ! -L "$credentials" || fail 'Product-owned runtime.env missing.'
-test "$(stat -c '%a' "$credentials")" = 600
-test "$(grep -c '^TELEGRAM_BOT_TOKEN=' "$credentials")" = 1
-grep -Eq '^TELEGRAM_BOT_TOKEN=[0-9]{6,12}:[A-Za-z0-9_-]{30,}$' "$credentials" || fail 'Invalid product bot credential.'
 for service in "$host" "$bot"; do
   if docker inspect "$service" >/dev/null 2>&1; then
     fail "$service already exists; inspect the previous rollout before retrying."
@@ -113,9 +108,10 @@ awk '/^nilx\.one \{$/ {print; print "    @telegram_login path /api/v1/telegram/l
 caddy_image=$(docker inspect -f '{{.Image}}' "$ingress")
 docker run --rm --network "$network" --volume "$work/candidate.Caddyfile:/etc/caddy/Caddyfile:ro" "$caddy_image" caddy validate --config /etc/caddy/Caddyfile >/dev/null
 
-# Use only the product-owned token on the target. No runner receives it.
-grep '^TELEGRAM_BOT_TOKEN=' "$credentials" > "$work/bot.env"
-docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$identity" | grep -Fx -f "$work/bot.env" >/dev/null || fail 'Product token does not match the running Identity.'
+# Use only the already configured product token on the target. No runner receives it.
+docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$identity" | grep '^TELEGRAM_BOT_TOKEN=' > "$work/bot.env"
+test "$(grep -c '^TELEGRAM_BOT_TOKEN=' "$work/bot.env")" = 1
+grep -Eq '^TELEGRAM_BOT_TOKEN=[0-9]{6,12}:[A-Za-z0-9_-]{30,}$' "$work/bot.env" || fail 'Invalid product bot credential.'
 base_image=$(docker inspect -f '{{.Image}}' "$identity")
 common=(--network "$network" --security-opt no-new-privileges:true --env-file "$work/bot.env" --volume "$release:/opt/telegram-runtime:ro" --no-healthcheck)
 bot_env=(--env BOT_LOGIN_START_URL=https://nilx.one/api/v1/telegram/login/start --env BOT_OIDC_CALLBACK_URL=https://nilx.one/api/v1/telegram/login/callback)
