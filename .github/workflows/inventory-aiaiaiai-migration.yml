@@ -138,7 +138,7 @@ jobs:
               free -m | sed -n 2p
               echo "== docker"
               docker info --format "{{.ServerVersion}}"
-              docker compose version --short
+              docker compose version 2>&1 | head -1 || echo "compose plugin missing"
               echo "== containers (name, image, status)"
               docker ps -a --format "{{.Names}}\t{{.Image}}\t{{.Status}}"
               echo "== listeners on 80, 443, 22, 22022"
