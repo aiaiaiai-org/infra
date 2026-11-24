@@ -82,7 +82,7 @@ jobs:
               root="$HOME/.local/share/aiaiaiai-infra/telegram-runtime"
               install -d -m 0700 "$root"
               staging="$(mktemp -d "$root/.stage.XXXXXXXX")"
-              trap '''rm -rf -- "$staging"''' EXIT
+              trap '\''rm -rf -- "$staging"'\'' EXIT
               tar -xf - -C "$staging" -- nilxone-telegram-login-host nilx-one-bot SHA256SUMS
               cd "$staging"
               sha256sum -c SHA256SUMS
