@@ -1,0 +1,103 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Stage 0x1 Telegram runtime on edge-dev-1
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: stage-telegram-runtime-edge-dev-1
+  cancel-in-progress: false
+
+jobs:
+  stage:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: edge-dev-1
+      deployment: false
+    env:
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - name: Fetch verified Core and Bot artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          stage="$RUNNER_TEMP/telegram-runtime"
+          install -d -m 0700 "$stage"
+          download() {
+            local repository="$1" artifact="$2" digest="$3" binary="$4"
+            gh api "repos/nilx-one/$repository/actions/artifacts/$artifact/zip" > "$stage/$binary.zip"
+            printf '%s  %s\n' "$digest" "$stage/$binary.zip" | sha256sum -c -
+            test "$(unzip -Z1 "$stage/$binary.zip")" = "$binary"
+            unzip -p "$stage/$binary.zip" "$binary" > "$stage/$binary"
+            test -s "$stage/$binary"
+          }
+          download core 14821839639 801052806d9f06939d6eb91617c3562cff040879280bc592a8579e559cbd1931 nilxone-telegram-login-host
+          download bot 14820494696 2aa764ed15ec59aa81b0948bb7bb886cc93171e28190637159c357a994ed0185 nilx-one-bot
+          cd "$stage"
+          sha256sum nilxone-telegram-login-host nilx-one-bot > SHA256SUMS
+          tar -cf bundle.tar nilxone-telegram-login-host nilx-one-bot SHA256SUMS
+
+      - name: Validate pinned target and prepare SSH
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = 158.220.74.54
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+          dir="$RUNNER_TEMP/telegram-runtime-ssh"
+          install -d -m 0700 "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          if [[ "$SSH_PORT" == 22 ]]; then label="$SSH_HOST"; else label="[$SSH_HOST]:$SSH_PORT"; fi
+          printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
+          chmod 600 "$dir/known_hosts"
+
+      - name: Stage binaries and inspect current services
+        run: |
+          set -Eeuo pipefail
+          dir="$RUNNER_TEMP/telegram-runtime-ssh"
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$dir/known_hosts" -o ConnectTimeout=10 \
+            -i "$dir/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" '
+              set -eu
+              test "$(hostname)" = edge-dev-1
+              test "$(id -un)" = deploy
+              test "$(uname -m)" = x86_64
+              umask 077
+              root="$HOME/.local/share/aiaiaiai-infra/telegram-runtime"
+              install -d -m 0700 "$root"
+              staging="$(mktemp -d "$root/.stage.XXXXXXXX")"
+              trap '''rm -rf -- "$staging"''' EXIT
+              tar -xf - -C "$staging" -- nilxone-telegram-login-host nilx-one-bot SHA256SUMS
+              cd "$staging"
+              sha256sum -c SHA256SUMS
+              chmod 0755 nilxone-telegram-login-host nilx-one-bot
+              release="$(sha256sum SHA256SUMS | cut -d " " -f 1)"
+              if [ -d "$root/$release" ]; then
+                (cd "$root/$release" && sha256sum -c "$staging/SHA256SUMS")
+              else
+                mv -T "$staging" "$root/$release"
+              fi
+              printf "Staged Telegram binaries in %s\n" "$root/$release"
+              docker ps -a --format "{{.Names}} {{.Status}}" | grep -E "^(nilx|.*telegram)" || true
+              docker volume ls --format "{{.Name}}" | grep -E "^nilx.*identity" || true
+            ' < "$RUNNER_TEMP/telegram-runtime/bundle.tar"
+
+      - name: Remove ephemeral SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/telegram-runtime-ssh"
