@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 
 operation=${1:?validate or activate required}
+credential=${2:?encrypted bot credential required}
 case "$operation" in validate|activate) ;; *) exit 2 ;; esac
 test "$(hostname)" = edge-dev-1
 test "$(id -un)" = deploy
@@ -108,10 +109,20 @@ awk '/^nilx\.one \{$/ {print; print "    @telegram_login path /api/v1/telegram/l
 caddy_image=$(docker inspect -f '{{.Image}}' "$ingress")
 docker run --rm --network "$network" --volume "$work/candidate.Caddyfile:/etc/caddy/Caddyfile:ro" "$caddy_image" caddy validate --config /etc/caddy/Caddyfile >/dev/null
 
-# Use only the already configured product token on the target. No runner receives it.
-docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$identity" | grep '^TELEGRAM_BOT_TOKEN=' > "$work/bot.env"
-test "$(grep -c '^TELEGRAM_BOT_TOKEN=' "$work/bot.env")" = 1
-grep -Eq '^TELEGRAM_BOT_TOKEN=[0-9]{6,12}:[A-Za-z0-9_-]{30,}$' "$work/bot.env" || fail 'Invalid product bot credential.'
+# Decrypt the Bot repository's credential with the existing host-owned key.
+key_file="$root/nilx-identity-fresh/recipient.agekey"
+test -f "$key_file" && test ! -L "$key_file" || fail 'Existing host AGE key is missing.'
+age --decrypt --identity "$key_file" --output "$work/bot.env" "$credential" || fail 'Cannot decrypt Bot credential for edge-dev-1.'
+mapfile -t bot_environment < "$work/bot.env"
+[[ ${#bot_environment[@]} == 1 && ${bot_environment[0]} =~ ^TELEGRAM_BOT_TOKEN=[0-9]+:[A-Za-z0-9_-]+$ ]] || fail 'Invalid product bot credential.'
+# The URL contains the token. Keep it off argv and suppress diagnostics that might include it.
+token=${bot_environment[0]#TELEGRAM_BOT_TOKEN=}
+printf 'url = "https://api.telegram.org/bot%s/getMe"\n' "$token" | \
+  curl --disable --fail --silent --max-time 15 --config - | \
+  jq -e '.ok == true and (.result.username | ascii_downcase) == "nilxone_bot"' >/dev/null || \
+  fail 'Bot credential did not authenticate as @nilxone_bot.'
+unset token bot_environment
+echo 'Telegram credential verified for @nilxone_bot.'
 base_image=$(docker inspect -f '{{.Image}}' "$identity")
 common=(--network "$network" --security-opt no-new-privileges:true --env-file "$work/bot.env" --volume "$release:/opt/telegram-runtime:ro" --no-healthcheck)
 bot_env=(--env BOT_LOGIN_START_URL=https://nilx.one/api/v1/telegram/login/start --env BOT_OIDC_CALLBACK_URL=https://nilx.one/api/v1/telegram/login/callback)
