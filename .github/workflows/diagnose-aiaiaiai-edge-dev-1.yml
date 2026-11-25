@@ -1,0 +1,76 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Diagnose aiaiaiai core on edge-dev-1
+
+# Read-only. Shows whether prism-hubot is running, what Telegram says about its webhook and the tail of its
+# own log, with anything shaped like a bot token removed. Changes nothing on edge-dev-1.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnose-aiaiaiai-edge-dev-1
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Diagnose prism-hubot
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: edge-dev-1
+      deployment: false
+    env:
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - name: Configure the pinned SSH identity
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = 158.220.74.54
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          dir="${RUNNER_TEMP:?}/diagnose-ssh"
+          install -m 0700 -d "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          if [[ "$SSH_PORT" == 22 ]]; then label="$SSH_HOST"; else label="[$SSH_HOST]:$SSH_PORT"; fi
+          printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
+          chmod 600 "$dir/known_hosts"
+
+      - name: Show state, webhook and log tail
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -Eeuo pipefail
+          dir="${RUNNER_TEMP:?}/diagnose-ssh"
+          remote() {
+            ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$dir/known_hosts" -i "$dir/id_ed25519" -p "$SSH_PORT" \
+              "$SSH_USER@$SSH_HOST" "$@"
+          }
+          redact() { sed -E 's/[0-9]{6,}:[A-Za-z0-9_-]{30,}/[token]/g; s/(secret_token|secret|token|key)=[^ &"]+/\1=[removed]/Ig'; }
+          echo '== container'
+          remote "docker inspect -f 'running={{.State.Running}} restarts={{.RestartCount}} started={{.State.StartedAt}} exit={{.State.ExitCode}} image={{.Config.Image}}' prism-hubot" || true
+          echo '== webhook (as Telegram reports it)'
+          remote 'docker exec prism-hubot bundle exec rake telegram:webhook_status' 2>&1 | redact || true
+          echo '== commands Telegram serves'
+          remote 'docker exec prism-hubot bundle exec rake telegram:commands_status' 2>&1 | redact || true
+          echo '== log tail'
+          remote 'docker logs --tail 80 prism-hubot' 2>&1 | redact || true
+
+      - name: Remove temporary SSH material
+        if: always()
+        run: rm -rf "${RUNNER_TEMP:?}/diagnose-ssh"
