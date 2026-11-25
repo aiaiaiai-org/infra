@@ -65,8 +65,8 @@ Dir.mktmpdir do |dir|
 end
 
 check(script.include?("shopt -s inherit_errexit"), "the script makes failures inside $(...) fatal")
-check(script.scan(/pinned_verified_image "\$(?:HUB|HUBOT|TTS)_IMAGE"/).length == 5 && script.scan(/\$\(pinned_verified_image/).length == 5 &&
-  script.scan(/^\s*(?:hub|hubot|tts)_ref="\$\(pinned_verified_image/).length == 5,
+check(script.scan(/pinned_verified_image "\$(?:HUB|HUBOT|TTS)_IMAGE(?:\.secrets)?"/).length == 6 && script.scan(/\$\(pinned_verified_image/).length == 6 &&
+  script.scan(/^\s*(?:hub|hubot|tts|envelope)_ref="\$\(pinned_verified_image/).length == 6,
   "every stage resolves its image in a checked assignment")
 check(!script.match?(/deploy_workload \S+ "\$\(pinned_verified_image/), "no stage passes an unchecked substitution to deploy_workload")
 
