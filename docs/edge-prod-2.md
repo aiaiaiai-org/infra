@@ -110,8 +110,10 @@ reviewed change to its contract.
 `prism-hubot` is a container workload on `edge-prod-2`, like prism-hub. Telegram reaches it at
 `https://api.aiaiaiai.org/prism-hubot/telegram/webhook`; Caddy strips `/prism-hubot`. Its
 interaction state lives in the `prism-hubot-state` volume. Its secrets
-(`PRISM_BOT_TELEGRAM_TOKEN`, `PRISM_BOT_TELEGRAM_WEBHOOK_SECRET`, `PRISM_HUB_API_TOKEN`,
-`PRISM_BOT_DELIVERY_SECRET`) stay in
+(`TELEGRAM_BOT_TOKEN`, which the contract maps onto the container's `PRISM_BOT_TELEGRAM_TOKEN`,
+`PRISM_BOT_TELEGRAM_WEBHOOK_SECRET`, `PRISM_HUB_API_TOKEN`, `PRISM_BOT_DELIVERY_SECRET` and, for
+Whisper's voice, `PRISM_HUBOT_AIS_PRIVATE_KEY`: one line of base64 of an Ed25519 PEM, because a sealed
+secret is one line) stay in
 **aiaiaiai-org/prism-hubot → production** and reach the container only in its sealed envelope.
 
 The container registers its own webhook and command menu with Telegram when it starts, with the

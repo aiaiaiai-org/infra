@@ -21,10 +21,13 @@ spec:
       - PRISM_HUBOT_INTERACTION_STATE_DIR=/data/interaction-state
     # Values are prism-hubot's and reach the container only in its sealed envelope.
     secrets:
-      - PRISM_BOT_TELEGRAM_TOKEN=PRISM_BOT_TELEGRAM_TOKEN
+      # ENV_NAME=SECRET_NAME: the right side is the name in prism-hubot's `production` Environment.
+      - PRISM_BOT_TELEGRAM_TOKEN=TELEGRAM_BOT_TOKEN
       - PRISM_BOT_TELEGRAM_WEBHOOK_SECRET=PRISM_BOT_TELEGRAM_WEBHOOK_SECRET
       - PRISM_HUB_API_TOKEN=PRISM_HUB_API_TOKEN
       - PRISM_BOT_DELIVERY_SECRET=PRISM_BOT_DELIVERY_SECRET
+      # Whisper's voice: the client key for AIS, one line of base64 of an Ed25519 PEM.
+      - PRISM_HUBOT_AIS_PRIVATE_KEY=PRISM_HUBOT_AIS_PRIVATE_KEY
     labels:
       - org.aiaiaiai.product=prism
       - org.aiaiaiai.service=prism-hubot
