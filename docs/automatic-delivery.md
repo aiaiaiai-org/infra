@@ -190,7 +190,9 @@ run on edge-dev-1 as static binaries, not images, so they have their own
 workflow: **Deliver 0x1 Telegram runtime to edge-dev-1**. It follows the same
 rules as above:
 
-- every 15 minutes (and on dispatch) it reads both `master` heads and takes
+- on dispatch, and on a 15-minute schedule that GitHub runs only on a
+  best-effort basis (in practice hours apart), it reads both `master` heads
+  and takes
   the binaries only from the successful push run of `Full CI`
   (`full-ci.yml`) and `Rust CI` (`rust.yml`) for exactly those commits;
 - `gh attestation verify` checks each binary against its repository, signer
@@ -207,3 +209,23 @@ environment, including the bot token, and swaps only the binary. A service
 whose binary is unchanged is not restarted, so a Core-only change leaves the
 bot polling. A failed readiness check restores the previous container. The
 first activation stays with **Activate 0x1 Telegram runtime on edge-dev-1**.
+
+### Publishing a change to the bot or the login host
+
+1. Open a pull request in `nilx-one/bot` or `nilx-one/core` and merge it to
+   `master` once its CI is green.
+2. Wait for the `master` push run of **Full CI** (bot) or **Rust CI** (core)
+   to finish green. It builds and attests the binary; nothing is delivered
+   before that.
+3. In `aiaiaiai-org/infra`, run **Actions → Deliver 0x1 Telegram runtime to
+   edge-dev-1 → Run workflow** on `master`. Leave `force` off.
+4. Read the `deliver` job: each service prints `now runs … from <release>` or
+   `already runs this …; left unchanged`. The run is green only if both
+   services passed their readiness checks.
+5. Check in Telegram: send `/login` to `@nilxone_bot`.
+
+If the `plan` job says a head has no successful CI run yet, step 2 is not
+finished: wait and run it again. If it says the release was already
+delivered, edge-dev-1 already runs it. To retry a failed delivery, run it
+with `force` once the cause is fixed. To roll back, revert the change in the
+producer repository and publish again.
