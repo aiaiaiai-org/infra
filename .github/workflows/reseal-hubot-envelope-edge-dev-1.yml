@@ -1,0 +1,167 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Reseal prism-hubot envelope for edge-dev-1
+
+# prism-hubot's publish workflow seals its runtime secrets (the bot token, the Hub and delivery secrets, and
+# the AIS key of Whisper's voice) to the server its infra contract places it on, which is still edge-prod-2.
+# The aiaiaiai core now runs on edge-dev-1, whose deploy key cannot open that envelope. This workflow
+# verifies the envelope's provenance, opens it with edge-prod-2's own deploy key (the Environment secret
+# whose public half the contract publishes) and seals it again, in one pipe, to edge-dev-1's public key.
+# Plaintext exists only in that pipe: never in a file, an argument, the log or the artifact, which holds
+# ciphertext only. Migrate's `speech` stage consumes the artifact. Nothing on either server is touched.
+
+on:
+  workflow_dispatch:
+    inputs:
+      hubot_sha:
+        description: Full commit SHA of the prism-hubot build whose envelope to reseal
+        required: true
+        type: string
+      confirmation:
+        description: Type RESEAL to reseal the envelope for edge-dev-1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+  actions: read
+
+concurrency:
+  group: reseal-hubot-envelope
+  cancel-in-progress: false
+
+jobs:
+  recipient:
+    name: Recipient (edge-dev-1 public key)
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: edge-dev-1
+      deployment: false
+    outputs:
+      recipient: ${{ steps.derive.outputs.recipient }}
+    steps:
+      - name: Require explicit confirmation and a full commit SHA
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          HUBOT_SHA: ${{ inputs.hubot_sha }}
+        run: |
+          test "$CONFIRMATION" = RESEAL || { echo '::error::type RESEAL to continue' >&2; exit 1; }
+          [[ "$HUBOT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::hubot_sha must be a full commit SHA' >&2; exit 1; }
+
+      - name: Derive the public recipient
+        id: derive
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          test -n "$SSH_PRIVATE_KEY"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "${RUNNER_TEMP:?}/deploy-key"
+          trap 'rm -f "${RUNNER_TEMP:?}/deploy-key"' EXIT
+          recipient="$(ssh-keygen -y -P '' -f "$RUNNER_TEMP/deploy-key" | awk '{ print $1 " " $2 }')"
+          [[ "$recipient" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+$ ]] || { echo '::error::the deploy key is not an ssh-ed25519 key' >&2; exit 1; }
+          echo "recipient=$recipient" >> "$GITHUB_OUTPUT"
+
+  reseal:
+    name: Reseal (opened with edge-prod-2's key)
+    needs: recipient
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: edge-prod-2
+      deployment: false
+    env:
+      RECIPIENT: ${{ needs.recipient.outputs.recipient }}
+      HUBOT_SHA: ${{ inputs.hubot_sha }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install age encryption tool
+        run: |
+          set -Eeuo pipefail
+          # BEGIN install-age (identical in ci.yml, deploy-workload.yml and backup-prism-postgres.yml;
+          # scripts/test-age-install.rb keeps them so and runs this block against stubbed tools)
+          # Every call is bounded: a mirror whose DNS fails retries for minutes, longer than a job's
+          # timeout, so without a cap the fallback below would never get to run.
+          install_age() {
+            timeout -k 5 90 sudo apt-get -o Acquire::Retries=2 update -qq &&
+              timeout -k 5 90 sudo apt-get -o Acquire::Retries=2 install -y -qq --no-install-recommends age
+          }
+          if ! install_age; then
+            # Ubuntu's mirrors can be unreachable for a long while: on 2026-11-11 the runner could not
+            # resolve azure.archive.ubuntu.com or archive.ubuntu.com, so no other ubuntu.com host helps.
+            # age is a Go program and the runner has Go. Build the pinned release from the Go module
+            # proxy, whose answers Go checks against sum.golang.org, so no checksum is pinned here.
+            echo "::warning::apt cannot reach Ubuntu's mirrors; building age v1.2.1 from the Go module proxy"
+            command -v go >/dev/null
+            mkdir -p "$HOME/.local/bin"
+            GOBIN="$HOME/.local/bin" timeout -k 5 240 go install filippo.io/age/cmd/age@v1.2.1
+            export PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+          command -v age >/dev/null
+          # END install-age
+          age --version
+
+      - name: Verify, open and reseal the envelope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          [[ "$HUBOT_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RECIPIENT" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+$ ]]
+          test -n "$SSH_PRIVATE_KEY"
+          key="${RUNNER_TEMP:?}/prod-key"
+          trap 'rm -f "${RUNNER_TEMP:?}/prod-key" "${RUNNER_TEMP:?}/in.age"; docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$key"
+
+          # The envelope was sealed to the recipient edge-prod-2's contract publishes; this key must be its other half.
+          expected="$(ruby -ryaml -e 'puts YAML.safe_load(File.read("contracts/servers/edge-prod-2.yaml"), aliases: false).dig("spec", "encryptionRecipient").to_s.split.first(2).join(" ")')"
+          actual="$(ssh-keygen -y -P '' -f "$key" | awk '{ print $1 " " $2 }')"
+          [[ "$actual" == "$expected" ]] || { echo "::error::this Environment's deploy key is not the key edge-prod-2's contract publishes" >&2; exit 1; }
+          [[ "$actual" != "$RECIPIENT" ]] || { echo '::error::both servers share one key; nothing to reseal' >&2; exit 1; }
+
+          # Provenance first, exactly as for an image: this repository's signer workflow, the producer's repository.
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin >/dev/null
+          image="ghcr.io/aiaiaiai-org/prism-hubot:$HUBOT_SHA.secrets"
+          manifest="$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}')"
+          digest="$(printf '%s' "$manifest" | ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch("digest")')"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::cannot resolve the digest of $image" >&2; exit 1; }
+          ref="ghcr.io/aiaiaiai-org/prism-hubot@$digest"
+          gh attestation verify "oci://$ref" --repo aiaiaiai-org/prism-hubot \
+            --signer-workflow aiaiaiai-org/prism-hubot/.github/workflows/publish.yml >/dev/null
+
+          docker pull --quiet "$ref" >/dev/null
+          cid="$(docker create "$ref" /envelope)"
+          docker cp "$cid:/secrets.age" "${RUNNER_TEMP}/in.age"
+          docker rm "$cid" >/dev/null
+          test -s "${RUNNER_TEMP}/in.age"
+
+          # One pipe: plaintext never touches a file, an argument or the log.
+          out="${RUNNER_TEMP}/resealed"
+          install -d "$out"
+          age --decrypt --identity "$key" "${RUNNER_TEMP}/in.age" | age --recipient "$RECIPIENT" --output "$out/secrets.age"
+          test -s "$out/secrets.age"
+          printf '%s\n' "$HUBOT_SHA" > "$out/hubot_sha"
+          echo "resealed the envelope of prism-hubot $HUBOT_SHA ($digest) for edge-dev-1"
+
+      - name: Upload the resealed envelope
+        uses: actions/upload-artifact@v4
+        with:
+          name: hubot-envelope-${{ github.run_id }}
+          path: ${{ runner.temp }}/resealed
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Remove temporary material
+        if: always()
+        run: rm -rf "${RUNNER_TEMP:?}/prod-key" "${RUNNER_TEMP:?}/in.age" "${RUNNER_TEMP:?}/resealed"

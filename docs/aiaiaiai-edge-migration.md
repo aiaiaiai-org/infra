@@ -58,7 +58,7 @@ against its manifest again before anything uses it, and secrets reach the contai
 | `route-activate` | appends the route to the live Caddy file (everything that was there stays byte for byte), reloads, requires nilx.one to stay healthy or restores the old file, then waits for TLS on `api.aiaiaiai.org` |
 | `hubot` | restores `prism-hubot-state` when empty, then prism-hubot, which registers its Telegram webhook and command menu on start |
 | `hubot-credential` | gives prism-hubot a credential the Hub accepts: provisions the `prism-hubot` principal (least privilege), issues a fresh credential, redeploys prism-hubot with it and requires the Hub to answer 200 to it. Earlier credentials are revoked after proof |
-| `speech` | gives Whisper its voice: deploys `prism-ai-tts` (private, no route), re-resolves prism-hubot's contract environment (`PRISM_HUBOT_TTS_URL`, `PRISM_HUBOT_AIS_CLIENT_ID`) and takes its secrets from its attested envelope, redeploys prism-hubot, and proves from inside the running hubot that its own configuration gets an AIS token, the TTS service speaks and the audio encodes to Opus |
+| `speech` | gives Whisper its voice: deploys `prism-ai-tts` (private, no route), re-resolves prism-hubot's contract environment (`PRISM_HUBOT_TTS_URL`, `PRISM_HUBOT_AIS_CLIENT_ID`) and takes its secrets from its resealed, attested envelope, redeploys prism-hubot, and proves from inside the running hubot that its own configuration gets an AIS token, the TTS service speaks and the audio encodes to Opus |
 | `route-rollback` | restores the ingress file from before the route |
 
 Order: `data`, `hubot`, `route-validate`, `route-activate` (the route needs both backends running), then `hubot-credential`. The route comes before hubot because Telegram checks
@@ -69,10 +69,10 @@ verified; the contracts still place these workloads on it, and a later change mo
 
 ### Whisper's voice on edge-dev-1
 
-`speech` needs the verified `hubot_sha` and `tts_sha` (the `prism-ai` commit whose `Publish image` run attested the TTS image), and no export. Run it only when, in this order:
+`speech` needs the verified `hubot_sha`, `tts_sha` (the `prism-ai` commit whose `Publish image` run attested the TTS image) and `envelope_run_id` (below), and no export. Run it only when, in this order:
 
 1. AIS is released with `prism-hubot` and `prism-ai` registered as product clients (`4x-ais` `deploy/prepare-runtime-env.sh`), or the proof's token request is refused;
-2. the `prism-hubot:<hubot_sha>.secrets` envelope is published and attested (prism-hubot's publish workflow seals it from its `production` Environment, which must hold `PRISM_HUBOT_AIS_PRIVATE_KEY`); the stage verifies it, decrypts it with the deploy key, and takes **all** of hubot's secrets from it, never from the old export. A secret the contract names and the envelope lacks stops the stage before anything changes;
+2. prism-hubot's publish workflow has sealed `prism-hubot:<hubot_sha>.secrets` (from its `production` Environment, which must hold `PRISM_HUBOT_AIS_PRIVATE_KEY`) and you have run **Reseal prism-hubot envelope for edge-dev-1** for that commit (type `RESEAL`). The envelope is sealed to the server the contract still places hubot on, edge-prod-2, whose key edge-dev-1 does not hold. The reseal workflow verifies the envelope's provenance, opens it with edge-prod-2's deploy key (the Environment secret behind the recipient its contract publishes) and seals it again, in one pipe, to edge-dev-1's public key; its artifact (ciphertext, one day) is what `speech` takes as `envelope_run_id`. A secret the contract names and the envelope lacks stops `speech` before anything changes;
 3. the images are published and attested.
 
 `prism-ai-tts` has no `public` route on purpose: the live `api.aiaiaiai.org` block is not rewritten by `route.sh`, and prism-hubot reaches the service as `http://prism-ai-tts:1927/v1/speech` on the server's own Docker network (hubot accepts cleartext only for such a single-label alias). Every request still needs an AIS product token with audience `prism-ai` and scope `tts.synthesize`. Everything speech sends to Telegram is a voice note; the proof sends nothing to Telegram.
