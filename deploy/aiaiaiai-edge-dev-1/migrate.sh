@@ -14,7 +14,8 @@
 #                      chain (AIS token -> TTS -> Opus) from inside the running hubot; no migration export required
 #
 # Environment: SSH_HOST SSH_USER SSH_PORT SSH_DIR (id_ed25519 and known_hosts) EXPORT_DIR IDENTITY
-#              HUB_IMAGE HUBOT_IMAGE TTS_IMAGE (image references without a digest) GH_TOKEN GHCR_USER
+#              HUB_IMAGE HUBOT_IMAGE TTS_IMAGE (image references without a digest)
+#              ENVELOPE_DIR (speech: the resealed prism-hubot envelope) GH_TOKEN GHCR_USER
 set -Eeuo pipefail
 # A failing command inside $(...) must stop the script too (Bash clears -e there by default).
 shopt -s inherit_errexit
@@ -208,25 +209,26 @@ RUBY
   hub_credential keep "$new_id" >/dev/null
   echo "ok  earlier credentials of prism-hubot revoked"
 elif [[ "$stage" == speech ]]; then
-  # Both images and hubot's secret envelope are verified before anything is changed.
+  # Both images are verified, and hubot's resealed envelope opened, before anything is changed.
   tts_ref="$(pinned_verified_image "$TTS_IMAGE" aiaiaiai-org/prism-ai)"
   hubot_ref="$(pinned_verified_image "$HUBOT_IMAGE" aiaiaiai-org/prism-hubot)"
   dir=.local/share/aiaiaiai-infra/workloads/prism-hubot
   remote "test \"\$(docker inspect -f '{{.State.Running}}' prism-hubot)\" = true"
   remote "cd '$dir' && test -s .env"
-  # Hubot's secrets come from the attested envelope its own publish workflow sealed for this commit (the
-  # same one Deploy workload uses), never from the old export: the envelope holds the AIS key, the export
-  # predates it. Everything is derived and checked here, before any change; a secret the contract names and
-  # the envelope lacks stops the stage in workload-secret-env.rb. No value is printed.
-  envelope_ref="$(pinned_verified_image "$HUBOT_IMAGE.secrets" aiaiaiai-org/prism-hubot)"
+  # Hubot's secrets come from the envelope its own publish workflow sealed for this commit (the same one
+  # Deploy workload uses), never from the old export: the envelope holds the AIS key, the export predates it.
+  # That envelope is sealed to edge-prod-2's key, so "Reseal prism-hubot envelope for edge-dev-1" first verified
+  # its provenance and sealed it again to this server's key; its artifact is ENVELOPE_DIR. Everything is derived
+  # and checked here, before any change; a secret the contract names and the envelope lacks stops the stage in
+  # workload-secret-env.rb. No value is printed.
+  : "${ENVELOPE_DIR:?the speech stage needs the resealed envelope}"
+  [[ "$(cat "$ENVELOPE_DIR/hubot_sha")" == "${HUBOT_IMAGE##*:}" ]] ||
+    { echo '::error::the resealed envelope is for another prism-hubot commit than hubot_sha' >&2; exit 1; }
   hubot_secrets="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb prism-hubot | sed -n 's/^secrets=//p')"
   [[ "$hubot_secrets" =~ ^[A-Za-z0-9+/=]+$ ]] || { echo '::error::cannot resolve the secrets prism-hubot'"'"'s contract names' >&2; exit 1; }
-  secrets_age="$RUNNER_TEMP/hubot-secrets.age"
+  secrets_age="$ENVELOPE_DIR/secrets.age"
   secrets_source="$RUNNER_TEMP/hubot-secrets.env"
-  secret_files+=("$secrets_age" "$secrets_source")
-  cid="$(docker create "$envelope_ref" /envelope)"
-  docker cp "$cid:/secrets.age" "$secrets_age"
-  docker rm "$cid" >/dev/null
+  secret_files+=("$secrets_source")
   test -s "$secrets_age"
   age --decrypt --identity "$IDENTITY" --output "$secrets_source" "$secrets_age"
   hubot_secret_env="$(WORKLOAD=prism-hubot WORKLOAD_SECRETS="$hubot_secrets" WORKLOAD_SECRET_SOURCE_FILE="$secrets_source" \

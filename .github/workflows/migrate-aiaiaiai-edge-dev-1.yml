@@ -46,6 +46,10 @@ on:
         description: Full commit SHA of the prism-ai image (the TTS service) to run (speech)
         required: false
         type: string
+      envelope_run_id:
+        description: Run id of "Reseal prism-hubot envelope for edge-dev-1" for hubot_sha (speech)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -72,6 +76,7 @@ jobs:
       HUB_SHA: ${{ inputs.hub_sha }}
       HUBOT_SHA: ${{ inputs.hubot_sha }}
       TTS_SHA: ${{ inputs.tts_sha }}
+      ENVELOPE_RUN_ID: ${{ inputs.envelope_run_id }}
       SSH_PORT: ${{ vars.SSH_PORT || '22' }}
     steps:
       - name: Require explicit confirmation and valid inputs
@@ -84,6 +89,7 @@ jobs:
           fi
           if [[ "$OPERATION" == speech ]]; then
             [[ "$HUBOT_SHA" =~ ^[0-9a-f]{40}$ && "$TTS_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::hubot_sha and tts_sha must be full commit SHAs' >&2; exit 1; }
+            [[ "$ENVELOPE_RUN_ID" =~ ^[0-9]{6,20}$ ]] || { echo '::error::envelope_run_id must be a run id' >&2; exit 1; }
             exit 0
           fi
           [[ "$EXPORT_RUN_ID" =~ ^[0-9]{6,20}$ ]] || { echo '::error::export_run_id must be a run id' >&2; exit 1; }
@@ -159,6 +165,15 @@ jobs:
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/export-in
 
+      - name: Download the resealed prism-hubot envelope
+        if: inputs.operation == 'speech'
+        uses: actions/download-artifact@v4
+        with:
+          name: hubot-envelope-${{ inputs.envelope_run_id }}
+          run-id: ${{ inputs.envelope_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/envelope-in
+
       - name: Check the export, then run the stage
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -177,12 +192,12 @@ jobs:
           fi
           SSH_DIR="$RUNNER_TEMP/migrate-ssh" EXPORT_DIR="$RUNNER_TEMP/export-in" IDENTITY="$identity" \
             HUB_IMAGE="ghcr.io/aiaiaiai-org/prism-hub:$HUB_SHA" HUBOT_IMAGE="ghcr.io/aiaiaiai-org/prism-hubot:$HUBOT_SHA" TTS_IMAGE="ghcr.io/aiaiaiai-org/prism-ai:$TTS_SHA" \
-            GHCR_USER="$GITHUB_ACTOR" \
+            GHCR_USER="$GITHUB_ACTOR" ENVELOPE_DIR="$RUNNER_TEMP/envelope-in" \
             bash deploy/aiaiaiai-edge-dev-1/migrate.sh "$OPERATION"
 
       - name: Remove temporary material
         if: always()
-        run: rm -rf "${RUNNER_TEMP:?}/migrate-ssh" "${RUNNER_TEMP:?}/export-in"
+        run: rm -rf "${RUNNER_TEMP:?}/migrate-ssh" "${RUNNER_TEMP:?}/export-in" "${RUNNER_TEMP:?}/envelope-in"
 
   route:
     name: Route api.aiaiaiai.org on the existing ingress

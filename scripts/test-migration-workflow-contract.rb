@@ -62,12 +62,20 @@ speech = migrate[/^elif \[\[ "\$stage" == speech \]\]; then\n.*?^else\n/m] or ab
 tts_contract = File.read(File.join(ROOT, "contracts", "services", "prism-ai-tts.yaml"))
 check(workflow_text.include?("speech") && workflow_text.include?("tts_sha") && workflow_text.include?("TTS_IMAGE="), "the speech stage is wired in the workflow")
 check(speech.index("pinned_verified_image \"$TTS_IMAGE\"") < speech.index("deploy_workload") && speech.index("pinned_verified_image \"$HUBOT_IMAGE\"") < speech.index("deploy_workload"), "both images are verified before anything changes")
-check(speech.index('pinned_verified_image "$HUBOT_IMAGE.secrets"') < speech.index("deploy_workload") && speech.index("workload-secret-env.rb") < speech.index("deploy_workload"), "hubot's attested envelope is verified and its secrets derived before anything changes")
+check(speech.index('"$ENVELOPE_DIR/hubot_sha"') < speech.index("deploy_workload") && speech.index("workload-secret-env.rb") < speech.index("deploy_workload"), "the resealed envelope is bound to hubot_sha and its secrets derived before anything changes")
 check(speech.include?('| remote "cd \'$dir\' && cat >> .env') && !speech.match?(/remote "[^\n]*\$hubot_secret_env/), "the secrets travel on stdin, never in a command line")
 check(speech.include?('::add-mask::$hubot_secret_env'), "the derived secret environment is masked in the log")
 check(speech.include?("Speech::Configuration.build(ENV)") && speech.include?("voice.call("), "the stage proves the voice end to end from inside hubot")
 check(!speech.include?("open_item") && !workflow_text[/operation != 'hubot-credential' && inputs.operation != 'speech'/].nil?, "the speech stage needs no migration export")
 check(!tts_contract.match?(/^\s*public:/) && !tts_contract.match?(/^\s*secrets:/), "the TTS service has no public route and no secret")
 check(tts_contract.include?("mode: manual"), "the TTS service is released only on purpose")
+
+reseal = File.read(File.join(ROOT, ".github", "workflows", "reseal-hubot-envelope-edge-dev-1.yml"))
+check(reseal.include?("name: edge-dev-1") && reseal.include?("name: edge-prod-2"), "the reseal reads edge-dev-1's public key and opens with edge-prod-2's deploy key")
+check(reseal.include?("gh attestation verify") && reseal.include?("--signer-workflow aiaiaiai-org/prism-hubot/.github/workflows/publish.yml"), "the envelope's provenance is verified before it is opened")
+check(reseal.match?(/age --decrypt --identity "\$key" [^\n]*\| age --recipient "\$RECIPIENT" --output/), "plaintext lives only in the pipe between the two age calls")
+check(!reseal.match?(/age --decrypt[^|\n]*--output/), "the envelope is never decrypted to a file")
+check(reseal.include?("is not the key edge-prod-2's contract publishes"), "the opening key is proved to be the contract's recipient")
+check(reseal.include?("retention-days: 1") && !reseal.include?("ssh -") && !reseal.include?("scp "), "the artifact is short-lived ciphertext and no server is contacted")
 
 puts "migration workflow boundaries are valid"
