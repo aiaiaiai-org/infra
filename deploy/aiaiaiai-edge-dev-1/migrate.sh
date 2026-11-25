@@ -208,26 +208,42 @@ RUBY
   hub_credential keep "$new_id" >/dev/null
   echo "ok  earlier credentials of prism-hubot revoked"
 elif [[ "$stage" == speech ]]; then
-  # Both images are verified before anything is changed.
+  # Both images and hubot's secret envelope are verified before anything is changed.
   tts_ref="$(pinned_verified_image "$TTS_IMAGE" aiaiaiai-org/prism-ai)"
   hubot_ref="$(pinned_verified_image "$HUBOT_IMAGE" aiaiaiai-org/prism-hubot)"
   dir=.local/share/aiaiaiai-infra/workloads/prism-hubot
   remote "test \"\$(docker inspect -f '{{.State.Running}}' prism-hubot)\" = true"
   remote "cd '$dir' && test -s .env"
-  # Hubot refuses to start with a URL and no key, so prove the installed configuration holds the AIS key
-  # first. Names only: no secret value leaves the server.
-  names="$(remote "cd '$dir' && sed -n 's/^WORKLOAD_SECRET_ENV=//p' .env | base64 -d | cut -d= -f1")"
-  grep -Fxq PRISM_HUBOT_AIS_PRIVATE_KEY <<<"$names" ||
-    { echo '::error::prism-hubot has no PRISM_HUBOT_AIS_PRIVATE_KEY installed; export, then run the hubot stage with the key in the production Environment' >&2; exit 1; }
+  # Hubot's secrets come from the attested envelope its own publish workflow sealed for this commit (the
+  # same one Deploy workload uses), never from the old export: the envelope holds the AIS key, the export
+  # predates it. Everything is derived and checked here, before any change; a secret the contract names and
+  # the envelope lacks stops the stage in workload-secret-env.rb. No value is printed.
+  envelope_ref="$(pinned_verified_image "$HUBOT_IMAGE.secrets" aiaiaiai-org/prism-hubot)"
+  hubot_secrets="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb prism-hubot | sed -n 's/^secrets=//p')"
+  [[ "$hubot_secrets" =~ ^[A-Za-z0-9+/=]+$ ]] || { echo '::error::cannot resolve the secrets prism-hubot'"'"'s contract names' >&2; exit 1; }
+  secrets_age="$RUNNER_TEMP/hubot-secrets.age"
+  secrets_source="$RUNNER_TEMP/hubot-secrets.env"
+  secret_files+=("$secrets_age" "$secrets_source")
+  cid="$(docker create "$envelope_ref" /envelope)"
+  docker cp "$cid:/secrets.age" "$secrets_age"
+  docker rm "$cid" >/dev/null
+  test -s "$secrets_age"
+  age --decrypt --identity "$IDENTITY" --output "$secrets_source" "$secrets_age"
+  hubot_secret_env="$(WORKLOAD=prism-hubot WORKLOAD_SECRETS="$hubot_secrets" WORKLOAD_SECRET_SOURCE_FILE="$secrets_source" \
+    WORKLOAD_SECRETS_FROM='' WORKLOAD_PRODUCER_ENVIRONMENT='' ruby scripts/workload-secret-env.rb)"
+  [[ "$hubot_secret_env" =~ ^[A-Za-z0-9+/=]+$ ]] || { echo '::error::the envelope produced no usable secret environment' >&2; exit 1; }
+  echo "::add-mask::$hubot_secret_env"
 
   deploy_workload prism-ai-tts "$tts_ref"
   check_through_ingress prism-ai-tts 1927 /healthz
 
-  # Hubot's configuration is the contract's environment, re-resolved, with its installed secrets kept.
+  # Hubot's configuration is the contract's environment, re-resolved, with the secrets from its envelope.
   hubot_environment="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb prism-hubot | sed -n 's/^environment=//p')"
   [[ "$hubot_environment" =~ ^[A-Za-z0-9+/=]+$ ]] || { echo '::error::cannot resolve hubot'"'"'s contract environment' >&2; exit 1; }
   tar -C deploy/workload -czf - deploy.sh | remote "tar -xzf - -C '$dir'"
-  remote "cd '$dir' && sed -i -e 's|^IMAGE_REF=.*|IMAGE_REF=$hubot_ref|' -e 's|^WORKLOAD_ENVIRONMENT=.*|WORKLOAD_ENVIRONMENT=$hubot_environment|' .env && grep -Fxq 'IMAGE_REF=$hubot_ref' .env && grep -Fxq 'WORKLOAD_ENVIRONMENT=$hubot_environment' .env"
+  remote "cd '$dir' && sed -i -e '/^WORKLOAD_SECRET_ENV=/d' -e 's|^IMAGE_REF=.*|IMAGE_REF=$hubot_ref|' -e 's|^WORKLOAD_ENVIRONMENT=.*|WORKLOAD_ENVIRONMENT=$hubot_environment|' .env && grep -Fxq 'IMAGE_REF=$hubot_ref' .env && grep -Fxq 'WORKLOAD_ENVIRONMENT=$hubot_environment' .env"
+  # The secrets travel on stdin, never in a command line.
+  printf 'WORKLOAD_SECRET_ENV=%s\n' "$hubot_secret_env" | remote "cd '$dir' && cat >> .env && test \"\$(grep -c '^WORKLOAD_SECRET_ENV=' .env)\" = 1"
   remote "cd '$dir' && DEPLOY_MODE=validate bash ./deploy.sh"
   remote "cd '$dir' && DEPLOY_MODE=activate bash ./deploy.sh"
   check_through_ingress prism-hubot 1927 /healthz
