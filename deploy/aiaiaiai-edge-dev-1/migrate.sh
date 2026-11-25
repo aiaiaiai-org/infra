@@ -15,6 +15,8 @@
 # Environment: SSH_HOST SSH_USER SSH_PORT SSH_DIR (id_ed25519 and known_hosts) EXPORT_DIR IDENTITY
 #              HUB_IMAGE HUBOT_IMAGE (image references without a digest) GH_TOKEN GHCR_USER
 set -Eeuo pipefail
+# A failing command inside $(...) must stop the script too (Bash clears -e there by default).
+shopt -s inherit_errexit
 umask 077
 
 stage="${1:-}"
@@ -32,7 +34,21 @@ upload() { scp -q "${ssh_opts[@]}" -P "$SSH_PORT" "$1" "$SSH_USER@$SSH_HOST:$2";
 open_item() { age -d -i "$IDENTITY" "$EXPORT_DIR/$1.age"; }
 
 secret_files=()
-cleanup() { for file in "${secret_files[@]}"; do rm -f "$file"; done; }
+abandon_id=""
+# Runs deploy/aiaiaiai-edge-dev-1/issue-hubot-credential.rb inside the hub: issue | keep ID | abandon ID.
+hub_credential() {
+  local mode="$1" id="${2:-}"
+  [[ -z "$id" || "$id" =~ ^[0-9a-f-]{36}$ ]] || { echo '::error::malformed credential id' >&2; return 1; }
+  remote "docker exec -i -e HUBOT_CREDENTIAL_MODE=$mode -e HUBOT_CREDENTIAL_ID=$id prism-hub bin/rails runner 'eval(\$stdin.read)'" \
+    <deploy/aiaiaiai-edge-dev-1/issue-hubot-credential.rb
+}
+cleanup() {
+  local status=$?
+  # A credential issued by this run that was not proved is revoked again, so none is left behind.
+  if [[ -n "$abandon_id" ]]; then hub_credential abandon "$abandon_id" >/dev/null 2>&1 || echo "::warning::could not revoke the unproved issue $abandon_id" >&2; fi
+  for file in "${secret_files[@]}"; do rm -f "$file"; done
+  return "$status"
+}
 trap cleanup EXIT
 
 remote 'test "$(hostname)" = edge-dev-1 && test "$(id -un)" = deploy'
@@ -118,18 +134,24 @@ check_through_ingress() {
   return 1
 }
 
-# The image is pinned and its provenance proved before it is run.
+# The image is pinned and its provenance proved before it is run. Every failure here returns non-zero
+# explicitly, and callers resolve the image in a checked assignment BEFORE anything is changed.
 pinned_verified_image() {
-  local image="$1" repository="$2" digest
-  digest="$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}' | ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch("digest")')"
-  [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::cannot resolve the digest of $image" >&2; exit 1; }
+  local image="$1" repository="$2" digest manifest
+  manifest="$(docker buildx imagetools inspect "$image" --format '{{json .Manifest}}')" || return 1
+  digest="$(printf '%s' "$manifest" | ruby -rjson -e 'puts JSON.parse(STDIN.read).fetch("digest")')" || return 1
+  [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::cannot resolve the digest of $image" >&2; return 1; }
   local name="${image%:*}"
   gh attestation verify "oci://$name@$digest" --repo "$repository" \
-    --signer-workflow "$repository/.github/workflows/publish.yml" >/dev/null
+    --signer-workflow "$repository/.github/workflows/publish.yml" >/dev/null || {
+    echo "::error::the provenance of $name@$digest could not be verified" >&2
+    return 1
+  }
   echo "$name@$digest"
 }
 
 if [[ "$stage" == data ]]; then
+  hub_ref="$(pinned_verified_image "$HUB_IMAGE" aiaiaiai-org/prism-hub)"
   deploy_workload prism-postgres "ignored-contract-pins-it"
 
   for _ in $(seq 1 30); do
@@ -148,20 +170,28 @@ if [[ "$stage" == data ]]; then
     echo "prism_hub already holds $tables tables; not restoring it again"
   fi
 
-  deploy_workload prism-hub "$(pinned_verified_image "$HUB_IMAGE" aiaiaiai-org/prism-hub)"
+  deploy_workload prism-hub "$hub_ref"
   check_through_ingress prism-hub 1927 /healthz
 elif [[ "$stage" == hubot-credential ]]; then
+  # Nothing is issued or changed until the image is verified and the hub is up.
+  hubot_ref="$(pinned_verified_image "$HUBOT_IMAGE" aiaiaiai-org/prism-hubot)"
   remote "test \"\$(docker inspect -f '{{.State.Running}}' prism-hub)\" = true"
+
   issued="$RUNNER_TEMP/hubot-issued.out"
   token_file="$RUNNER_TEMP/hubot-hub-token"
   secret_files+=("$issued" "$token_file")
-  # The script runs inside the hub; only its one ISSUED_TOKEN line is kept, in a file and in masking.
-  remote "docker exec -i prism-hub bin/rails runner 'eval(\$stdin.read)'" <deploy/aiaiaiai-edge-dev-1/issue-hubot-credential.rb >"$issued"
-  [[ "$(grep -c '^ISSUED_TOKEN=prism_client_v1_' "$issued")" == 1 ]] || { echo '::error::the hub did not return exactly one credential' >&2; exit 1; }
+  # The script runs inside the hub. Issuing does NOT revoke: the credential the running prism-hubot uses
+  # stays valid until the new one has been proved.
+  hub_credential issue >"$issued"
+  [[ "$(grep -c '^ISSUED_TOKEN=prism_client_v1_' "$issued")" == 1 && "$(grep -c '^ISSUED_ID=' "$issued")" == 1 ]] ||
+    { echo '::error::the hub did not return exactly one credential' >&2; exit 1; }
+  new_id="$(sed -n 's/^ISSUED_ID=//p' "$issued")"
+  [[ "$new_id" =~ ^[0-9a-f-]{36}$ ]] || { echo '::error::the issued credential id is malformed' >&2; exit 1; }
+  abandon_id="$new_id" # revoked again by the exit trap unless the proof below succeeds
   sed -n 's/^ISSUED_TOKEN=//p' "$issued" >"$token_file"
   echo "::add-mask::$(cat "$token_file")"
 
-  HUB_TOKEN_FILE="$token_file" deploy_workload prism-hubot "$(pinned_verified_image "$HUBOT_IMAGE" aiaiaiai-org/prism-hubot)"
+  HUB_TOKEN_FILE="$token_file" deploy_workload prism-hubot "$hubot_ref"
   check_through_ingress prism-hubot 1927 /healthz
 
   # Proof that matters: the token now inside the container is accepted by the hub (200, not 401).
@@ -176,7 +206,13 @@ RUBY
 )"
   [[ "$status" == 200 ]] || { echo "::error::the hub answered $status to prism-hubot's credential, not 200" >&2; exit 1; }
   echo "ok  the hub accepts prism-hubot's credential (200 on /api/v1/channels)"
+
+  # Only now is the superseded credential revoked, and the new one is no longer to be abandoned.
+  abandon_id=""
+  hub_credential keep "$new_id" >/dev/null
+  echo "ok  earlier credentials of prism-hubot revoked"
 else
+  hubot_ref="$(pinned_verified_image "$HUBOT_IMAGE" aiaiaiai-org/prism-hubot)"
   volume=prism-hubot-state
   entries="$(remote "docker run --rm --network none -v $volume:/v:ro caddy:2-alpine sh -c 'ls -A /v | wc -l'")"
   if [[ "$entries" == 0 ]]; then
@@ -186,6 +222,7 @@ else
     echo "$volume already holds $entries entries; not restoring it again"
   fi
 
-  deploy_workload prism-hubot "$(pinned_verified_image "$HUBOT_IMAGE" aiaiaiai-org/prism-hubot)"
+  deploy_workload prism-hubot "$hubot_ref"
   check_through_ingress prism-hubot 1927 /healthz
+  echo "::warning::this deployed the export's PRISM_HUB_API_TOKEN, which the Hub does not accept; run hubot-credential next"
 fi
