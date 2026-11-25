@@ -14,6 +14,14 @@ set -a
 source .env
 set +a
 
+hub_token_env=()
+if [[ "${WORKLOAD:-}" == prism-hubot && -e .hub-token ]]; then
+  IFS= read -r PRISM_HUB_API_TOKEN < .hub-token
+  [[ "$PRISM_HUB_API_TOKEN" =~ ^prism_client_v1_[A-Za-z0-9_-]{43}$ ]] || { echo 'invalid persisted Hub credential' >&2; exit 1; }
+  export PRISM_HUB_API_TOKEN
+  hub_token_env=(--env PRISM_HUB_API_TOKEN)
+fi
+
 mode="${DEPLOY_MODE:-validate}"
 workload="${WORKLOAD:-}"
 image_ref="${IMAGE_REF:-}"
@@ -163,7 +171,7 @@ if [[ "$mode" == "rollback" ]]; then
     --network-alias "$alias_name" \
     --restart unless-stopped \
     --security-opt no-new-privileges:true \
-    --env-file "$environment_file" \
+    --env-file "$environment_file" "${hub_token_env[@]}" \
     "$previous_image" "${workload_command[@]}" >/dev/null
   echo "workload $workload rolled back to $previous_image"
   exit 0
@@ -197,7 +205,7 @@ docker run --detach \
   --log-driver json-file \
   --log-opt max-size=10m \
   --log-opt max-file=3 \
-  --env-file "$environment_file" \
+  --env-file "$environment_file" "${hub_token_env[@]}" \
   "$image_ref" "${workload_command[@]}" >/dev/null
 
 # An HTTP workload is healthy when its health path answers; a TCP one (a database) when its port
@@ -248,7 +256,7 @@ if [[ "$healthy" != "1" ]]; then
       --log-driver json-file \
       --log-opt max-size=10m \
       --log-opt max-file=3 \
-      --env-file "$environment_file" \
+      --env-file "$environment_file" "${hub_token_env[@]}" \
       "$current_image" "${workload_command[@]}" >/dev/null
     echo "rolled back $workload to $current_image" >&2
   fi

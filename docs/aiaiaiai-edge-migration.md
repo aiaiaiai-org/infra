@@ -57,12 +57,17 @@ against its manifest again before anything uses it, and secrets reach the contai
 | `route-validate` | proves the `api.aiaiaiai.org` route on the live ingress without changing it |
 | `route-activate` | appends the route to the live Caddy file (everything that was there stays byte for byte), reloads, requires nilx.one to stay healthy or restores the old file, then waits for TLS on `api.aiaiaiai.org` |
 | `hubot` | restores `prism-hubot-state` when empty, then prism-hubot, which registers its Telegram webhook and command menu on start |
+| `hubot-credential` | gives prism-hubot a credential the Hub accepts: provisions the `prism-hubot` principal (least privilege), issues a fresh credential, redeploys prism-hubot with it and requires the Hub to answer 200 to it. Earlier credentials are revoked after proof |
 | `route-rollback` | restores the ingress file from before the route |
 
-Order: `data`, `route-validate`, `route-activate`, `hubot`. The route comes before hubot because Telegram checks
+Order: `data`, `hubot`, `route-validate`, `route-activate` (the route needs both backends running), then `hubot-credential`. The route comes before hubot because Telegram checks
 the webhook's TLS when the bot registers it. It reuses the one public Caddy (never a second), and its candidate is
 validated in CI together with the live file. `prism-hub` and `prism-hubot` are set to manual delivery so that
 nothing keeps deploying them to edge-prod-2. edge-prod-2 is left running and untouched until the new core is
 verified; the contracts still place these workloads on it, and a later change moves them for good.
+
+### Hubot credential on edge-dev-1
+
+After the initial Hubot deployment, dispatch `hubot-credential` with the verified Hubot commit SHA. It reuses the installed workload configuration and needs no export. The deploy account stores the token in a mode-0600 file in Hubot's private workload directory. Activation and rollback on this host use that token, including producer-triggered deployments using this deploy script. If rotation stops after the file is installed, rerun the stage. Earlier credentials remain valid until the Hub confirms the new one. A replacement server needs a fresh bootstrap and credential.
 
 <!-- © 2026 aiaiaiai · aiaiaiai.org -->

@@ -13,6 +13,8 @@ name: Migrate aiaiaiai core to edge-dev-1
 #   route-activate add the route (certificate included); restores the old file if nilx.one is hurt
 #   hubot          prism-hubot, which registers its Telegram webhook and command menu on start
 #   route-rollback restore the ingress file from before the route
+#   hubot-credential  give prism-hubot a Hub credential (principal, least privilege, fresh token) and
+#                  redeploy from the installed workload configuration; no migration export required
 
 on:
   workflow_dispatch:
@@ -21,7 +23,7 @@ on:
         description: Stage to run
         required: true
         type: choice
-        options: [data, route-validate, route-activate, hubot, route-rollback]
+        options: [data, route-validate, route-activate, hubot, hubot-credential, route-rollback]
       confirmation:
         description: Type MIGRATE to run the stage on edge-dev-1
         required: true
@@ -51,7 +53,7 @@ concurrency:
 jobs:
   workload:
     name: Workloads (data, hubot)
-    if: github.ref == 'refs/heads/master' && (inputs.operation == 'data' || inputs.operation == 'hubot')
+    if: github.ref == 'refs/heads/master' && (inputs.operation == 'data' || inputs.operation == 'hubot' || inputs.operation == 'hubot-credential')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
@@ -69,6 +71,10 @@ jobs:
         run: |
           set -Eeuo pipefail
           test "$CONFIRMATION" = MIGRATE || { echo '::error::type MIGRATE to continue' >&2; exit 1; }
+          if [[ "$OPERATION" == hubot-credential ]]; then
+            [[ "$HUBOT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::hubot_sha must be a full commit SHA' >&2; exit 1; }
+            exit 0
+          fi
           [[ "$EXPORT_RUN_ID" =~ ^[0-9]{6,20}$ ]] || { echo '::error::export_run_id must be a run id' >&2; exit 1; }
           [[ "$HUB_SHA" =~ ^[0-9a-f]{40}$ && "$HUBOT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::hub_sha and hubot_sha must be full commit SHAs' >&2; exit 1; }
 
@@ -134,6 +140,7 @@ jobs:
         run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin >/dev/null
 
       - name: Download the sealed export
+        if: inputs.operation != 'hubot-credential'
         uses: actions/download-artifact@v4
         with:
           name: aiaiaiai-migration-export-${{ inputs.export_run_id }}
@@ -154,7 +161,9 @@ jobs:
           printf '%s\n' "$SSH_PRIVATE_KEY" > "$identity"
           trap 'rm -f "${RUNNER_TEMP:?}/migrate-identity"' EXIT
           # The export must still open with this identity and match its manifest before anything uses it.
-          ruby scripts/verify-export.rb "$RUNNER_TEMP/export-in" "$identity" > /dev/null
+          if [[ "$OPERATION" != hubot-credential ]]; then
+            ruby scripts/verify-export.rb "$RUNNER_TEMP/export-in" "$identity" > /dev/null
+          fi
           SSH_DIR="$RUNNER_TEMP/migrate-ssh" EXPORT_DIR="$RUNNER_TEMP/export-in" IDENTITY="$identity" \
             HUB_IMAGE="ghcr.io/aiaiaiai-org/prism-hub:$HUB_SHA" HUBOT_IMAGE="ghcr.io/aiaiaiai-org/prism-hubot:$HUBOT_SHA" \
             GHCR_USER="$GITHUB_ACTOR" \

@@ -284,6 +284,7 @@ jobs:
           docker run --rm -v "$RUNNER_TEMP/ingress-with-api.Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
           cmp -s -n "$(stat -c %s deploy/nilx-public-edge/Caddyfile)" deploy/nilx-public-edge/Caddyfile "$RUNNER_TEMP/ingress-with-api.Caddyfile"
           ruby scripts/test-migration-workflow-contract.rb
+          ruby scripts/test-migrate-verification.rb
 
       - name: Validate workload placement resolver
         run: |
