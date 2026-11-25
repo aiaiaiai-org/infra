@@ -51,4 +51,11 @@ check(route.include?("healthy_nilx") && route.scan("healthy_nilx").length >= 4, 
 check(snippet.scan(/^[a-z0-9.-]+ \{/).sort == ["api.aiaiaiai.org {"], "the snippet adds exactly one host")
 check(!snippet.match?(/nilx\.one|aiaiaiai\.org,/), "the snippet touches no other host")
 
+issue = File.read(File.join(ROOT, "deploy", "aiaiaiai-edge-dev-1", "issue-hubot-credential.rb"))
+check(workflow_text.include?("hubot-credential") && migrate.include?("hubot-credential"), "the credential stage is wired in the workflow and the script")
+check(issue.scan(/^puts /).length == 1 && issue.include?('puts "ISSUED_TOKEN='), "the issuing script prints exactly one line, the token")
+check(!issue.match?(/publications:|alert_subscriptions:/), "prism-hubot is not granted publications or alert subscriptions")
+check(issue.include?("channel_ids: []"), "prism-hubot is granted no channels")
+check(migrate.include?("replace it with the fresh one") && migrate.include?("the hub accepts prism-hubot's credential"), "the stage swaps the token and proves the hub accepts it")
+
 puts "migration workflow boundaries are valid"

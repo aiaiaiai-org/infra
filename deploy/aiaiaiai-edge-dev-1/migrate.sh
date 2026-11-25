@@ -8,6 +8,9 @@
 #
 #   migrate.sh data    prism-postgres (database restored from the export), then prism-hub
 #   migrate.sh hubot   prism-hubot (its state volume restored from the export)
+#   migrate.sh hubot-credential
+#                      give prism-hubot a Hub credential and redeploy it with that token (run again
+#                      after any other deployment of prism-hubot: that one brings the old token back)
 #
 # Environment: SSH_HOST SSH_USER SSH_PORT SSH_DIR (id_ed25519 and known_hosts) EXPORT_DIR IDENTITY
 #              HUB_IMAGE HUBOT_IMAGE (image references without a digest) GH_TOKEN GHCR_USER
@@ -15,7 +18,7 @@ set -Eeuo pipefail
 umask 077
 
 stage="${1:-}"
-case "$stage" in data | hubot) ;; *) echo 'usage: migrate.sh data|hubot' >&2; exit 2 ;; esac
+case "$stage" in data | hubot | hubot-credential) ;; *) echo 'usage: migrate.sh data|hubot|hubot-credential' >&2; exit 2 ;; esac
 : "${SSH_HOST:?}" "${SSH_USER:?}" "${SSH_PORT:?}" "${SSH_DIR:?}" "${EXPORT_DIR:?}" "${IDENTITY:?}"
 : "${HUB_IMAGE:?}" "${HUBOT_IMAGE:?}" "${GH_TOKEN:?}" "${GHCR_USER:?}" "${RUNNER_TEMP:?}"
 
@@ -72,6 +75,20 @@ deploy_workload() {
     local cred_file="$RUNNER_TEMP/credentials-$workload.env" secret_env
     secret_files+=("$cred_file")
     open_item secrets | ruby scripts/export-credentials-env.rb "$workload" >"$cred_file"
+    # The export's token for prism-hubot is not one the Hub issued; replace it with the fresh one.
+    if [[ "$workload" == prism-hubot && -n "${HUB_TOKEN_FILE:-}" ]]; then
+      HUB_TOKEN_FILE="$HUB_TOKEN_FILE" ruby -e '
+        token = File.read(ENV.fetch("HUB_TOKEN_FILE")).strip
+        abort "the issued Hub token is malformed" unless token.match?(/\Aprism_client_v1_[A-Za-z0-9_-]{43}\z/)
+        path = ARGV.fetch(0)
+        lines = File.readlines(path, chomp: true)
+        hits = 0
+        lines.map! { |line| line.start_with?("PRISM_HUB_API_TOKEN=") ? (hits += 1; "PRISM_HUB_API_TOKEN=#{token}") : line }
+        abort "expected exactly one PRISM_HUB_API_TOKEN line, found #{hits}" unless hits == 1
+        File.write(path, lines.join("\n") + "\n")
+        $stderr.puts "::add-mask::#{token}"
+      ' "$cred_file"
+    fi
     secret_env="$(WORKLOAD="$workload" WORKLOAD_SECRETS="${r[secrets]}" WORKLOAD_SECRET_SOURCE_FILE="$cred_file" \
       WORKLOAD_SECRETS_FROM='' WORKLOAD_PRODUCER_ENVIRONMENT='' ruby scripts/workload-secret-env.rb)"
     printf 'WORKLOAD_SECRET_ENV=%s\n' "$secret_env" >>"$env_file"
@@ -133,6 +150,32 @@ if [[ "$stage" == data ]]; then
 
   deploy_workload prism-hub "$(pinned_verified_image "$HUB_IMAGE" aiaiaiai-org/prism-hub)"
   check_through_ingress prism-hub 1927 /healthz
+elif [[ "$stage" == hubot-credential ]]; then
+  remote "test \"\$(docker inspect -f '{{.State.Running}}' prism-hub)\" = true"
+  issued="$RUNNER_TEMP/hubot-issued.out"
+  token_file="$RUNNER_TEMP/hubot-hub-token"
+  secret_files+=("$issued" "$token_file")
+  # The script runs inside the hub; only its one ISSUED_TOKEN line is kept, in a file and in masking.
+  remote "docker exec -i prism-hub bin/rails runner 'eval(\$stdin.read)'" <deploy/aiaiaiai-edge-dev-1/issue-hubot-credential.rb >"$issued"
+  [[ "$(grep -c '^ISSUED_TOKEN=prism_client_v1_' "$issued")" == 1 ]] || { echo '::error::the hub did not return exactly one credential' >&2; exit 1; }
+  sed -n 's/^ISSUED_TOKEN=//p' "$issued" >"$token_file"
+  echo "::add-mask::$(cat "$token_file")"
+
+  HUB_TOKEN_FILE="$token_file" deploy_workload prism-hubot "$(pinned_verified_image "$HUBOT_IMAGE" aiaiaiai-org/prism-hubot)"
+  check_through_ingress prism-hubot 1927 /healthz
+
+  # Proof that matters: the token now inside the container is accepted by the hub (200, not 401).
+  status="$(remote 'docker exec -i prism-hubot ruby -' <<'RUBY'
+require "net/http"
+uri = URI("#{ENV.fetch("PRISM_HUB_BASE_URL")}/api/v1/channels")
+request = Net::HTTP::Get.new(uri)
+request["authorization"] = "Bearer #{ENV.fetch("PRISM_HUB_API_TOKEN")}"
+response = Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", open_timeout: 10, read_timeout: 15) { |http| http.request(request) }
+print response.code
+RUBY
+)"
+  [[ "$status" == 200 ]] || { echo "::error::the hub answered $status to prism-hubot's credential, not 200" >&2; exit 1; }
+  echo "ok  the hub accepts prism-hubot's credential (200 on /api/v1/channels)"
 else
   volume=prism-hubot-state
   entries="$(remote "docker run --rm --network none -v $volume:/v:ro caddy:2-alpine sh -c 'ls -A /v | wc -l'")"

@@ -13,6 +13,8 @@ name: Migrate aiaiaiai core to edge-dev-1
 #   route-activate add the route (certificate included); restores the old file if nilx.one is hurt
 #   hubot          prism-hubot, which registers its Telegram webhook and command menu on start
 #   route-rollback restore the ingress file from before the route
+#   hubot-credential  give prism-hubot a Hub credential (principal, least privilege, fresh token) and
+#                  redeploy it with that token; repeat after any other deployment of prism-hubot
 
 on:
   workflow_dispatch:
@@ -21,7 +23,7 @@ on:
         description: Stage to run
         required: true
         type: choice
-        options: [data, route-validate, route-activate, hubot, route-rollback]
+        options: [data, route-validate, route-activate, hubot, hubot-credential, route-rollback]
       confirmation:
         description: Type MIGRATE to run the stage on edge-dev-1
         required: true
@@ -51,7 +53,7 @@ concurrency:
 jobs:
   workload:
     name: Workloads (data, hubot)
-    if: github.ref == 'refs/heads/master' && (inputs.operation == 'data' || inputs.operation == 'hubot')
+    if: github.ref == 'refs/heads/master' && (inputs.operation == 'data' || inputs.operation == 'hubot' || inputs.operation == 'hubot-credential')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
