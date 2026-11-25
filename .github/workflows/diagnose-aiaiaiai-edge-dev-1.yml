@@ -68,6 +68,16 @@ jobs:
           remote 'docker exec prism-hubot bundle exec rake telegram:webhook_status' 2>&1 | redact || true
           echo '== commands Telegram serves'
           remote 'docker exec prism-hubot bundle exec rake telegram:commands_status' 2>&1 | redact || true
+          echo '== hubot credential as the hub sees it (booleans and counts only, no values)'
+          remote 'bash -s' <<'REMOTE' 2>&1 | redact || true
+          set -Eeuo pipefail
+          shape=$(docker exec prism-hubot ruby -e 'print(ENV["PRISM_HUB_API_TOKEN"].to_s.match?(/\Aprism_client_v1_[A-Za-z0-9_-]{43}\z/) ? "client-credential" : (ENV["PRISM_HUB_API_TOKEN"].to_s.empty? ? "empty" : "other-shape"))')
+          echo "hubot token shape: $shape"
+          digest=$(docker exec prism-hubot ruby -rdigest -e 'print Digest::SHA256.hexdigest(ENV["PRISM_HUB_API_TOKEN"].to_s)')
+          sql="select count(*) as credentials, count(*) filter (where token_digest='$digest') as matching, count(*) filter (where token_digest='$digest' and revoked_at is not null) as matching_revoked, count(*) filter (where token_digest='$digest' and expires_at is not null and expires_at <= now()) as matching_expired from client_credentials"
+          docker exec prism-postgres psql -U prism_hub -d prism_hub -c "$sql"
+          docker exec prism-postgres psql -U prism_hub -d prism_hub -c "select p.identifier, p.status, (c.token_digest='$digest') as is_hubot_token, c.revoked_at is not null as revoked, c.expires_at from client_credentials c join service_principals p on p.id=c.service_principal_id order by p.identifier"
+          REMOTE
           echo '== log tail'
           remote 'docker logs --tail 80 prism-hubot' 2>&1 | redact || true
 
