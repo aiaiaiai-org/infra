@@ -182,3 +182,28 @@ Environments and is used only inside **Deploy workload**. That is all infra
 holds. Producers that still
 send `repository_dispatch` with a token keep working until they migrate; after
 migration, delete their token secrets.
+
+## The 0x1 Telegram runtime
+
+The Telegram login host (`nilx-one/core`) and `@nilxone_bot` (`nilx-one/bot`)
+run on edge-dev-1 as static binaries, not images, so they have their own
+workflow: **Deliver 0x1 Telegram runtime to edge-dev-1**. It follows the same
+rules as above:
+
+- every 15 minutes (and on dispatch) it reads both `master` heads and takes
+  the binaries only from the successful push run of `Full CI`
+  (`full-ci.yml`) and `Rust CI` (`rust.yml`) for exactly those commits;
+- `gh attestation verify` checks each binary against its repository, signer
+  workflow, `refs/heads/master` and commit, on a GitHub-hosted runner;
+- the release is the digest of its `SHA256SUMS`; the last one is recorded as
+  a GitHub deployment in `delivery/telegram-runtime`, and a recorded release
+  is not redelivered or retried without `force`;
+- only then does a job in the `edge-dev-1` Environment, which alone holds the
+  SSH credentials, stage the release and run
+  `deploy/telegram-runtime/upgrade.sh`.
+
+`upgrade.sh` keeps each running container's image, network, volumes and
+environment, including the bot token, and swaps only the binary. A service
+whose binary is unchanged is not restarted, so a Core-only change leaves the
+bot polling. A failed readiness check restores the previous container. The
+first activation stays with **Activate 0x1 Telegram runtime on edge-dev-1**.

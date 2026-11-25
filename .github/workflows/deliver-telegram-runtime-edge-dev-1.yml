@@ -1,0 +1,247 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Deliver 0x1 Telegram runtime to edge-dev-1
+
+# Pull-based, like Reconcile deliveries: nilx-one/bot and nilx-one/core hold no
+# credential for Infra. A merge to bot/master (or core/master) builds and
+# attests the binary there; the next scheduled run here verifies the
+# attestation for exactly the branch head and upgrades edge-dev-1. The SSH
+# credentials stay in this repository's edge-dev-1 Environment.
+
+on:
+  schedule:
+    # Every 15 minutes, offset from Reconcile deliveries. Best effort.
+    - cron: '2,17,32,47 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Deliver even if this release was already delivered or failed
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+  deployments: write
+
+concurrency:
+  group: stage-telegram-runtime-edge-dev-1
+  cancel-in-progress: false
+
+env:
+  DELIVERY_ENVIRONMENT: delivery/telegram-runtime
+
+jobs:
+  plan:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      deliver: ${{ steps.decide.outputs.deliver }}
+      release: ${{ steps.bundle.outputs.release }}
+      bot_sha: ${{ steps.fetch.outputs.bot_sha }}
+      core_sha: ${{ steps.fetch.outputs.core_sha }}
+    steps:
+      - name: Fetch and verify the attested master builds
+        id: fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          out="$RUNNER_TEMP/telegram-runtime"
+          install -d -m 0700 "$out"
+          # The successful push run of `workflow` for exactly the master head,
+          # or nothing while CI is still running or failed.
+          resolve() {
+            local repo=$1 workflow=$2 sha
+            sha=$(gh api "repos/$repo/commits/master" --jq .sha)
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 1
+            run=$(gh api "repos/$repo/actions/workflows/$workflow/runs?branch=master&event=push&head_sha=$sha&status=success&per_page=1" \
+              --jq '.workflow_runs[0].id // empty')
+            echo "$sha $run"
+          }
+          # Called outside any condition, so `set -e` stops on every failed check.
+          fetch() {
+            local repo=$1 workflow=$2 prefix=$3 binary=$4 sha=$5 run=$6 artifact id digest
+            artifact=$(gh api "repos/$repo/actions/runs/$run/artifacts?name=$prefix-$sha" | jq -ce --arg name "$prefix-$sha" '
+              [.artifacts[] | select(.expired == false and .name == $name)] |
+              select(length == 1) | .[0] | select(.digest | test("^sha256:[0-9a-f]{64}$"))')
+            id=$(jq -er '.id | tostring | select(test("^[0-9]+$"))' <<<"$artifact")
+            digest=$(jq -er '.digest | sub("^sha256:"; "")' <<<"$artifact")
+            gh api "repos/$repo/actions/artifacts/$id/zip" > "$out/$binary.zip"
+            printf '%s  %s\n' "$digest" "$out/$binary.zip" | sha256sum -c --quiet -
+            test "$(unzip -Z1 "$out/$binary.zip")" = "$binary"
+            unzip -p "$out/$binary.zip" "$binary" > "$out/$binary"
+            rm -f "$out/$binary.zip"
+            gh attestation verify "$out/$binary" --repo "$repo" \
+              --signer-workflow "$repo/.github/workflows/$workflow" \
+              --source-ref refs/heads/master --source-digest "$sha" --deny-self-hosted-runners >/dev/null
+            echo "Verified $binary from $repo@$sha."
+          }
+          read -r bot_sha bot_run < <(resolve nilx-one/bot full-ci.yml)
+          read -r core_sha core_run < <(resolve nilx-one/core rust.yml)
+          [[ "$bot_sha" =~ ^[0-9a-f]{40}$ && "$core_sha" =~ ^[0-9a-f]{40}$ ]]
+          if [[ ! "${bot_run:-}" =~ ^[0-9]+$ || ! "${core_run:-}" =~ ^[0-9]+$ ]]; then
+            echo "::notice::A master head has no successful CI run yet (bot ${bot_sha:0:12}, core ${core_sha:0:12}); nothing to deliver."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          fetch nilx-one/bot full-ci.yml nilx-one-bot nilx-one-bot "$bot_sha" "$bot_run"
+          fetch nilx-one/core rust.yml core-telegram-login-host nilxone-telegram-login-host "$core_sha" "$core_run"
+          { echo "bot_sha=$bot_sha"; echo "core_sha=$core_sha"; echo "ready=true"; } >> "$GITHUB_OUTPUT"
+
+      - name: Build the release bundle
+        id: bundle
+        if: steps.fetch.outputs.ready == 'true'
+        run: |
+          set -Eeuo pipefail
+          cd "$RUNNER_TEMP/telegram-runtime"
+          chmod 0755 nilx-one-bot nilxone-telegram-login-host
+          sha256sum nilxone-telegram-login-host nilx-one-bot > SHA256SUMS
+          tar -cf bundle.tar nilxone-telegram-login-host nilx-one-bot SHA256SUMS
+          echo "release=$(sha256sum SHA256SUMS | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Compare with the last delivery
+        id: decide
+        if: steps.fetch.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force || false }}
+          RELEASE: ${{ steps.bundle.outputs.release }}
+        run: |
+          set -Eeuo pipefail
+          environment=$(jq -rn --arg e "$DELIVERY_ENVIRONMENT" '$e | @uri')
+          last=$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=$environment&per_page=1" --jq '.[0] // empty')
+          deliver=true
+          if [[ -n "$last" && "$FORCE" != true ]]; then
+            id=$(jq -r .id <<<"$last")
+            state=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses?per_page=1" --jq '.[0].state // "pending"')
+            if [[ "$(jq -r '.payload.release // ""' <<<"$last")" == "$RELEASE" ]]; then
+              echo "::notice::Release $RELEASE was already delivered ($state); dispatch with force to retry."
+              deliver=false
+            fi
+          fi
+          echo "deliver=$deliver" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the verified bundle for delivery
+        if: steps.decide.outputs.deliver == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-runtime-${{ steps.bundle.outputs.release }}
+          path: ${{ runner.temp }}/telegram-runtime/bundle.tar
+          retention-days: 7
+          if-no-files-found: error
+
+  deliver:
+    needs: plan
+    if: needs.plan.outputs.deliver == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: edge-dev-1
+      deployment: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE: ${{ needs.plan.outputs.release }}
+      BOT_SHA: ${{ needs.plan.outputs.bot_sha }}
+      CORE_SHA: ${{ needs.plan.outputs.core_sha }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+      SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: telegram-runtime-${{ needs.plan.outputs.release }}
+          path: ${{ runner.temp }}/telegram-runtime
+
+      - name: Record delivery
+        id: record
+        run: |
+          set -Eeuo pipefail
+          [[ "$RELEASE" =~ ^[0-9a-f]{64}$ && "$BOT_SHA" =~ ^[0-9a-f]{40}$ && "$CORE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          tar -xOf "$RUNNER_TEMP/telegram-runtime/bundle.tar" SHA256SUMS | sha256sum | grep -q "^$RELEASE "
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          jq -n --arg ref "$GITHUB_SHA" --arg environment "$DELIVERY_ENVIRONMENT" --arg release "$RELEASE" \
+            --arg bot "$BOT_SHA" --arg core "$CORE_SHA" --arg run "$run_url" \
+            '{ref: $ref, environment: $environment, auto_merge: false, required_contexts: [],
+              transient_environment: false, production_environment: false,
+              description: ("bot " + $bot[0:12] + ", core " + $core[0:12]),
+              payload: {release: $release, bot_sha: $bot, core_sha: $core, run: $run}}' > "$RUNNER_TEMP/deployment.json"
+          id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/deployments" --input "$RUNNER_TEMP/deployment.json" --jq .id)
+          [[ "$id" =~ ^[0-9]+$ ]]
+          gh api -X POST "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" -f state=in_progress -f log_url="$run_url" >/dev/null
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Validate pinned target and prepare SSH
+        run: |
+          set -Eeuo pipefail
+          test "$SSH_HOST" = 158.220.74.54
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          (( SSH_PORT >= 1 && SSH_PORT <= 65535 ))
+          dir="$RUNNER_TEMP/telegram-runtime-ssh"
+          install -d -m 0700 "$dir"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$dir/id_ed25519"
+          chmod 600 "$dir/id_ed25519"
+          ssh-keygen -y -P '' -f "$dir/id_ed25519" >/dev/null
+          if [[ "$SSH_PORT" == 22 ]]; then label="$SSH_HOST"; else label="[$SSH_HOST]:$SSH_PORT"; fi
+          printf '%s %s\n' "$label" "$SSH_HOST_ED25519_PUBKEY" > "$dir/known_hosts"
+          chmod 600 "$dir/known_hosts"
+
+      - name: Stage the release and upgrade the running services
+        run: |
+          set -Eeuo pipefail
+          dir="$RUNNER_TEMP/telegram-runtime-ssh"
+          cp deploy/telegram-runtime/upgrade.sh "$RUNNER_TEMP/telegram-runtime/upgrade.sh"
+          tar -C "$RUNNER_TEMP/telegram-runtime" -rf "$RUNNER_TEMP/telegram-runtime/bundle.tar" upgrade.sh
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$dir/known_hosts" -o ConnectTimeout=10 \
+            -i "$dir/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" '
+              set -eu
+              test "$(hostname)" = edge-dev-1
+              test "$(id -un)" = deploy
+              test "$(uname -m)" = x86_64
+              umask 077
+              root="$HOME/.local/share/aiaiaiai-infra/telegram-runtime"
+              install -d -m 0700 "$root"
+              staging="$(mktemp -d "$root/.stage.XXXXXXXX")"
+              trap '\''rm -rf -- "$staging"'\'' EXIT
+              tar -xf - -C "$staging" -- nilxone-telegram-login-host nilx-one-bot SHA256SUMS upgrade.sh
+              mv "$staging/upgrade.sh" "$root/.upgrade-$$.sh"
+              trap '\''rm -rf -- "$staging" "$root/.upgrade-$$.sh"'\'' EXIT
+              cd "$staging"
+              sha256sum -c --quiet SHA256SUMS
+              chmod 0755 nilxone-telegram-login-host nilx-one-bot
+              release="$(sha256sum SHA256SUMS | cut -d " " -f 1)"
+              cd "$root"
+              if [ -d "$root/$release" ]; then
+                (cd "$root/$release" && sha256sum -c --quiet "$staging/SHA256SUMS")
+              else
+                mv -T "$staging" "$root/$release"
+              fi
+              bash "$root/.upgrade-$$.sh" "$root/$release"
+            ' < "$RUNNER_TEMP/telegram-runtime/bundle.tar"
+
+      - name: Settle delivery
+        if: always() && steps.record.outputs.id != ''
+        env:
+          DEPLOYMENT_ID: ${{ steps.record.outputs.id }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          set -Eeuo pipefail
+          state=failure; [[ "$OUTCOME" == success ]] && state=success
+          gh api -X POST "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses" \
+            -f state="$state" -f log_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
+          echo "Delivery $DEPLOYMENT_ID: $state"
+
+      - name: Remove ephemeral SSH key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/telegram-runtime-ssh"
