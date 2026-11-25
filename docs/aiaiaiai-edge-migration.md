@@ -57,7 +57,7 @@ against its manifest again before anything uses it, and secrets reach the contai
 | `route-validate` | proves the `api.aiaiaiai.org` route on the live ingress without changing it |
 | `route-activate` | appends the route to the live Caddy file (everything that was there stays byte for byte), reloads, requires nilx.one to stay healthy or restores the old file, then waits for TLS on `api.aiaiaiai.org` |
 | `hubot` | restores `prism-hubot-state` when empty, then prism-hubot, which registers its Telegram webhook and command menu on start |
-| `hubot-credential` | gives prism-hubot a credential the Hub accepts: provisions the `prism-hubot` principal (least privilege), issues a fresh credential, redeploys prism-hubot with it and requires the Hub to answer 200 to it. The previous credential is revoked only after that proof; an unproved new one is revoked again |
+| `hubot-credential` | gives prism-hubot a credential the Hub accepts: provisions the `prism-hubot` principal (least privilege), issues a fresh credential, redeploys prism-hubot with it and requires the Hub to answer 200 to it. Earlier credentials are revoked after proof |
 | `route-rollback` | restores the ingress file from before the route |
 
 Order: `data`, `hubot`, `route-validate`, `route-activate` (the route needs both backends running), then `hubot-credential`. The route comes before hubot because Telegram checks
@@ -66,18 +66,8 @@ validated in CI together with the live file. `prism-hub` and `prism-hubot` are s
 nothing keeps deploying them to edge-prod-2. edge-prod-2 is left running and untouched until the new core is
 verified; the contracts still place these workloads on it, and a later change moves them for good.
 
-### prism-hubot's Hub credential is a bridge, not the end state
+### Hubot credential on edge-dev-1
 
-The export's `PRISM_HUB_API_TOKEN` for prism-hubot is not a credential the Hub issued (the old release never went
-live), so the `hubot` stage deploys a bot the Hub answers with 401. `hubot-credential` repairs that for the running
-container only:
-
-- any later deployment of prism-hubot (the `hubot` stage, Deploy workload, an automatic delivery) brings the export's
-  token back, so run `hubot-credential` again after it;
-- it needs the sealed export, which expires three days after its run (artifact retention); run *Export aiaiaiai
-  edge for migration* again while the old server still answers, or the stage cannot start;
-- the supported end state is a Hub credential held as `PRISM_HUB_API_TOKEN` in the `production` Environment of
-  `aiaiaiai-org/prism-hubot`, issued once for the `prism-hubot` principal, after which delivery carries it by itself
-  and this stage is no longer needed. That Environment is the producer's to change, not infra's.
+After the initial Hubot deployment, dispatch `hubot-credential` with the verified Hubot commit SHA. It reuses the installed workload configuration and needs no export. The deploy account stores the token in a mode-0600 file in Hubot's private workload directory. Activation and rollback on this host use that token, including producer-triggered deployments using this deploy script. If rotation stops after the file is installed, rerun the stage. Earlier credentials remain valid until the Hub confirms the new one. A replacement server needs a fresh bootstrap and credential.
 
 <!-- © 2026 aiaiaiai · aiaiaiai.org -->

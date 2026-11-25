@@ -74,13 +74,30 @@ check(!script.match?(/deploy_workload \S+ "\$\(pinned_verified_image/), "no stag
 credential_stage = script[/elif \[\[ "\$stage" == hubot-credential \]\].*?^else$/m] or abort("FAIL: no hubot-credential stage")
 index = ->(needle) { credential_stage.index(needle) or abort("FAIL: #{needle} is missing from the credential stage") }
 check(index.call("pinned_verified_image") < index.call("hub_credential issue"), "the image is verified before a credential is issued")
-check(index.call("hub_credential issue") < index.call("deploy_workload"), "the credential is issued before the deployment")
+check(index.call("hub_credential issue") < index.call("DEPLOY_MODE=activate"), "the credential is issued before the deployment")
 check(index.call("answered $status") < index.call("hub_credential keep"), "earlier credentials are revoked only after the hub accepted the new one")
-check(index.call('abandon_id="$new_id"') < index.call("deploy_workload") && index.call('abandon_id=""') > index.call("answered $status"),
-  "an issued credential is revoked again on every failure path until proved")
+check(index.call('abandon_id=""') < index.call("mv -f .hub-token.next .hub-token"), "an installed credential stays valid across interruption")
 
 issue = File.read(File.join(ROOT, "deploy", "aiaiaiai-edge-dev-1", "issue-hubot-credential.rb"))
 issue_branch = issue[/when "issue".*?when "keep"/m]
 check(!issue_branch.include?("revoke"), "issuing never revokes")
+
+# Exercise credential selection in a fresh shell with the same stale input as a redeploy.
+deploy = File.read(File.join(ROOT, "deploy/workload/deploy.sh"))
+selection = deploy[/^hub_token_env=\(\)\n.*?^fi$/m] or abort("missing Hub token selection")
+Dir.mktmpdir do |dir|
+  fresh = "prism_client_v1_" + "x" * 43
+  check_token = lambda do |workload, expected|
+    env = {"WORKLOAD" => workload, "PRISM_HUB_API_TOKEN" => "from-export", "EXPECTED" => expected}
+    Open3.capture3(env, "bash", "-ec", selection + "\n" + '[[ "$PRISM_HUB_API_TOKEN" == "$EXPECTED" ]]', chdir: dir).last.success?
+  end
+  check(check_token.call("prism-hubot", "from-export"), "bootstrap uses its input")
+  File.write(File.join(dir, ".hub-token"), fresh + "\n")
+  check(check_token.call("prism-hubot", fresh), "redeployment selects persisted credential")
+  check(check_token.call("prism-hub", "from-export"), "other workloads retain their input")
+  File.write(File.join(dir, ".hub-token"), "invalid\n")
+  check(!check_token.call("prism-hubot", "from-export"), "invalid persisted credential stops deployment")
+end
+check(deploy.lines.grep(/--env-file "\$environment_file"/).all? { |line| line.include?('"${hub_token_env[@]}"') }, "activation and rollback pass the selected credential")
 
 puts "migration verification and rotation order are valid"

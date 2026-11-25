@@ -9,8 +9,7 @@
 #   migrate.sh data    prism-postgres (database restored from the export), then prism-hub
 #   migrate.sh hubot   prism-hubot (its state volume restored from the export)
 #   migrate.sh hubot-credential
-#                      give prism-hubot a Hub credential and redeploy it with that token (run again
-#                      after any other deployment of prism-hubot: that one brings the old token back)
+#                      persist a Hub credential on the target and redeploy with the existing workload configuration
 #
 # Environment: SSH_HOST SSH_USER SSH_PORT SSH_DIR (id_ed25519 and known_hosts) EXPORT_DIR IDENTITY
 #              HUB_IMAGE HUBOT_IMAGE (image references without a digest) GH_TOKEN GHCR_USER
@@ -91,20 +90,6 @@ deploy_workload() {
     local cred_file="$RUNNER_TEMP/credentials-$workload.env" secret_env
     secret_files+=("$cred_file")
     open_item secrets | ruby scripts/export-credentials-env.rb "$workload" >"$cred_file"
-    # The export's token for prism-hubot is not one the Hub issued; replace it with the fresh one.
-    if [[ "$workload" == prism-hubot && -n "${HUB_TOKEN_FILE:-}" ]]; then
-      HUB_TOKEN_FILE="$HUB_TOKEN_FILE" ruby -e '
-        token = File.read(ENV.fetch("HUB_TOKEN_FILE")).strip
-        abort "the issued Hub token is malformed" unless token.match?(/\Aprism_client_v1_[A-Za-z0-9_-]{43}\z/)
-        path = ARGV.fetch(0)
-        lines = File.readlines(path, chomp: true)
-        hits = 0
-        lines.map! { |line| line.start_with?("PRISM_HUB_API_TOKEN=") ? (hits += 1; "PRISM_HUB_API_TOKEN=#{token}") : line }
-        abort "expected exactly one PRISM_HUB_API_TOKEN line, found #{hits}" unless hits == 1
-        File.write(path, lines.join("\n") + "\n")
-        $stderr.puts "::add-mask::#{token}"
-      ' "$cred_file"
-    fi
     secret_env="$(WORKLOAD="$workload" WORKLOAD_SECRETS="${r[secrets]}" WORKLOAD_SECRET_SOURCE_FILE="$cred_file" \
       WORKLOAD_SECRETS_FROM='' WORKLOAD_PRODUCER_ENVIRONMENT='' ruby scripts/workload-secret-env.rb)"
     printf 'WORKLOAD_SECRET_ENV=%s\n' "$secret_env" >>"$env_file"
@@ -191,7 +176,16 @@ elif [[ "$stage" == hubot-credential ]]; then
   sed -n 's/^ISSUED_TOKEN=//p' "$issued" >"$token_file"
   echo "::add-mask::$(cat "$token_file")"
 
-  HUB_TOKEN_FILE="$token_file" deploy_workload prism-hubot "$hubot_ref"
+  dir=.local/share/aiaiaiai-infra/workloads/prism-hubot
+  remote "cd '$dir' && test -s .env"
+  tar -C deploy/workload -czf - deploy.sh | remote "tar -xzf - -C '$dir'"
+  # From this point an interrupted SSH call may have installed the candidate.
+  # Keep it valid for retries. Earlier credentials remain valid until proof.
+  abandon_id=""
+  remote "cd '$dir' && umask 077 && cat > .hub-token.next && mv -f .hub-token.next .hub-token" <"$token_file"
+  remote "cd '$dir' && sed -i 's|^IMAGE_REF=.*|IMAGE_REF=$hubot_ref|' .env && grep -Fxq 'IMAGE_REF=$hubot_ref' .env"
+  remote "cd '$dir' && DEPLOY_MODE=validate bash ./deploy.sh"
+  remote "cd '$dir' && DEPLOY_MODE=activate bash ./deploy.sh"
   check_through_ingress prism-hubot 1927 /healthz
 
   # Proof that matters: the token now inside the container is accepted by the hub (200, not 401).
@@ -224,5 +218,5 @@ else
 
   deploy_workload prism-hubot "$hubot_ref"
   check_through_ingress prism-hubot 1927 /healthz
-  echo "::warning::this deployed the export's PRISM_HUB_API_TOKEN, which the Hub does not accept; run hubot-credential next"
+  remote "cd .local/share/aiaiaiai-infra/workloads/prism-hubot && test -s .hub-token" || echo "::notice::run hubot-credential to provision Hub access"
 fi

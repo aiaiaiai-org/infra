@@ -42,7 +42,7 @@ check(!migrate.match?(/docker run[^\n]*(?:\s-p\s|--publish)/) && !migrate.includ
 check(migrate.include?("pinned_verified_image") && migrate.include?("gh attestation verify"), "images are pinned and verified")
 check(migrate.include?("test \"$(hostname)\" = edge-dev-1"), "the script refuses any other host")
 check(!migrate.match?(/\becho\b[^\n]*(?:secret|credential|token)[^\n]*\$/i), "no secret value is echoed")
-check(migrate.scan("DEPLOY_MODE=validate").length == 1 && migrate.scan("DEPLOY_MODE=activate").length == 1, "validate before activate")
+check(migrate.scan("DEPLOY_MODE=validate").length == 2 && migrate.scan("DEPLOY_MODE=activate").length == 2, "validate before activate")
 
 check(route.include?("never binds 80/443 twice"), "the route reuses the existing ingress")
 check(!route.match?(/docker run[^\n]*(?:-p |--publish)/) && !route.include?("--network host"), "no second public Caddy")
@@ -56,6 +56,6 @@ check(workflow_text.include?("hubot-credential") && migrate.include?("hubot-cred
 check(issue.scan(/^\s*puts /).length == 2 && issue.include?('puts "ISSUED_TOKEN=') && issue.include?('puts "ISSUED_ID='), "the issuing script prints only the credential id and token, and only when issuing")
 check(!issue.match?(/publications:|alert_subscriptions:/), "prism-hubot is not granted publications or alert subscriptions")
 check(issue.include?("channel_ids: []"), "prism-hubot is granted no channels")
-check(migrate.include?("replace it with the fresh one") && migrate.include?("the hub accepts prism-hubot's credential"), "the stage swaps the token and proves the hub accepts it")
+check(migrate.include?("mv -f .hub-token.next .hub-token") && migrate.include?("the hub accepts prism-hubot's credential"), "the stage swaps the token and proves the hub accepts it")
 
 puts "migration workflow boundaries are valid"
