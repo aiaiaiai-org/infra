@@ -19,6 +19,9 @@ spec:
       - PRISM_HUB_BASE_URL=https://api.aiaiaiai.org/prism-hub
       - PRISM_HUBOT_WEBHOOK_URL=https://api.aiaiaiai.org/prism-hubot/telegram/webhook
       - PRISM_HUBOT_INTERACTION_STATE_DIR=/data/interaction-state
+      # Whisper's voice. The TTS service is private to this server's Docker network (no public route).
+      - PRISM_HUBOT_TTS_URL=http://prism-ai-tts:1927/v1/speech
+      - PRISM_HUBOT_AIS_CLIENT_ID=prism-hubot
     # Values are prism-hubot's and reach the container only in its sealed envelope.
     secrets:
       # ENV_NAME=SECRET_NAME: the right side is the name in prism-hubot's `production` Environment.

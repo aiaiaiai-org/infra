@@ -10,18 +10,20 @@
 #   migrate.sh hubot   prism-hubot (its state volume restored from the export)
 #   migrate.sh hubot-credential
 #                      persist a Hub credential on the target and redeploy with the existing workload configuration
+#   migrate.sh speech  prism-ai-tts (private), then prism-hubot with Whisper's voice configured; proves the whole
+#                      chain (AIS token -> TTS -> Opus) from inside the running hubot; no migration export required
 #
 # Environment: SSH_HOST SSH_USER SSH_PORT SSH_DIR (id_ed25519 and known_hosts) EXPORT_DIR IDENTITY
-#              HUB_IMAGE HUBOT_IMAGE (image references without a digest) GH_TOKEN GHCR_USER
+#              HUB_IMAGE HUBOT_IMAGE TTS_IMAGE (image references without a digest) GH_TOKEN GHCR_USER
 set -Eeuo pipefail
 # A failing command inside $(...) must stop the script too (Bash clears -e there by default).
 shopt -s inherit_errexit
 umask 077
 
 stage="${1:-}"
-case "$stage" in data | hubot | hubot-credential) ;; *) echo 'usage: migrate.sh data|hubot|hubot-credential' >&2; exit 2 ;; esac
+case "$stage" in data | hubot | hubot-credential | speech) ;; *) echo 'usage: migrate.sh data|hubot|hubot-credential|speech' >&2; exit 2 ;; esac
 : "${SSH_HOST:?}" "${SSH_USER:?}" "${SSH_PORT:?}" "${SSH_DIR:?}" "${EXPORT_DIR:?}" "${IDENTITY:?}"
-: "${HUB_IMAGE:?}" "${HUBOT_IMAGE:?}" "${GH_TOKEN:?}" "${GHCR_USER:?}" "${RUNNER_TEMP:?}"
+: "${HUB_IMAGE:?}" "${HUBOT_IMAGE:?}" "${TTS_IMAGE:?}" "${GH_TOKEN:?}" "${GHCR_USER:?}" "${RUNNER_TEMP:?}"
 
 NETWORK=nilx-candidate
 INGRESS=nilx-public-edge-managed
@@ -205,6 +207,42 @@ RUBY
   abandon_id=""
   hub_credential keep "$new_id" >/dev/null
   echo "ok  earlier credentials of prism-hubot revoked"
+elif [[ "$stage" == speech ]]; then
+  # Both images are verified before anything is changed.
+  tts_ref="$(pinned_verified_image "$TTS_IMAGE" aiaiaiai-org/prism-ai)"
+  hubot_ref="$(pinned_verified_image "$HUBOT_IMAGE" aiaiaiai-org/prism-hubot)"
+  dir=.local/share/aiaiaiai-infra/workloads/prism-hubot
+  remote "test \"\$(docker inspect -f '{{.State.Running}}' prism-hubot)\" = true"
+  remote "cd '$dir' && test -s .env"
+  # Hubot refuses to start with a URL and no key, so prove the installed configuration holds the AIS key
+  # first. Names only: no secret value leaves the server.
+  names="$(remote "cd '$dir' && sed -n 's/^WORKLOAD_SECRET_ENV=//p' .env | base64 -d | cut -d= -f1")"
+  grep -Fxq PRISM_HUBOT_AIS_PRIVATE_KEY <<<"$names" ||
+    { echo '::error::prism-hubot has no PRISM_HUBOT_AIS_PRIVATE_KEY installed; export, then run the hubot stage with the key in the production Environment' >&2; exit 1; }
+
+  deploy_workload prism-ai-tts "$tts_ref"
+  check_through_ingress prism-ai-tts 1927 /healthz
+
+  # Hubot's configuration is the contract's environment, re-resolved, with its installed secrets kept.
+  hubot_environment="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb prism-hubot | sed -n 's/^environment=//p')"
+  [[ "$hubot_environment" =~ ^[A-Za-z0-9+/=]+$ ]] || { echo '::error::cannot resolve hubot'"'"'s contract environment' >&2; exit 1; }
+  tar -C deploy/workload -czf - deploy.sh | remote "tar -xzf - -C '$dir'"
+  remote "cd '$dir' && sed -i -e 's|^IMAGE_REF=.*|IMAGE_REF=$hubot_ref|' -e 's|^WORKLOAD_ENVIRONMENT=.*|WORKLOAD_ENVIRONMENT=$hubot_environment|' .env && grep -Fxq 'IMAGE_REF=$hubot_ref' .env && grep -Fxq 'WORKLOAD_ENVIRONMENT=$hubot_environment' .env"
+  remote "cd '$dir' && DEPLOY_MODE=validate bash ./deploy.sh"
+  remote "cd '$dir' && DEPLOY_MODE=activate bash ./deploy.sh"
+  check_through_ingress prism-hubot 1927 /healthz
+
+  # The proof that matters: from inside the running hubot, its own configuration gets an AIS token, the
+  # TTS service speaks, and the audio encodes to Opus. Text is a fixed sentence; nothing is sent to Telegram.
+  proof="$(remote 'docker exec -i prism-hubot bundle exec ruby -Ilib -' <<'RUBY'
+require "prism_hubot"
+voice = PrismHubot::Speech::Configuration.build(ENV) or abort("speech is not configured in the running hubot")
+clip = voice.call("Перевірка озвучення.")
+abort("the clip has no duration") unless clip.duration_seconds.to_i.positive?
+print "#{clip.duration_seconds}s"
+RUBY
+)"
+  echo "ok  Whisper's voice works end to end from inside prism-hubot ($proof of speech)"
 else
   hubot_ref="$(pinned_verified_image "$HUBOT_IMAGE" aiaiaiai-org/prism-hubot)"
   volume=prism-hubot-state

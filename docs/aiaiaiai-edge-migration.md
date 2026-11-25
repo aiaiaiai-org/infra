@@ -58,6 +58,7 @@ against its manifest again before anything uses it, and secrets reach the contai
 | `route-activate` | appends the route to the live Caddy file (everything that was there stays byte for byte), reloads, requires nilx.one to stay healthy or restores the old file, then waits for TLS on `api.aiaiaiai.org` |
 | `hubot` | restores `prism-hubot-state` when empty, then prism-hubot, which registers its Telegram webhook and command menu on start |
 | `hubot-credential` | gives prism-hubot a credential the Hub accepts: provisions the `prism-hubot` principal (least privilege), issues a fresh credential, redeploys prism-hubot with it and requires the Hub to answer 200 to it. Earlier credentials are revoked after proof |
+| `speech` | gives Whisper its voice: deploys `prism-ai-tts` (private, no route), re-resolves prism-hubot's contract environment (`PRISM_HUBOT_TTS_URL`, `PRISM_HUBOT_AIS_CLIENT_ID`) keeping its installed secrets, redeploys prism-hubot, and proves from inside the running hubot that its own configuration gets an AIS token, the TTS service speaks and the audio encodes to Opus |
 | `route-rollback` | restores the ingress file from before the route |
 
 Order: `data`, `hubot`, `route-validate`, `route-activate` (the route needs both backends running), then `hubot-credential`. The route comes before hubot because Telegram checks
@@ -65,6 +66,16 @@ the webhook's TLS when the bot registers it. It reuses the one public Caddy (nev
 validated in CI together with the live file. `prism-hub` and `prism-hubot` are set to manual delivery so that
 nothing keeps deploying them to edge-prod-2. edge-prod-2 is left running and untouched until the new core is
 verified; the contracts still place these workloads on it, and a later change moves them for good.
+
+### Whisper's voice on edge-dev-1
+
+`speech` needs the verified `hubot_sha` and `tts_sha` (the `prism-ai` commit whose `Publish image` run attested the TTS image), and no export. Run it only when, in this order:
+
+1. AIS is released with `prism-hubot` and `prism-ai` registered as product clients (`4x-ais` `deploy/prepare-runtime-env.sh`), or the proof's token request is refused;
+2. prism-hubot's installed configuration already holds `PRISM_HUBOT_AIS_PRIVATE_KEY` (the stage checks the secret **names** on the server before changing anything, and stops if it is missing: export, then run `hubot`);
+3. the images are published and attested.
+
+`prism-ai-tts` has no `public` route on purpose: the live `api.aiaiaiai.org` block is not rewritten by `route.sh`, and prism-hubot reaches the service as `http://prism-ai-tts:1927/v1/speech` on the server's own Docker network (hubot accepts cleartext only for such a single-label alias). Every request still needs an AIS product token with audience `prism-ai` and scope `tts.synthesize`. Everything speech sends to Telegram is a voice note; the proof sends nothing to Telegram.
 
 ### Hubot credential on edge-dev-1
 
