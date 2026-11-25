@@ -1,0 +1,28 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: prism-ai-tts
+  owner: aiaiaiai-org/prism-ai
+spec:
+  deployment: production
+  network: aiaiaiai-edge
+  aliases:
+    - prism-ai-tts
+  protocol: http
+  port: 1927
+  health: /healthz
+  # Private: no `public` route. prism-hubot reaches it as http://prism-ai-tts:1927 on the server's own
+  # Docker network, and every request must carry an AIS product token (audience prism-ai, scope
+  # tts.synthesize). The image holds its engine, its voice and its configuration; there is no secret.
+  runtime:
+    kind: container
+    labels:
+      - org.aiaiaiai.product=prism
+      - org.aiaiaiai.service=prism-ai-tts
+  delivery:
+    # Released on purpose, with an explicit dispatch, like the other workloads of the aiaiaiai core.
+    mode: manual
+    image: ghcr.io/aiaiaiai-org/prism-ai
+    branch: master
+    signerWorkflow: .github/workflows/publish.yml

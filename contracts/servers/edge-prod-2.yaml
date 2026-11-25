@@ -20,6 +20,7 @@ spec:
     - prism-postgres
     - prism-hub
     - prism-hubot
+    - prism-ai-tts
     - h-ua-bot
     - 4x-ais
     - 4x-errors

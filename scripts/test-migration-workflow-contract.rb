@@ -42,7 +42,7 @@ check(!migrate.match?(/docker run[^\n]*(?:\s-p\s|--publish)/) && !migrate.includ
 check(migrate.include?("pinned_verified_image") && migrate.include?("gh attestation verify"), "images are pinned and verified")
 check(migrate.include?("test \"$(hostname)\" = edge-dev-1"), "the script refuses any other host")
 check(!migrate.match?(/\becho\b[^\n]*(?:secret|credential|token)[^\n]*\$/i), "no secret value is echoed")
-check(migrate.scan("DEPLOY_MODE=validate").length == 2 && migrate.scan("DEPLOY_MODE=activate").length == 2, "validate before activate")
+check(migrate.scan("DEPLOY_MODE=validate").length == 3 && migrate.scan("DEPLOY_MODE=activate").length == 3, "validate before activate")
 
 check(route.include?("never binds 80/443 twice"), "the route reuses the existing ingress")
 check(!route.match?(/docker run[^\n]*(?:-p |--publish)/) && !route.include?("--network host"), "no second public Caddy")
@@ -57,5 +57,15 @@ check(issue.scan(/^\s*puts /).length == 2 && issue.include?('puts "ISSUED_TOKEN=
 check(!issue.match?(/publications:|alert_subscriptions:/), "prism-hubot is not granted publications or alert subscriptions")
 check(issue.include?("channel_ids: []"), "prism-hubot is granted no channels")
 check(migrate.include?("mv -f .hub-token.next .hub-token") && migrate.include?("the hub accepts prism-hubot's credential"), "the stage swaps the token and proves the hub accepts it")
+
+speech = migrate[/^elif \[\[ "\$stage" == speech \]\]; then\n.*?^else\n/m] or abort("FAIL: the speech stage is not in migrate.sh")
+tts_contract = File.read(File.join(ROOT, "contracts", "services", "prism-ai-tts.yaml"))
+check(workflow_text.include?("speech") && workflow_text.include?("tts_sha") && workflow_text.include?("TTS_IMAGE="), "the speech stage is wired in the workflow")
+check(speech.index("pinned_verified_image \"$TTS_IMAGE\"") < speech.index("deploy_workload") && speech.index("pinned_verified_image \"$HUBOT_IMAGE\"") < speech.index("deploy_workload"), "both images are verified before anything changes")
+check(speech.index("PRISM_HUBOT_AIS_PRIVATE_KEY") < speech.index("deploy_workload"), "the AIS key is proved installed before anything changes")
+check(speech.include?("Speech::Configuration.build(ENV)") && speech.include?("voice.call("), "the stage proves the voice end to end from inside hubot")
+check(!speech.include?("open_item") && !workflow_text[/operation != 'hubot-credential' && inputs.operation != 'speech'/].nil?, "the speech stage needs no migration export")
+check(!tts_contract.match?(/^\s*public:/) && !tts_contract.match?(/^\s*secrets:/), "the TTS service has no public route and no secret")
+check(tts_contract.include?("mode: manual"), "the TTS service is released only on purpose")
 
 puts "migration workflow boundaries are valid"
