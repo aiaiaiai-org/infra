@@ -75,7 +75,8 @@ Dir.mktmpdir("export-tools") do |dir|
   }, "only declared, non-empty secrets are taken, and a value may contain '='")
   check(document["h-ua-bot"].keys.sort == %w[HUA_DELIVERY_SECRET HUA_HUB_TOKEN HUA_TELEGRAM_TOKEN], "h-ua-bot secrets")
   check(!out.include?("must-not-leak"), "an undeclared variable must not be exported")
-  check(err.include?('prism-hubot: declared=4 exported=3 missing=[] empty=["PRISM_HUB_API_TOKEN"]'), "the report names the empty secret: #{err}")
+  # The contract also names Whisper's AIS key, which the old server never had: reported missing, by name.
+  check(err.include?('prism-hubot: declared=5 exported=3 missing=["PRISM_HUBOT_AIS_PRIVATE_KEY"] empty=["PRISM_HUB_API_TOKEN"]'), "the report names the empty and the missing secret: #{err}")
   report_lines = err.lines.reject { _1.start_with?("::add-mask::") }.join
   %w[tok-123 whs del=with hua dlv must-not-leak].each { |value| check(!report_lines.include?(value), "the report must never show a value (#{value})") }
   check(err.lines.count { _1.start_with?("::add-mask::") } == 6, "every exported value is registered for masking")
