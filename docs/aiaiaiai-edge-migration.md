@@ -89,6 +89,10 @@ still changed only by the reviewed route scripts. Consequences:
   edge-dev-1's recipient from the contract, so the reseal workflow and the migrate stages are no longer needed for new releases.
 - `prism-postgres` is contract-pinned and the others are `manual` (or, for `h-ua-bot`, delivered only by its producer's dispatch), so the
   15-minute schedule starts none of them.
+- `h-ua-bot` is delivered like the others: infra **pulls** its verified master build (`ghcr.io/0x0sky/h-ua-bot`, signer
+  `.github/workflows/publish.yml`) and its attested `<sha>.secrets` envelope, sealed to edge-dev-1's recipient from the contract, with an
+  explicit dispatch of **Reconcile deliveries** for `h-ua-bot`. The producer holds no credential for infra: the old push path
+  (`Deploy production` with an infra token and `repository_dispatch`) is not used on this server.
 - `h-ua-bot` is reached by Prism Hub through `https://api.aiaiaiai.org/hua-bot/`. That path is not in the live ingress yet:
   `route-validate`, then `route-activate`, replace the one `api.aiaiaiai.org` block with the reviewed one (the file's other sites stay
   byte for byte, a failed reload or an unhealthy nilx.one restores the previous file, and `ingress.before-update.Caddyfile` keeps the
