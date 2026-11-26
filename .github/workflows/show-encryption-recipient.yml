@@ -8,12 +8,11 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: Production Environment containing SSH_PRIVATE_KEY
+        description: Environment of a live server containing SSH_PRIVATE_KEY
         required: true
         type: choice
         options:
-          - edge-prod-1
-          - edge-prod-2
+          - edge-dev-1
 
 permissions:
   contents: read

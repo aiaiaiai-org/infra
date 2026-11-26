@@ -68,7 +68,10 @@ Dir.glob(SERVER_GLOB).sort.each do |path|
   abort("#{path}: duplicate server id #{name}") if servers.key?(name)
   fetch!(spec, "role", path)
   state = spec.fetch("state", "active")
-  abort("#{path}: state must be active or provisioning") unless %w[active provisioning].include?(state)
+  # retired: the host is gone. Its contract keeps what was placed there until each
+  # workload moves; nothing is planned or deployed to it (plan-deliveries.rb,
+  # resolve-workload-target.rb).
+  abort("#{path}: state must be active, provisioning or retired") unless %w[active provisioning retired].include?(state)
 
   runtime_root = fetch!(spec, "runtimeRoot", path)
   abort("#{path}: runtimeRoot must be absolute") unless runtime_root.is_a?(String) && runtime_root.start_with?("/")

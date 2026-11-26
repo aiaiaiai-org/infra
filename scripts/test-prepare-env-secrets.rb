@@ -13,6 +13,7 @@ require "open3"
 require "rbconfig"
 require "tmpdir"
 require "yaml"
+require_relative "lib/live_copy"
 
 ROOT = File.expand_path("..", __dir__)
 # The workload whose copy opts in. It shares the shape the mutations below rely on: a
@@ -26,6 +27,10 @@ def in_copy(mutate = nil, opted_in: true)
     FileUtils.mkdir_p(File.join(dir, "scripts"))
     %w[validate-contracts.rb resolve-workload-target.rb].each { |name| FileUtils.cp(File.join(ROOT, "scripts", name), File.join(dir, "scripts", name)) }
     FileUtils.cp_r(File.join(ROOT, "contracts"), File.join(dir, "contracts"))
+    # The resolver refuses a retired server's workloads; this copy runs as if they were live.
+    Dir.glob(File.join(dir, "contracts", "servers", "*.yaml")).each do |server|
+      File.write(server, File.read(server, encoding: "UTF-8").sub(/^  state: retired\n/, ""))
+    end
     path = File.join(dir, FIXTURE_PATH)
     if opted_in
       plain = File.read(path, encoding: "UTF-8")

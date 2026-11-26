@@ -91,11 +91,52 @@ host_ready() {
   return 1
 }
 
+ensure_profile_route() {
+  local ingress=nilx-public-edge-managed
+  local live="$HOME/.local/share/aiaiaiai-infra/nilx-public-edge/Caddyfile"
+  local profile=/api/v1/telegram/profile
+  test "$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' "$ingress")" = "$live" \
+    || fail 'Unexpected Telegram ingress config mount.'
+  cp -p "$live" "$work/previous.Caddyfile"
+  awk -v profile="$profile" '
+    /^nilx[.]one [{]$/ { nilx = 1 }
+    /^}/ { nilx = 0 }
+    nilx && $1 == "@telegram_login" && $2 == "path" {
+      matchers++
+      for (i = 3; i <= NF; i++) {
+        if ($i == "/api/v1/telegram/login/start") start = 1
+        if ($i == "/api/v1/telegram/login/confirm") confirm = 1
+        if ($i == profile) found = 1
+      }
+      if (!found) $0 = $0 " " profile
+    }
+    nilx && $1 == "reverse_proxy" && $2 == "@telegram_login" &&
+      $3 == "nilxone-telegram-login-host:1927" { proxies++ }
+    { print }
+    END { if (matchers != 1 || proxies != 1 || !start || !confirm) exit 1 }
+  ' "$work/previous.Caddyfile" > "$work/candidate.Caddyfile" \
+    || fail 'Expected exactly one Telegram login host route for nilx.one.'
+  if cmp -s "$work/previous.Caddyfile" "$work/candidate.Caddyfile"; then return 0; fi
+
+  docker exec -i "$ingress" caddy validate --adapter caddyfile --config - \
+    < "$work/candidate.Caddyfile" >/dev/null || fail 'Telegram profile ingress validation failed.'
+  cmp -s "$live" "$work/previous.Caddyfile" || fail 'Telegram ingress changed during validation.'
+  # Overwrite in place to retain the inode of the live bind mount.
+  if ! { cat "$work/candidate.Caddyfile" > "$live" &&
+    docker exec "$ingress" caddy reload --config /etc/caddy/Caddyfile >/dev/null; }; then
+    cat "$work/previous.Caddyfile" > "$live"
+    docker exec "$ingress" caddy reload --config /etc/caddy/Caddyfile >/dev/null \
+      || fail 'Could not restore the previous Telegram ingress.'
+    fail 'Could not reload Telegram ingress. The previous route was restored.'
+  fi
+}
+
 bot_ready() {
   sleep 8
   test "$(docker inspect -f '{{.State.Running}} {{.RestartCount}}' "$bot")" = 'true 0'
 }
 
 replace "$host" nilxone-telegram-login-host host_ready
+ensure_profile_route
 replace "$bot" nilx-one-bot bot_ready
 echo "Telegram runtime upgraded to ${release##*/}. Send /login to @nilxone_bot to confirm end to end."
