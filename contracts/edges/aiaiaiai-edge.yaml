@@ -34,11 +34,3 @@ spec:
       service: aiaiaiai-site
       upstream: aiaiaiai-site:1927
       health: /healthz
-    # The aiaiaiai auth identity service (aiaiaiai-org/4x-ais). The whole host,
-    # because its OIDC paths (/authorize, /token, /.well-known/*) have no prefix.
-    - id: 4x-ais
-      host: ${AIAIAIAI_AUTH_DOMAIN}
-      pathPrefix: /
-      service: 4x-ais
-      upstream: 4x-ais:1927
-      health: /healthz

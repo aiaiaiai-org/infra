@@ -29,15 +29,6 @@ else
   echo "aiaiaiai-site workload not deployed; skipping optional website health"
 fi
 
-# The auth identity service (aiaiaiai-org/4x-ais) is released independently and
-# may not exist yet. Same rule as the website: skip only when its container is
-# absent; once present, an unhealthy service fails the verification.
-if docker container inspect 4x-ais >/dev/null 2>&1; then
-  check_upstream 4x-ais http://4x-ais:1927/healthz
-else
-  echo "4x-ais workload not deployed; skipping optional auth health"
-fi
-
 # The error collector (aiaiaiai-org/4x-errors) is released independently as well. Same rule:
 # skip only when its container is absent. Ready, not merely alive: it answers 200 only with
 # its database reachable and its browser origins configured.

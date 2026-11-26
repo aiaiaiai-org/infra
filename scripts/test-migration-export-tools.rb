@@ -88,7 +88,7 @@ Dir.mktmpdir("export-tools") do |dir|
   check(!status.success?, "an invalid workload name must fail")
   _, _, status = run("ruby", "#{ROOT}/scripts/extract-workload-secrets.rb", "prism-hubot", env: {"EXPORT_SSH_ARGV_JSON" => JSON.generate([fake_ssh, "host", "x"])}.merge("PATH" => ENV["PATH"]))
   check(status.success?, "extra ssh argv is allowed (the command is appended)")
-  _, _, status = run("ruby", "#{ROOT}/scripts/extract-workload-secrets.rb", "4x-ais", env: env)
+  _, _, status = run("ruby", "#{ROOT}/scripts/extract-workload-secrets.rb", "aiaiaiai-site", env: env)
   check(!status.success?, "a workload that declares no secrets exports nothing and must fail")
 
   # --- manifest and verification, end to end with real age and tampering

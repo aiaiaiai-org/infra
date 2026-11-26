@@ -163,10 +163,10 @@ jobs:
 
           # Only the secrets each workload contract declares; the report shows names and counts, never values.
           EXPORT_SSH_ARGV_JSON="$(ruby -rjson -e 'puts JSON.generate(ARGV)' "${ssh_argv[@]}")" \
-            ruby scripts/extract-workload-secrets.rb prism-postgres prism-hub prism-hubot h-ua-bot 4x-ais | seal secrets
+            ruby scripts/extract-workload-secrets.rb prism-postgres prism-hub prism-hubot h-ua-bot | seal secrets
 
           # State volumes, read-only, no network, bounded to 256 MiB each.
-          for volume in prism-hubot-state 4x-ais-data; do
+          for volume in prism-hubot-state; do
             size_kb="$(remote "docker run --rm --network none -v $volume:/v:ro caddy:2-alpine du -sk /v" | cut -f1)"
             [[ "$size_kb" =~ ^[0-9]+$ ]] && (( size_kb <= 262144 )) || { echo "::error::volume $volume is missing or larger than 256 MiB" >&2; exit 1; }
             remote "docker run --rm --network none -v $volume:/v:ro caddy:2-alpine tar -C /v -cf - ." | seal "volume-$volume"
