@@ -51,7 +51,7 @@ end
 verify(false, "edgeNetwork must be the network of an edge") do |contract|
   contract["spec"]["state"] = "active"
 end
-verify(false, "state must be active or provisioning") do |contract|
+verify(false, "state must be active, provisioning or retired") do |contract|
   contract["spec"]["state"] = "unknown"
 end
 

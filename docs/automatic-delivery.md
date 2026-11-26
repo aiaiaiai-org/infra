@@ -35,6 +35,34 @@ automatically; dispatch **Reconcile deliveries** with `force` once the cause is
 fixed. Rollbacks stay manual: run **Deploy workload** with the earlier
 verified digest.
 
+### Retired servers
+
+A server contract with `spec.state: retired` describes a host that no longer
+exists. Its `workloads` stay listed only until each moves to a live server, and
+no deployment credential is selected for them:
+
+- **Reconcile deliveries** does not plan them, scheduled, forced or named; its
+  summary says `placed on retired server <name>; not delivered`, instead of
+  failing on SSH to a host that is gone.
+- `scripts/resolve-workload-target.rb` refuses such a workload before it writes
+  anything. **Deploy workload** takes its GitHub Environment (the SSH
+  credentials) only from that resolver, so a manual deploy or a repository
+  dispatch for it stops at the resolve step.
+- `scripts/assert-live-server.rb` refuses a retired or unknown server named
+  directly. **Issue workload encryption recipient** runs it on its by-hand
+  path; **Show workload encryption recipient** offers live servers only.
+- `scripts/test-retired-targets.rb` pins all of this with negative cases, and
+  the contract-shape tests read a retired server's workloads on a copy where it
+  is active (`scripts/lib/live_copy.rb`, `scripts/resolve-on-live-copy.rb`).
+
+`edge-prod-1` and `edge-prod-2` are retired (owner, 2026-11-26): `edge-dev-1` is
+the one VPS, and `4x-ais` is deployed by Railway, not by this repository.
+
+Not covered yet: workflows that name a retired Environment themselves (debug,
+backup, migration, ingress deploy and similar) and the retired servers'
+published `encryptionRecipient`. Each is its own decision, because some are the
+only way to open data sealed to those hosts.
+
 ## Onboarding a producer
 
 1. Add the publish workflow to the producer. It must push the tag above and

@@ -291,7 +291,15 @@ jobs:
       - name: Validate workload placement resolver
         run: |
           set -Eeuo pipefail
-          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb nilxone-web)"
+          # A workload on a retired server must not resolve: no Environment is selected for it.
+          if refused="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb nilxone-web 2>&1)"; then
+            echo "::error::a retired placement resolved"
+            exit 1
+          fi
+          grep -Fq 'placed on retired server edge-prod-1' <<< "$refused"
+          ruby scripts/test-retired-targets.rb
+          # Its contract's shape is still checked, on a copy where its server is active.
+          output="$(ruby scripts/resolve-on-live-copy.rb nilxone-web)"
           grep -Fxq 'target=edge-prod-1' <<< "$output"
           grep -Fxq 'network=nilx-edge' <<< "$output"
           grep -Fxq 'alias=nilxone-web' <<< "$output"
@@ -304,7 +312,7 @@ jobs:
       - name: Validate identity workload contract
         run: |
           set -Eeuo pipefail
-          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb nilxone-identity)"
+          output="$(ruby scripts/resolve-on-live-copy.rb nilxone-identity)"
           grep -Fxq 'target=edge-prod-1' <<< "$output"
           grep -Fxq 'network=nilx-edge' <<< "$output"
           grep -Fxq 'alias=nilxone-identity' <<< "$output"
@@ -381,8 +389,9 @@ jobs:
           test -z "$(sed -n 's/^environment=//p' <<< "$output" | base64 --decode)"
 
 
-          # The 0x1 edge is unchanged: its workloads still land on edge-prod-1 in nilx-edge.
-          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb nilxone-web)"
+          # The 0x1 contracts still place their workloads on edge-prod-1 in nilx-edge (a retired
+          # server: read on a copy where it is active; the real resolver refuses it).
+          output="$(ruby scripts/resolve-on-live-copy.rb nilxone-web)"
           grep -Fxq 'target=edge-prod-1' <<< "$output"
           grep -Fxq 'network=nilx-edge' <<< "$output"
 
@@ -429,7 +438,7 @@ jobs:
 
       - name: Validate website placement
         run: |
-          output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb aiaiaiai-site)"
+          output="$(ruby scripts/resolve-on-live-copy.rb aiaiaiai-site)"
           grep -Fxq 'target=edge-prod-2' <<< "$output"
           grep -Fxq 'network=aiaiaiai-edge' <<< "$output"
           grep -Fxq 'alias=aiaiaiai-site' <<< "$output"

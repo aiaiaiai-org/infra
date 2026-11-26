@@ -6,6 +6,7 @@ require "yaml"
 require "base64"
 require "open3"
 require "tempfile"
+require_relative "lib/live_copy"
 
 root = File.expand_path("..", __dir__)
 read = ->(path) { YAML.safe_load(File.read(File.join(root, path)), aliases: false) }
@@ -39,8 +40,8 @@ workloads.each do |id|
     abort "worker must only access database" unless runtime.fetch("secrets") == ["DATABASE_URL=DATABASE_URL"]
   end
 
-  output, err, result = Open3.capture3({ "GITHUB_OUTPUT" => nil }, "ruby",
-    File.join(root, "scripts/resolve-workload-target.rb"), id)
+  # (On a copy where edge-prod-1 is active: the real resolver refuses a retired server's workloads.)
+  output, err, result = LiveCopy.resolve(root, id)
   abort err unless result.success?
   abort "resolver target drift" unless output.include?("target=edge-prod-1\n")
   expected = command.fetch(id, [])
