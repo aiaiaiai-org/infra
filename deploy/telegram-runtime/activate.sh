@@ -105,7 +105,7 @@ trap cleanup EXIT
 # Preserve other host blocks; reject an ambiguous or already installed route.
 test "$(grep -c '^nilx\.one {$' "$live")" = 1
 if grep -Fq '/api/v1/telegram/login/' "$live"; then fail 'Existing Telegram route requires inspection.'; fi
-awk '/^nilx\.one \{$/ {print; print "    @telegram_login path /api/v1/telegram/login/start /api/v1/telegram/login/confirm /api/v1/telegram/login/callback"; print "    reverse_proxy @telegram_login nilxone-telegram-login-host:1927"; next} {print}' "$live" > "$work/candidate.Caddyfile"
+awk '/^nilx\.one \{$/ {print; print "    @telegram_login path /api/v1/telegram/login/start /api/v1/telegram/login/confirm /api/v1/telegram/login/callback /api/v1/telegram/profile"; print "    reverse_proxy @telegram_login nilxone-telegram-login-host:1927"; next} {print}' "$live" > "$work/candidate.Caddyfile"
 caddy_image=$(docker inspect -f '{{.Image}}' "$ingress")
 docker run --rm --network "$network" --volume "$work/candidate.Caddyfile:/etc/caddy/Caddyfile:ro" "$caddy_image" caddy validate --config /etc/caddy/Caddyfile >/dev/null
 
