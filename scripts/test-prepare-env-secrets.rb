@@ -46,7 +46,12 @@ def run(dir, script, *args)
   Open3.capture2e({ "GITHUB_OUTPUT" => nil }, RbConfig.ruby, File.join(dir, "scripts", script), *args)
 end
 
-# The shipped contracts are valid and none opts in. A copy of one that does is valid too.
+# The shipped contracts are valid and none opts in: every one is read, not a sample. A copy of one
+# that does is valid too.
+opted_in_shipped = Dir.glob(File.join(ROOT, "contracts", "services", "*.yaml")).select do |path|
+  YAML.safe_load(File.read(path, encoding: "UTF-8"), aliases: false).dig("spec", "runtime", "prepareEnvSecrets") == true
+end
+abort("a shipped contract opts in: #{opted_in_shipped.map { |path| File.basename(path) }}") unless opted_in_shipped.empty?
 in_copy(nil, opted_in: false) do |dir|
   output, status = run(dir, "validate-contracts.rb")
   abort("shipped contracts refused:\n#{output}") unless status.success?
