@@ -163,7 +163,7 @@ jobs:
 
           # Only the secrets each workload contract declares; the report shows names and counts, never values.
           EXPORT_SSH_ARGV_JSON="$(ruby -rjson -e 'puts JSON.generate(ARGV)' "${ssh_argv[@]}")" \
-            ruby scripts/extract-workload-secrets.rb prism-postgres prism-hub prism-hubot h-ua-bot 4x-ais 4x-errors | seal secrets
+            ruby scripts/extract-workload-secrets.rb prism-postgres prism-hub prism-hubot h-ua-bot 4x-ais | seal secrets
 
           # State volumes, read-only, no network, bounded to 256 MiB each.
           for volume in prism-hubot-state 4x-ais-data; do

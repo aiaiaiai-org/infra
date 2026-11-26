@@ -22,7 +22,7 @@ Run **Export aiaiaiai edge for migration** (manual, type `EXPORT`). Three jobs:
    while streaming, so no plaintext touches a disk on either server or on the runner:
    - `postgres-globals` (roles) and one `db-<name>` custom-format `pg_dump` per application database;
    - `secrets`: only the environment names each workload contract declares under `spec.runtime.secrets`
-     (`prism-postgres`, `prism-hub`, `prism-hubot`, `h-ua-bot`, `4x-ais`, `4x-errors`). Values are registered for
+     (`prism-postgres`, `prism-hub`, `prism-hubot`, `h-ua-bot`, `4x-ais`). Values are registered for
      log masking first and are never printed; the log shows names and set/empty/missing counts only;
    - `volume-prism-hubot-state` and `volume-4x-ais-data`, read-only and without network, at most 256 MiB each.
    `manifest.json` lists each item's ciphertext and plaintext hash and size. Only the ciphertext and the
@@ -89,7 +89,8 @@ still changed only by the reviewed route scripts. Consequences:
   edge-dev-1's recipient from the contract, so the reseal workflow and the migrate stages are no longer needed for new releases.
 - Every one of the four is `manual` or contract-pinned, so the 15-minute schedule starts none of them.
 - What stays on edge-prod-2 for now: `aiaiaiai-site` (kept as the rollback of the snapshot archive), `h-ua-bot`, `4x-ais`
-  (the live issuer runs in Railway) and `4x-errors`. Each moves, or is retired, in its own change.
+  (the live issuer runs in Railway). Each moves, or is retired, in its own change. `4x-errors` is retired: it is a library that lives
+  inside each product plus a Supabase database, not a service on a server, so it has no workload contract and no route.
 - `backup-prism-postgres` and the diagnostic workflows still name edge-prod-2; they follow in the cleanup change.
 
 ### Hubot credential on edge-dev-1
