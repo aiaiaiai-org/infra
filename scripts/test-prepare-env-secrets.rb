@@ -3,9 +3,10 @@
 # frozen_string_literal: true
 
 # runtime.prepareEnvSecrets: a workload may name its own prepareEnv's runtime.env as its secret
-# environment, so a service that owns its secrets (AIS) generates them on the host instead of
-# taking them from a GitHub Environment or an envelope. Exercises the contract validator, the
-# target resolver and the deploy workflow's wiring against copies of the real files.
+# environment, so a service that owns its secrets generates them on the host instead of taking
+# them from a GitHub Environment or an envelope. No shipped contract opts in (the one that did,
+# 4x-ais, is deployed by Railway now), so the test opts a copy of aiaiaiai-site in and exercises
+# the contract validator, the target resolver and the deploy workflow's wiring against it.
 
 require "fileutils"
 require "open3"
@@ -15,9 +16,13 @@ require "yaml"
 require_relative "lib/live_copy"
 
 ROOT = File.expand_path("..", __dir__)
-AIS = File.join("contracts", "services", "4x-ais.yaml")
+# The workload whose copy opts in. It shares the shape the mutations below rely on: a
+# `runtime:` block of `kind: container` and a `delivery:` block with a `signerWorkflow`.
+FIXTURE = "aiaiaiai-site"
+FIXTURE_PATH = File.join("contracts", "services", "#{FIXTURE}.yaml")
+OPT_IN = "  runtime:\n    kind: container\n    prepareEnv: deploy/prepare-runtime-env.sh\n    prepareEnvSecrets: true\n"
 
-def in_copy(mutate = nil)
+def in_copy(mutate = nil, opted_in: true)
   Dir.mktmpdir("prepare-env-secrets") do |dir|
     FileUtils.mkdir_p(File.join(dir, "scripts"))
     %w[validate-contracts.rb resolve-workload-target.rb].each { |name| FileUtils.cp(File.join(ROOT, "scripts", name), File.join(dir, "scripts", name)) }
@@ -26,8 +31,13 @@ def in_copy(mutate = nil)
     Dir.glob(File.join(dir, "contracts", "servers", "*.yaml")).each do |server|
       File.write(server, File.read(server, encoding: "UTF-8").sub(/^  state: retired\n/, ""))
     end
+    path = File.join(dir, FIXTURE_PATH)
+    if opted_in
+      plain = File.read(path, encoding: "UTF-8")
+      abort("fixture has no plain runtime block to opt in") unless plain.include?("  runtime:\n    kind: container\n")
+      File.write(path, plain.sub("  runtime:\n    kind: container\n", OPT_IN))
+    end
     if mutate
-      path = File.join(dir, AIS)
       original = File.read(path, encoding: "UTF-8")
       changed = mutate.call(original)
       abort("fixture did not change the contract") if changed == original
@@ -41,11 +51,25 @@ def run(dir, script, *args)
   Open3.capture2e({ "GITHUB_OUTPUT" => nil }, RbConfig.ruby, File.join(dir, "scripts", script), *args)
 end
 
-# The shipped contracts are valid. AIS opts in; the others do not.
-in_copy do |dir|
+# The shipped contracts are valid and none opts in: every one is read, not a sample. A copy of one
+# that does is valid too.
+opted_in_shipped = Dir.glob(File.join(ROOT, "contracts", "services", "*.yaml")).select do |path|
+  YAML.safe_load(File.read(path, encoding: "UTF-8"), aliases: false).dig("spec", "runtime", "prepareEnvSecrets") == true
+end
+abort("a shipped contract opts in: #{opted_in_shipped.map { |path| File.basename(path) }}") unless opted_in_shipped.empty?
+in_copy(nil, opted_in: false) do |dir|
   output, status = run(dir, "validate-contracts.rb")
   abort("shipped contracts refused:\n#{output}") unless status.success?
-  { "4x-ais" => "true", "nilxone-identity" => "false", "nilxone-web" => "false" }.each do |workload, expected|
+  [FIXTURE, "nilxone-identity", "nilxone-web"].each do |workload|
+    output, status = run(dir, "resolve-workload-target.rb", workload)
+    abort("#{workload} did not resolve:\n#{output}") unless status.success?
+    abort("#{workload}: no shipped contract opts in\n#{output}") unless output.lines.map(&:chomp).include?("prepare_env_secrets=false")
+  end
+end
+in_copy do |dir|
+  output, status = run(dir, "validate-contracts.rb")
+  abort("an opted-in contract refused:\n#{output}") unless status.success?
+  { FIXTURE => "true", "nilxone-identity" => "false", "nilxone-web" => "false" }.each do |workload, expected|
     output, status = run(dir, "resolve-workload-target.rb", workload)
     abort("#{workload} did not resolve:\n#{output}") unless status.success?
     abort("#{workload}: prepare_env_secrets should be #{expected}\n#{output}") unless output.lines.map(&:chomp).include?("prepare_env_secrets=#{expected}")
@@ -69,13 +93,13 @@ refused("with runtime.secrets", /mutually exclusive/) { |text| text.sub("    pre
 refused("with delivery.envelope", /mutually exclusive/) { |text| text.sub("    signerWorkflow: .github/workflows/publish.yml\n", "    signerWorkflow: .github/workflows/publish.yml\n    envelope:\n      - TOKEN\n") }
 
 in_copy(->(text) { text.sub(/^    prepareEnv: .*\n/, "") }) do |dir|
-  output, status = run(dir, "resolve-workload-target.rb", "4x-ais")
+  output, status = run(dir, "resolve-workload-target.rb", FIXTURE)
   abort("resolver accepted prepareEnvSecrets without prepareEnv") if status.success?
   abort("resolver refused for another reason:\n#{output}") unless output.include?("prepareEnvSecrets needs runtime.prepareEnv")
 end
 
 in_copy(->(text) { text.sub("prepareEnv: deploy/prepare-runtime-env.sh", "prepareEnv: ../escape.sh") }) do |dir|
-  output, status = run(dir, "resolve-workload-target.rb", "4x-ais")
+  output, status = run(dir, "resolve-workload-target.rb", FIXTURE)
   abort("resolver accepted traversing prepareEnv") if status.success?
   abort("resolver refused for another reason:\n#{output}") unless output.include?("relative path inside the source repository")
 end
@@ -94,7 +118,7 @@ remote_body = run_script[/<<'EOF'\n(.*?)\n\s*EOF/m, 1] || abort("remote heredoc 
 Dir.mktmpdir("prepare-remote") do |dir|
   File.write(File.join(dir, "prepare-runtime-env.sh"), "#!/bin/sh\numask 022\necho KEY=val > \"$1\"\n")
   File.write(File.join(dir, "provider.env"), "SECRET=plain\n")
-  output, status = Open3.capture2e("bash", "-s", "--", dir, "4x-ais", "true", stdin_data: remote_body)
+  output, status = Open3.capture2e("bash", "-s", "--", dir, FIXTURE, "true", stdin_data: remote_body)
   abort("remote snippet failed:\n#{output}") unless status.success?
   abort("provider.env left on host") if File.exist?(File.join(dir, "provider.env"))
   abort("prepare-runtime-env.sh left on host") if File.exist?(File.join(dir, "prepare-runtime-env.sh"))
@@ -103,7 +127,7 @@ Dir.mktmpdir("prepare-remote") do |dir|
 
   File.write(File.join(dir, "prepare-runtime-env.sh"), "#!/bin/sh\nexit 1\n")
   File.write(File.join(dir, "provider.env"), "SECRET=plain\n")
-  _output, status = Open3.capture2e("bash", "-s", "--", dir, "4x-ais", "true", stdin_data: remote_body)
+  _output, status = Open3.capture2e("bash", "-s", "--", dir, FIXTURE, "true", stdin_data: remote_body)
   abort("failing prepareEnv succeeded") if status.success?
   abort("provider.env leaked on host after failure") if File.exist?(File.join(dir, "provider.env"))
   abort("prepare-runtime-env.sh left on host after failure") if File.exist?(File.join(dir, "prepare-runtime-env.sh"))

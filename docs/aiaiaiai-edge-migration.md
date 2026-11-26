@@ -22,17 +22,16 @@ Run **Export aiaiaiai edge for migration** (manual, type `EXPORT`). Three jobs:
    while streaming, so no plaintext touches a disk on either server or on the runner:
    - `postgres-globals` (roles) and one `db-<name>` custom-format `pg_dump` per application database;
    - `secrets`: only the environment names each workload contract declares under `spec.runtime.secrets`
-     (`prism-postgres`, `prism-hub`, `prism-hubot`, `h-ua-bot`, `4x-ais`). Values are registered for
+     (`prism-postgres`, `prism-hub`, `prism-hubot`, `h-ua-bot`). Values are registered for
      log masking first and are never printed; the log shows names and set/empty/missing counts only;
-   - `volume-prism-hubot-state` and `volume-4x-ais-data`, read-only and without network, at most 256 MiB each.
+   - `volume-prism-hubot-state`, read-only and without network, at most 256 MiB.
    `manifest.json` lists each item's ciphertext and plaintext hash and size. Only the ciphertext and the
    manifest are uploaded (artifact `aiaiaiai-migration-export-<run id>`, kept 3 days).
 3. **Open and check** (Environment `edge-dev-1`): decrypts with edge-dev-1's identity, compares every
    item with the manifest, checks a database item is a PostgreSQL custom-format dump and a volume is a tar, and
    prints the workloads and secret **names** in `secrets`. This proves the recipient and the data before any import.
 
-Nothing on edge-prod-2 is stopped, changed or removed. `4x-ais` declares no secrets in its contract (its
-credentials arrive in its own producer envelope), so none are taken from it.
+Nothing on edge-prod-2 is stopped, changed or removed.
 
 ## What the export does not do
 
@@ -97,8 +96,9 @@ still changed only by the reviewed route scripts. Consequences:
   `route-validate`, then `route-activate`, replace the one `api.aiaiaiai.org` block with the reviewed one (the file's other sites stay
   byte for byte, a failed reload or an unhealthy nilx.one restores the previous file, and `ingress.before-update.Caddyfile` keeps the
   file from before this update). Deploy the bot first or after; its route answers 502 until it runs.
-- What stays on edge-prod-2 for now: `aiaiaiai-site` (kept as the rollback of the snapshot archive), `4x-ais`
-  (the live issuer runs in Railway). Each moves, or is retired, in its own change. `4x-errors` is retired: it is a library that lives
+- What stays on edge-prod-2 for now: `aiaiaiai-site` (kept as the rollback of the snapshot archive). `4x-ais` is
+  retired from this repository: the live issuer (auth.aiaiaiai.org) is deployed by Railway, so it has no workload
+  contract, no route and no export here. Each remaining workload moves, or is retired, in its own change. `4x-errors` is retired: it is a library that lives
   inside each product plus a Supabase database, not a service on a server, so it has no workload contract and no route.
 - `backup-prism-postgres` and the diagnostic workflows still name edge-prod-2; they follow in the cleanup change.
 

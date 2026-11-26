@@ -10,7 +10,6 @@ services:
     environment:
       AIAIAIAI_SITE_DOMAIN: ${AIAIAIAI_SITE_DOMAIN:-aiaiaiai.org}
       AIAIAIAI_SITE_BETA_DOMAIN: ${AIAIAIAI_SITE_BETA_DOMAIN:-beta.aiaiaiai.org}
-      AIAIAIAI_AUTH_DOMAIN: ${AIAIAIAI_AUTH_DOMAIN:-auth.aiaiaiai.org}
       AIAIAIAI_ERRORS_DOMAIN: ${AIAIAIAI_ERRORS_DOMAIN:-errors.aiaiaiai.org}
       PRISM_API_DOMAIN: ${PRISM_API_DOMAIN:?PRISM_API_DOMAIN is required}
     ports:
