@@ -12,6 +12,7 @@ require "open3"
 require "rbconfig"
 require "tmpdir"
 require "yaml"
+require_relative "lib/live_copy"
 
 ROOT = File.expand_path("..", __dir__)
 AIS = File.join("contracts", "services", "4x-ais.yaml")
@@ -21,6 +22,10 @@ def in_copy(mutate = nil)
     FileUtils.mkdir_p(File.join(dir, "scripts"))
     %w[validate-contracts.rb resolve-workload-target.rb].each { |name| FileUtils.cp(File.join(ROOT, "scripts", name), File.join(dir, "scripts", name)) }
     FileUtils.cp_r(File.join(ROOT, "contracts"), File.join(dir, "contracts"))
+    # The resolver refuses a retired server's workloads; this copy runs as if they were live.
+    Dir.glob(File.join(dir, "contracts", "servers", "*.yaml")).each do |server|
+      File.write(server, File.read(server, encoding: "UTF-8").sub(/^  state: retired\n/, ""))
+    end
     if mutate
       path = File.join(dir, AIS)
       original = File.read(path, encoding: "UTF-8")

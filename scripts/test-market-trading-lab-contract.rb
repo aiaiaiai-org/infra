@@ -7,6 +7,7 @@ require "json"
 require "open3"
 require "tempfile"
 require "yaml"
+require_relative "lib/live_copy"
 
 ROOT = File.expand_path("..", __dir__)
 load_contract = ->(path) { YAML.safe_load_file(File.join(ROOT, path), aliases: false) }
@@ -33,7 +34,8 @@ abort "unexpected Trading Lab secret allowlist" unless
 abort "missing edge placement" unless server.dig("spec", "workloads").include?("market-trading-lab")
 abort "Trading Lab must not have a public route" if edge.dig("spec", "routes").any? { |route| route["service"] == "market-trading-lab" }
 
-stdout, stderr, status = Open3.capture3({ "GITHUB_OUTPUT" => nil }, "ruby", File.join(ROOT, "scripts/resolve-workload-target.rb"), "market-trading-lab")
+# (On a copy where edge-prod-1 is active: the real resolver refuses a retired server's workloads.)
+stdout, stderr, status = LiveCopy.resolve(ROOT, "market-trading-lab")
 abort stderr unless status.success?
 %w[target=edge-prod-1 network=nilx-edge alias=market-trading-lab port=1927 health=/health].each do |line|
   abort "invalid resolution: #{line}" unless stdout.lines.map(&:strip).include?(line)
@@ -81,7 +83,7 @@ abort "development Trading Lab delivery" unless dev["delivery"] ==
 abort "missing development placement" unless server.dig("spec", "workloads").include?("market-trading-lab-development")
 abort "edge-prod-1 needs an encryption recipient" unless server.dig("spec", "encryptionRecipient").to_s.start_with?("ssh-ed25519 ")
 abort "development Trading Lab must not have a public route" if edge.dig("spec", "routes").any? { |route| route["service"] == "market-trading-lab-development" }
-dev_out, dev_err, dev_status = Open3.capture3({ "GITHUB_OUTPUT" => nil }, "ruby", File.join(ROOT, "scripts/resolve-workload-target.rb"), "market-trading-lab-development")
+dev_out, dev_err, dev_status = LiveCopy.resolve(ROOT, "market-trading-lab-development")
 abort dev_err unless dev_status.success?
 %w[target=edge-prod-1 alias=market-trading-lab-development port=1703].each do |line|
   abort "invalid development resolution: #{line}" unless dev_out.lines.map(&:strip).include?(line)

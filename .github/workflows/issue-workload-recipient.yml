@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: Server contract name (e.g. edge-prod-2)
+        description: Server contract name of a live server (e.g. edge-dev-1)
         required: true
         type: string
 
@@ -45,6 +45,8 @@ jobs:
               echo "::error::Unknown server target." >&2
               exit 1
             }
+            # A retired server has no credentials to derive a recipient from.
+            ruby scripts/assert-live-server.rb "$TARGET"
             echo "target=$TARGET" >> "$GITHUB_OUTPUT"
             exit 0
           fi

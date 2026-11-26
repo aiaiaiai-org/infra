@@ -6,7 +6,8 @@ metadata:
 spec:
   provider: hetzner
   # Retired (owner, 2026-11-26): the host no longer exists; edge-dev-1 is the one VPS.
-  # What it lists below is not delivered or deployed until it moves to a live server.
+  # What it lists below is neither delivered nor deployable: the resolver refuses it until the
+  # workload moves to a live server (docs/automatic-delivery.md, "Retired servers").
   state: retired
   role: public-edge
   edgeNetwork: nilx-edge

@@ -142,6 +142,12 @@ Dir.glob(SERVER_GLOB).sort.each do |path|
   next unless workloads.include?(workload)
 
   abort("workload #{workload} is placed on more than one server contract") if result["target"]
+  # The target names the GitHub Environment whose SSH credentials a deploy selects. A retired
+  # server has none to select: refuse before anything is written to the job's outputs.
+  if server.dig("spec", "state") == "retired"
+    abort("workload #{workload} is placed on retired server #{server.dig('metadata', 'name')}; " \
+          "place it on a live server before deploying it")
+  end
   result["target"] = server.dig("metadata", "name")
 end
 abort("workload #{workload} is not placed on any server contract") unless result["target"]

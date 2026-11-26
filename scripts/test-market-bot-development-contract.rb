@@ -5,6 +5,7 @@ require "yaml"
 require "base64"
 require "open3"
 require "tempfile"
+require_relative "lib/live_copy"
 
 root = File.expand_path("..", __dir__)
 load_yaml = ->(path) { YAML.safe_load(File.read(File.join(root, path)), aliases: false) }
@@ -30,8 +31,8 @@ abort "bot must call the development Trading Lab" unless
 abort "missing public vars" unless runtime.fetch("producerEnvironment").sort == %w[TELEGRAM_BOT_USERNAME MARKET_API_URL PUBLIC_URL].sort
 
 # Verify that the actual infra resolver and credential allowlist accept only configured names.
-cmd = File.join(root, "scripts/resolve-workload-target.rb")
-resolved, err, status = Open3.capture3({ "GITHUB_OUTPUT" => nil }, "ruby", cmd, "market-bot-test")
+# (On a copy where edge-prod-1 is active: the real resolver refuses a retired server's workloads.)
+resolved, err, status = LiveCopy.resolve(root, "market-bot-test")
 abort err unless status.success?
 abort "resolver drift" unless resolved.include?("target=edge-prod-1\n") && resolved.include?("port=10000\n")
 
