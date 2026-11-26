@@ -59,14 +59,37 @@ for workload in prism-hub prism-hubot; do
   test "$(docker inspect -f '{{if index .NetworkSettings.Networks "nilx-candidate"}}yes{{end}}' "$workload")" = yes
 done
 
+# The api.aiaiaiai.org site block of a Caddyfile: its opening line to the first closing brace at column 0.
+api_block() { awk '$0 == "api.aiaiaiai.org {" { on = 1 } on { print } on && $0 == "}" { exit }' "$1"; }
+replace_api_block() { awk -v new="$2" '$0 == "api.aiaiaiai.org {" { while ((getline line < new) > 0) print line; skip = 1 } !skip { print } skip && $0 == "}" { skip = 0 }' "$1"; }
+without_api_block() { awk '$0 == "api.aiaiaiai.org {" { skip = 1 } !skip { print } skip && $0 == "}" { skip = 0 }' "$1"; }
+
+# append: the host is new, so the reviewed block is added at the end. update: the host is already routed and
+# the reviewed block differs (a route was added), so that one block is replaced in place.
+mode=append
 if grep -Fq 'api.aiaiaiai.org {' "$live"; then
-  echo 'api.aiaiaiai.org is already routed by the live config; unchanged.'
-  cat "$live" >"$candidate"
+  [[ "$(grep -Fxc 'api.aiaiaiai.org {' "$live")" == 1 ]] || { echo 'the live config holds more than one api.aiaiaiai.org block' >&2; exit 1; }
+  new_block="$root/aiaiaiai-api/api.block"
+  api_block "$snippet" >"$new_block"
+  test -s "$new_block"
+  if [[ "$(api_block "$live")" == "$(cat "$new_block")" ]]; then
+    echo 'The live api.aiaiaiai.org block already is the reviewed one; unchanged.'
+    cat "$live" >"$candidate"
+  else
+    echo 'Replacing the live api.aiaiaiai.org block with the reviewed one; every other site stays as it is.'
+    mode=update
+    replace_api_block "$live" "$new_block" >"$candidate"
+  fi
 else
   { cat "$live"; printf '\n'; cat "$snippet"; } >"$candidate"
 fi
-# Everything that was live must still be there, unchanged, at the start of the candidate.
-cmp -s -n "$(stat -c %s "$live")" "$live" "$candidate"
+if [[ "$mode" == append ]]; then
+  # Everything that was live must still be there, unchanged, at the start of the candidate.
+  cmp -s -n "$(stat -c %s "$live")" "$live" "$candidate"
+else
+  # Outside the api block nothing may differ: nilx.one and every other site stay byte for byte.
+  cmp -s <(without_api_block "$live") <(without_api_block "$candidate")
+fi
 
 image="$(docker inspect -f '{{.Config.Image}}' "$managed")"
 docker run --rm --network nilx-candidate \
@@ -84,18 +107,21 @@ if cmp -s "$live" "$candidate"; then
   echo 'Route already active; unchanged.'
   exit 0
 fi
-if [[ -e "$backup" ]]; then
+if [[ "$mode" == append && -e "$backup" ]]; then
   echo 'A previous api ingress backup exists; inspect it or roll back before activating again' >&2
   exit 1
 fi
 
 umask 077
-cp -p "$live" "$backup"
+# The backup of the file from before api.aiaiaiai.org existed is what `rollback` restores; an update keeps it and
+# leaves its own single-level undo beside it.
+if [[ "$mode" == update ]]; then undo="$root/aiaiaiai-api/ingress.before-update.Caddyfile"; else undo="$backup"; fi
+cp -p "$live" "$undo"
 # Overwrite the existing inode: the running container bind-mounts this file.
 cat "$candidate" >"$live"
 if ! docker exec "$managed" caddy reload --config /etc/caddy/Caddyfile || ! healthy_nilx; then
-  restore_from "$backup"
-  rm -f "$backup"
+  restore_from "$undo"
+  [[ "$mode" == update ]] || rm -f "$backup"
   echo 'Activation failed or nilx.one became unhealthy; restored the previous ingress file' >&2
   exit 1
 fi

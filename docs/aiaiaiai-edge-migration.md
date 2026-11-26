@@ -80,15 +80,20 @@ verified; the contracts still place these workloads on it, and a later change mo
 ## Step 3: edge-dev-1 in the contracts
 
 edge-dev-1 is an **active** server contract now (the isolation rules of a `provisioning` server are tested on a fixture). It
-places the Prism chain that already runs there, `prism-postgres`, `prism-hub`, `prism-hubot` and `prism-ai-tts`, and names the
-network of its one public Caddy, `nilx-candidate`, in the edge contract `aiaiaiai-dev-edge` (which routes only the hub and hubot;
+places the Prism chain that already runs there, `prism-postgres`, `prism-hub`, `prism-hubot` and `prism-ai-tts`, and its Telegram bot `h-ua-bot`, and names the
+network of its one public Caddy, `nilx-candidate`, in the edge contract `aiaiaiai-dev-edge` (which routes the hub, hubot and the bot;
 the TTS service has no public route). The contract describes that ingress; it never starts a second one, and its Caddyfile is
 still changed only by the reviewed route scripts. Consequences:
 
-- Deploy workload and Reconcile resolve these four workloads to the `edge-dev-1` Environment, and producers seal their envelopes to
+- Deploy workload and Reconcile resolve these five workloads to the `edge-dev-1` Environment, and producers seal their envelopes to
   edge-dev-1's recipient from the contract, so the reseal workflow and the migrate stages are no longer needed for new releases.
-- Every one of the four is `manual` or contract-pinned, so the 15-minute schedule starts none of them.
-- What stays on edge-prod-2 for now: `aiaiaiai-site` (kept as the rollback of the snapshot archive), `h-ua-bot`, `4x-ais`
+- `prism-postgres` is contract-pinned and the others are `manual` (or, for `h-ua-bot`, delivered only by its producer's dispatch), so the
+  15-minute schedule starts none of them.
+- `h-ua-bot` is reached by Prism Hub through `https://api.aiaiaiai.org/hua-bot/`. That path is not in the live ingress yet:
+  `route-validate`, then `route-activate`, replace the one `api.aiaiaiai.org` block with the reviewed one (the file's other sites stay
+  byte for byte, a failed reload or an unhealthy nilx.one restores the previous file, and `ingress.before-update.Caddyfile` keeps the
+  file from before this update). Deploy the bot first or after; its route answers 502 until it runs.
+- What stays on edge-prod-2 for now: `aiaiaiai-site` (kept as the rollback of the snapshot archive), `4x-ais`
   (the live issuer runs in Railway). Each moves, or is retired, in its own change. `4x-errors` is retired: it is a library that lives
   inside each product plus a Supabase database, not a service on a server, so it has no workload contract and no route.
 - `backup-prism-postgres` and the diagnostic workflows still name edge-prod-2; they follow in the cleanup change.

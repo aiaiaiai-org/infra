@@ -285,6 +285,8 @@ jobs:
           cmp -s -n "$(stat -c %s deploy/nilx-public-edge/Caddyfile)" deploy/nilx-public-edge/Caddyfile "$RUNNER_TEMP/ingress-with-api.Caddyfile"
           ruby scripts/test-migration-workflow-contract.rb
           ruby scripts/test-migrate-verification.rb
+          # An already-routed host is updated by replacing its one block; the result must validate too.
+          bash scripts/test-route-api-block.sh
 
       - name: Validate workload placement resolver
         run: |
@@ -361,8 +363,8 @@ jobs:
           grep -Fxq 'PRISM_BOT_PATH_PREFIX=/hua-bot' <<< "$environment"
 
           output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb h-ua-bot)"
-          grep -Fxq 'target=edge-prod-2' <<< "$output"
-          grep -Fxq 'network=aiaiaiai-edge' <<< "$output"
+          grep -Fxq 'target=edge-dev-1' <<< "$output"
+          grep -Fxq 'network=nilx-candidate' <<< "$output"
           grep -Fxq 'alias=h-ua-bot' <<< "$output"
           grep -Fxq 'port=1927' <<< "$output"
           grep -Fxq 'health=/health' <<< "$output"

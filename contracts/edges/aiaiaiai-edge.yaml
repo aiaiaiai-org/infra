@@ -42,10 +42,3 @@ spec:
       service: 4x-ais
       upstream: 4x-ais:1927
       health: /healthz
-    - id: hua-bot
-      host: ${PRISM_API_DOMAIN}
-      pathPrefix: /hua-bot/
-      stripPrefix: true
-      service: h-ua-bot
-      upstream: h-ua-bot:1927
-      health: /health

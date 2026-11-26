@@ -15,7 +15,7 @@ check(site.dig("spec", "port") == 1927, "site port changed")
 old = YAML.safe_load(File.read("contracts/servers/edge-prod-2.yaml"))
 check(old.dig("spec", "workloads").include?("aiaiaiai-site"), "retire old site only after rollback no longer needed")
 new_target = YAML.safe_load(File.read("contracts/servers/edge-dev-1.yaml"))
-check(new_target.dig("spec", "workloads").sort == %w[prism-ai-tts prism-hub prism-hubot prism-postgres], "edge-dev-1 carries exactly the Prism chain that already runs there")
+check(new_target.dig("spec", "workloads").sort == %w[h-ua-bot prism-ai-tts prism-hub prism-hubot prism-postgres], "edge-dev-1 carries exactly the Prism chain and its bot")
 check(!new_target.dig("spec", "workloads").include?("aiaiaiai-site"), "the legacy site workload is not placed on the new VPS: the private snapshot archive serves the site there")
 
 ingress = File.read("deploy/nilx-public-edge/Caddyfile")

@@ -36,7 +36,7 @@ reject_cross_edge_placement("prism-hubot", "edge-dev-1", "edge-prod-1", "edge-de
 reject_cross_edge_placement("prism-hub", "edge-dev-1", "edge-prod-2", "edge-dev-1")
 reject_cross_edge_placement("prism-ai-tts", "edge-dev-1", "edge-prod-2", "edge-dev-1")
 reject_cross_edge_placement("prism-postgres", "edge-dev-1", "edge-prod-2", "edge-dev-1")
-reject_cross_edge_placement("h-ua-bot", "edge-prod-2", "edge-prod-1", "edge-prod-2")
+reject_cross_edge_placement("h-ua-bot", "edge-dev-1", "edge-prod-1", "edge-dev-1")
 reject_cross_edge_placement("4x-ais", "edge-prod-2", "edge-prod-1", "edge-prod-2")
 reject_cross_edge_placement("nilxone-web", "edge-prod-1", "edge-prod-2", "edge-prod-1")
 reject_cross_edge_placement("market-api-production", "edge-prod-1", "edge-prod-2", "edge-prod-1")
