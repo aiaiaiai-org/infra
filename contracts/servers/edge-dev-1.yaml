@@ -18,11 +18,16 @@ spec:
   # Public half of this Environment's SSH_PRIVATE_KEY (the key of "Issue workload encryption recipient").
   # Producers encrypt their secret envelopes to it (docs/automatic-delivery.md).
   encryptionRecipient: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDfJeAVyF49oZY1XReEaT/LHF5pZgpV2iNewJTwh2UbL
-  # The Prism chain and its Telegram bot (docs/aiaiaiai-edge-migration.md). The rest of the aiaiaiai
-  # core stays on edge-prod-2 until it is moved by its own change.
+  # The Prism chain and its Telegram bot (docs/aiaiaiai-edge-migration.md), and the 0x1 product
+  # (nilx-one/*: web clients, Telegram, Discord, identity), which already runs here behind the
+  # managed ingress. Its contracts describe that placement; delivery stays manual.
   workloads:
     - prism-postgres
     - prism-hub
     - prism-hubot
     - prism-ai-tts
     - h-ua-bot
+    - nilxone-web
+    - nilxone-telegram
+    - nilxone-discord
+    - nilxone-identity
