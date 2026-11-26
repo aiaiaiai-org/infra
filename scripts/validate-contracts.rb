@@ -14,8 +14,10 @@ SECRET_MAPPING_PATTERN = /\A([A-Z][A-Z0-9_]*)=([A-Z][A-Z0-9_]*)\z/
 # These infrastructure-owned databases are exceptions to product repository ownership.
 INFRA_OWNED_PLACEMENTS = {
   "market-postgres-production" => "edge-prod-1",
-  "prism-postgres" => "edge-prod-2",
+  "prism-postgres" => "edge-dev-1",
 }.freeze
+# The Prism chain already runs on edge-dev-1; the rest of the aiaiaiai core stays on edge-prod-2 until it moves.
+EDGE_DEV_1_WORKLOADS = %w[prism-hub prism-hubot prism-ai-tts].freeze
 
 
 def load_yaml(path)
@@ -272,6 +274,7 @@ end
 # Infrastructure owns both edges; products do not cross between them.
 # Only explicit infrastructure-owned and legacy product repository exceptions are allowed.
 def expected_target_for(owner, workload)
+  return "edge-dev-1" if EDGE_DEV_1_WORKLOADS.include?(workload)
   return "edge-prod-1" if owner.start_with?("nilx-one/", "0xda-market/")
   return "edge-prod-2" if owner.start_with?("aiaiaiai-org/") && owner != "aiaiaiai-org/infra"
   return "edge-prod-2" if owner == "0x0sky/h-ua-bot"

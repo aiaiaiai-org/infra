@@ -8,7 +8,18 @@ require "tmpdir"
 require "yaml"
 
 ROOT = File.expand_path("..", __dir__)
-SERVER = "contracts/servers/edge-dev-1.yaml"
+# edge-dev-1 is an active deployment target now, so the isolation rules are exercised on a fixture
+# that is enrolled but not yet reviewed, exactly what edge-dev-1 was before its activation.
+SERVER = "contracts/servers/edge-fixture.yaml"
+FIXTURE = {
+  "apiVersion" => "infra.nilx.one/v1",
+  "kind" => "ServerContract",
+  "metadata" => { "name" => "edge-fixture", "owner" => "aiaiaiai-org/infra" },
+  "spec" => {
+    "state" => "provisioning", "provider" => "contabo", "role" => "development",
+    "runtimeRoot" => "/opt/infra/targets/edge-fixture", "workloads" => []
+  }
+}.freeze
 
 def verify(expect_success, expected_error = nil)
   Dir.mktmpdir("infra-provisioning-") do |root|
@@ -17,7 +28,7 @@ def verify(expect_success, expected_error = nil)
     FileUtils.cp(File.join(ROOT, "scripts", "validate-contracts.rb"), File.join(root, "scripts"))
 
     contract_path = File.join(root, SERVER)
-    contract = YAML.safe_load(File.read(contract_path))
+    contract = Marshal.load(Marshal.dump(FIXTURE))
     yield(contract, root) if block_given?
     File.write(contract_path, YAML.dump(contract))
 
@@ -50,7 +61,7 @@ verify(false, "is still provisioning") do |_contract, root|
     "kind" => "EdgeContract",
     "metadata" => { "name" => "provisional", "owner" => "aiaiaiai-org/infra" },
     "spec" => {
-      "placement" => { "target" => "edge-dev-1" },
+      "placement" => { "target" => "edge-fixture" },
       "network" => { "name" => "nilx-dev-edge", "external" => true },
       "entrypoint" => { "service" => "caddy", "ports" => ["80/tcp"] },
       "routes" => [{ "id" => "unapproved", "host" => "dev.nilx.one",

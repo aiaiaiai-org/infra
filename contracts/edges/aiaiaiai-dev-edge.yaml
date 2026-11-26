@@ -1,0 +1,38 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: EdgeContract
+metadata:
+  name: aiaiaiai-dev-edge
+  owner: aiaiaiai-org/infra
+spec:
+  placement:
+    target: edge-dev-1
+  # The network of edge-dev-1's existing public Caddy. The entrypoint below describes that ingress
+  # (`nilx-public-edge-managed`); it is changed only by the reviewed route scripts
+  # (deploy/aiaiaiai-edge-dev-1/route.sh), never started a second time.
+  network:
+    name: nilx-candidate
+    external: true
+    driver: bridge
+  entrypoint:
+    service: caddy
+    image: caddy:2-alpine
+    ports:
+      - 80/tcp
+      - 443/tcp
+    tls: automatic
+  routes:
+    - id: prism-hub
+      host: ${PRISM_API_DOMAIN}
+      pathPrefix: /prism-hub/
+      stripPrefix: true
+      service: prism-hub
+      upstream: prism-hub:1927
+      health: /healthz
+    - id: prism-hubot
+      host: ${PRISM_API_DOMAIN}
+      pathPrefix: /prism-hubot/
+      stripPrefix: true
+      service: prism-hubot
+      upstream: prism-hubot:1927
+      health: /healthz

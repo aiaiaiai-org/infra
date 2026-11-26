@@ -6,7 +6,7 @@ metadata:
   owner: aiaiaiai-org/prism-hubot
 spec:
   deployment: production
-  network: aiaiaiai-edge
+  network: nilx-candidate
   aliases:
     - prism-hubot
   protocol: http
