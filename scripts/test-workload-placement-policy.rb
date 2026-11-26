@@ -32,7 +32,10 @@ def reject_cross_edge_placement(workload, source, destination, expected_target)
   end
 end
 
-reject_cross_edge_placement("prism-hubot", "edge-prod-2", "edge-prod-1", "edge-prod-2")
+reject_cross_edge_placement("prism-hubot", "edge-dev-1", "edge-prod-1", "edge-dev-1")
+reject_cross_edge_placement("prism-hub", "edge-dev-1", "edge-prod-2", "edge-dev-1")
+reject_cross_edge_placement("prism-ai-tts", "edge-dev-1", "edge-prod-2", "edge-dev-1")
+reject_cross_edge_placement("prism-postgres", "edge-dev-1", "edge-prod-2", "edge-dev-1")
 reject_cross_edge_placement("h-ua-bot", "edge-prod-2", "edge-prod-1", "edge-prod-2")
 reject_cross_edge_placement("4x-ais", "edge-prod-2", "edge-prod-1", "edge-prod-2")
 reject_cross_edge_placement("4x-errors", "edge-prod-2", "edge-prod-1", "edge-prod-2")

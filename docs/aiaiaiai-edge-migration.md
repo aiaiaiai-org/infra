@@ -77,6 +77,21 @@ verified; the contracts still place these workloads on it, and a later change mo
 
 `prism-ai-tts` has no `public` route on purpose: the live `api.aiaiaiai.org` block is not rewritten by `route.sh`, and prism-hubot reaches the service as `http://prism-ai-tts:1927/v1/speech` on the server's own Docker network (hubot accepts cleartext only for such a single-label alias). Every request still needs an AIS product token with audience `prism-ai` and scope `tts.synthesize`. Everything speech sends to Telegram is a voice note; the proof sends nothing to Telegram.
 
+## Step 3: edge-dev-1 in the contracts
+
+edge-dev-1 is an **active** server contract now (the isolation rules of a `provisioning` server are tested on a fixture). It
+places the Prism chain that already runs there, `prism-postgres`, `prism-hub`, `prism-hubot` and `prism-ai-tts`, and names the
+network of its one public Caddy, `nilx-candidate`, in the edge contract `aiaiaiai-dev-edge` (which routes only the hub and hubot;
+the TTS service has no public route). The contract describes that ingress; it never starts a second one, and its Caddyfile is
+still changed only by the reviewed route scripts. Consequences:
+
+- Deploy workload and Reconcile resolve these four workloads to the `edge-dev-1` Environment, and producers seal their envelopes to
+  edge-dev-1's recipient from the contract, so the reseal workflow and the migrate stages are no longer needed for new releases.
+- Every one of the four is `manual` or contract-pinned, so the 15-minute schedule starts none of them.
+- What stays on edge-prod-2 for now: `aiaiaiai-site` (kept as the rollback of the snapshot archive), `h-ua-bot`, `4x-ais`
+  (the live issuer runs in Railway) and `4x-errors`. Each moves, or is retired, in its own change.
+- `backup-prism-postgres` and the diagnostic workflows still name edge-prod-2; they follow in the cleanup change.
+
 ### Hubot credential on edge-dev-1
 
 After the initial Hubot deployment, dispatch `hubot-credential` with the verified Hubot commit SHA. It reuses the installed workload configuration and needs no export. The deploy account stores the token in a mode-0600 file in Hubot's private workload directory. Activation and rollback on this host use that token, including producer-triggered deployments using this deploy script. If rotation stops after the file is installed, rerun the stage. Earlier credentials remain valid until the Hub confirms the new one. A replacement server needs a fresh bootstrap and credential.

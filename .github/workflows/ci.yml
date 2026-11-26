@@ -317,7 +317,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb prism-hubot)"
-          grep -Fxq 'target=edge-prod-2' <<< "$output"
+          grep -Fxq 'target=edge-dev-1' <<< "$output"
           grep -Fxq 'runtime=container' <<< "$output"
           grep -Fxq 'alias=prism-hubot' <<< "$output"
           grep -Fxq 'port=1927' <<< "$output"
@@ -339,16 +339,16 @@ jobs:
         run: |
           set -Eeuo pipefail
           output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb prism-postgres)"
-          grep -Fxq 'target=edge-prod-2' <<< "$output"
-          grep -Fxq 'network=aiaiaiai-edge' <<< "$output"
+          grep -Fxq 'target=edge-dev-1' <<< "$output"
+          grep -Fxq 'network=nilx-candidate' <<< "$output"
           grep -Fxq 'port=1927' <<< "$output"
           grep -Fxq 'health_kind=tcp' <<< "$output"
           grep -Eq '^contract_image=postgres@sha256:[0-9a-f]{64}$' <<< "$output"
           test "$(sed -n 's/^secrets=//p' <<< "$output" | base64 --decode)" = 'POSTGRES_PASSWORD=PRISM_POSTGRES_PASSWORD'
 
           output="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb prism-hub)"
-          grep -Fxq 'target=edge-prod-2' <<< "$output"
-          grep -Fxq 'network=aiaiaiai-edge' <<< "$output"
+          grep -Fxq 'target=edge-dev-1' <<< "$output"
+          grep -Fxq 'network=nilx-candidate' <<< "$output"
           grep -Fxq 'health=/healthz' <<< "$output"
           grep -Fxq 'health_kind=http' <<< "$output"
           grep -Fxq 'contract_image=' <<< "$output"

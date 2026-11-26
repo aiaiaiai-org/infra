@@ -6,7 +6,7 @@ metadata:
   owner: aiaiaiai-org/prism-ai
 spec:
   deployment: production
-  network: aiaiaiai-edge
+  network: nilx-candidate
   aliases:
     - prism-ai-tts
   protocol: http
