@@ -16,8 +16,8 @@ INFRA_OWNED_PLACEMENTS = {
   "market-postgres-production" => "edge-prod-1",
   "prism-postgres" => "edge-dev-1",
 }.freeze
-# The Prism chain already runs on edge-dev-1; the rest of the aiaiaiai core stays on edge-prod-2 until it moves.
-EDGE_DEV_1_WORKLOADS = %w[prism-hub prism-hubot prism-ai-tts].freeze
+# The Prism chain and its Telegram bot run on edge-dev-1; the rest of the aiaiaiai core stays on edge-prod-2 until it moves.
+EDGE_DEV_1_WORKLOADS = %w[prism-hub prism-hubot prism-ai-tts h-ua-bot].freeze
 
 
 def load_yaml(path)
@@ -277,7 +277,6 @@ def expected_target_for(owner, workload)
   return "edge-dev-1" if EDGE_DEV_1_WORKLOADS.include?(workload)
   return "edge-prod-1" if owner.start_with?("nilx-one/", "0xda-market/")
   return "edge-prod-2" if owner.start_with?("aiaiaiai-org/") && owner != "aiaiaiai-org/infra"
-  return "edge-prod-2" if owner == "0x0sky/h-ua-bot"
 
   if owner == "aiaiaiai-org/infra"
     return INFRA_OWNED_PLACEMENTS.fetch(workload) do

@@ -6,7 +6,7 @@ metadata:
   owner: 0x0sky/h-ua-bot
 spec:
   deployment: production
-  network: aiaiaiai-edge
+  network: nilx-candidate
   aliases:
     - h-ua-bot
   protocol: http
