@@ -91,4 +91,7 @@ check(dev_edge.dig("spec", "routes").map { _1["service"] }.sort == %w[h-ua-bot p
 check(File.read(File.join(ROOT, "deploy", "aiaiaiai-edge-dev-1", "api.Caddyfile")).include?("reverse_proxy h-ua-bot:1927"), "the reviewed api block routes the bot")
 check(route.include?("replace_api_block") && route.include?("without_api_block") && route.include?("ingress.before-update.Caddyfile"), "an already-routed host is updated in place with its own undo")
 
+hua = YAML.safe_load(File.read(File.join(ROOT, "contracts", "services", "h-ua-bot.yaml")))
+check(hua.dig("spec", "delivery", "image") == "ghcr.io/0x0sky/h-ua-bot" && hua.dig("spec", "delivery", "signerWorkflow") == ".github/workflows/publish.yml" && hua.dig("spec", "delivery", "mode") == "manual", "h-ua-bot is pulled by infra from its attested publish workflow, on purpose")
+
 puts "migration workflow boundaries are valid"

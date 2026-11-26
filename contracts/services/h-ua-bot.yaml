@@ -30,3 +30,11 @@ spec:
   public:
     host: api.aiaiaiai.org
     pathPrefix: /hua-bot/
+  # Infra pulls the producer's verified master build; the producer holds no credential for infra. Its secrets
+  # and the producer variables above arrive only in its attested envelope (docs/automatic-delivery.md),
+  # sealed to this server's recipient. Released on purpose, with an explicit dispatch of Reconcile deliveries.
+  delivery:
+    mode: manual
+    image: ghcr.io/0x0sky/h-ua-bot
+    branch: master
+    signerWorkflow: .github/workflows/publish.yml
