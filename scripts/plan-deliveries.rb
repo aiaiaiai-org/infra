@@ -120,14 +120,32 @@ def contracts(dir, only)
   match
 end
 
+# The server each workload is placed on, and whether that server is retired.
+# A workload on a retired server is not planned: there is no host to deliver
+# to, and its contract stays only until it moves to a live server.
+def retired_placements(dir)
+  Dir.glob(File.join(dir, "*.yaml")).sort.each_with_object({}) do |path, placed|
+    server = YAML.safe_load(File.read(path), aliases: false)
+    next unless server["kind"] == "ServerContract" && server.dig("spec", "state") == "retired"
+
+    Array(server.dig("spec", "workloads")).each { |workload| placed[workload] = server.dig("metadata", "name") }
+  end
+end
+
 force = ARGV.include?("--force")
 dir = option("--contracts") || File.join(ROOT, "contracts", "services")
+retired = retired_placements(option("--servers") || File.join(ROOT, "contracts", "servers"))
 deliveries = []
 summary = []
 
 contracts(dir, option("--workload")).each do |contract|
   workload = contract.dig("metadata", "name")
   repository = contract.dig("metadata", "owner")
+  if (server = retired[workload])
+    summary << "#{workload}: placed on retired server #{server}; not delivered"
+    next
+  end
+
   delivery = contract.dig("spec", "delivery")
   image = delivery.fetch("image")
   sha = branch_head(repository, delivery.fetch("branch"))

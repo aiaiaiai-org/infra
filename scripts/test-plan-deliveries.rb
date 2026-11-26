@@ -83,8 +83,21 @@ DOCKER_STUB = "#!#{RbConfig.ruby}\n" + <<~'RUBY'
   end
 RUBY
 
+RETIRED_SERVER = <<~YAML
+  apiVersion: infra.nilx.one/v1
+  kind: ServerContract
+  metadata:
+    name: gone-1
+    owner: aiaiaiai-org/infra
+  spec:
+    state: retired
+    workloads:
+      - example-site
+YAML
+
 def plan(state, *args)
   contract = state.delete("contract") || CONTRACT
+  server = state.delete("server")
   Dir.mktmpdir do |dir|
     bin = File.join(dir, "bin")
     contracts = File.join(dir, "contracts")
@@ -94,6 +107,9 @@ def plan(state, *args)
       File.chmod(0o755, File.join(bin, name))
     end
     File.write(File.join(contracts, "example-site.yaml"), contract)
+    servers = File.join(dir, "servers")
+    FileUtils.mkdir_p(servers)
+    File.write(File.join(servers, "gone-1.yaml"), server) if server
     File.write(File.join(dir, "state.json"), JSON.generate({ "head" => SHA, "digest" => DIGEST }.merge(state)))
     output = File.join(dir, "output")
     env = {
@@ -104,7 +120,7 @@ def plan(state, *args)
       "GITHUB_OUTPUT" => output,
       "GITHUB_STEP_SUMMARY" => File.join(dir, "summary")
     }
-    log, status = Open3.capture2e(env, RbConfig.ruby, PLANNER, "--contracts", contracts, *args)
+    log, status = Open3.capture2e(env, RbConfig.ruby, PLANNER, "--contracts", contracts, "--servers", servers, *args)
     outputs = File.exist?(output) ? File.read(output).lines.to_h { |line| line.chomp.split("=", 2) } : {}
     calls = File.exist?(env["STUB_LOG"]) ? File.read(env["STUB_LOG"]) : ""
     { ok: status.success?, count: outputs["count"]&.to_i, deliveries: JSON.parse(outputs["deliveries"] || "[]"), log: log, calls: calls }
@@ -162,4 +178,10 @@ abort("delivery.envelope: envelope provenance not verified") unless
   with_envelope[:calls].lines.any? { |line| line.start_with?("attestation verify oci://#{SECRETS_REF}") && line.include?("--source-digest #{SHA}") }
 expect("delivery.envelope not published", plan(attested.merge("contract" => ENVELOPE_CONTRACT)), ok: true, count: 0)
 expect("delivery.envelope unchanged", plan(sealed.merge("last_image" => IMAGE_REF, "last_secrets" => SECRETS_REF, "last_state" => "success").merge("contract" => ENVELOPE_CONTRACT)), ok: true, count: 0)
-puts "Delivery planner: 22 cases passed"
+retired = plan(attested.merge("server" => RETIRED_SERVER))
+expect("retired server", retired, ok: true, count: 0)
+abort("retired server: the producer was still queried\n#{retired[:calls]}") unless retired[:calls].empty?
+abort("retired server: no notice\n#{retired[:log]}") unless retired[:log].include?("placed on retired server gone-1; not delivered")
+expect("retired server, forced", plan(attested.merge("server" => RETIRED_SERVER), "--force"), ok: true, count: 0)
+expect("retired server, named", plan(attested.merge("server" => RETIRED_SERVER), "--workload", "example-site"), ok: true, count: 0)
+puts "Delivery planner: 25 cases passed"

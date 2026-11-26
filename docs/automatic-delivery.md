@@ -35,6 +35,16 @@ automatically; dispatch **Reconcile deliveries** with `force` once the cause is
 fixed. Rollbacks stay manual: run **Deploy workload** with the earlier
 verified digest.
 
+### Retired servers
+
+A server contract with `spec.state: retired` describes a host that no longer
+exists. Its `workloads` stay listed only until each moves to a live server.
+**Reconcile deliveries** does not plan them, scheduled, forced or named; its
+summary says `placed on retired server <name>; not delivered`, instead of
+failing on SSH to a host that is gone. `edge-prod-1` and `edge-prod-2` are
+retired (owner, 2026-11-26): `edge-dev-1` is the one VPS, and `4x-ais` is
+deployed by Railway, not by this repository.
+
 ## Onboarding a producer
 
 1. Add the publish workflow to the producer. It must push the tag above and

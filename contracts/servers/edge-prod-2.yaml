@@ -5,6 +5,9 @@ metadata:
   name: edge-prod-2
   owner: aiaiaiai-org/infra
 spec:
+  # Retired (owner, 2026-11-26): the host no longer exists; edge-dev-1 is the one VPS.
+  # What it lists below is not delivered or deployed until it moves to a live server.
+  state: retired
   role: public-edge
   edgeNetwork: aiaiaiai-edge
   publicPorts:
