@@ -47,4 +47,10 @@ check_call("deliver-workload.yml", "deploy", "deploy-workload.yml")
 deploy_with = workflow("deliver-workload.yml").dig("jobs", "deploy", "with")
 abort("deliver-workload.yml: deploy must pin ref to inputs.source_sha") unless
   deploy_with["ref"].to_s.include?("inputs.source_sha")
+telegram = triggers(workflow("deliver-telegram-runtime-edge-dev-1.yml"))
+abort("Telegram delivery must be manual only") if telegram.key?("schedule")
+pair = telegram.fetch("workflow_dispatch").fetch("inputs")
+%w[core_sha bot_sha].each do |name|
+  abort("Telegram delivery requires reviewed #{name}") unless pair.fetch(name)["required"] == true
+end
 puts "Delivery workflows: wiring validated"
