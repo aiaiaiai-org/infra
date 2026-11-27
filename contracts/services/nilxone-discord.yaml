@@ -5,7 +5,7 @@ metadata:
   owner: nilx-one/web
 spec:
   deployment: production
-  network: nilx-edge
+  network: nilx-candidate
   aliases:
     - nilxone-discord
   protocol: http
@@ -18,9 +18,10 @@ spec:
   public:
     host: nilx.one
     pathPrefix: /discord/
-  # Infra delivers each verified master build on its own (docs/automatic-delivery.md).
-  # The product holds no credential for infra.
+  # The 0x1 product already runs on edge-dev-1 behind the managed ingress, staged by hand. This
+  # contract describes it; Reconcile must not start a second copy beside it.
   delivery:
+    mode: manual
     image: ghcr.io/nilx-one/web
     branch: master
     signerWorkflow: .github/workflows/package-web.yml

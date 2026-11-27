@@ -6,7 +6,7 @@ metadata:
   owner: nilx-one/web
 spec:
   deployment: production
-  network: nilx-edge
+  network: nilx-candidate
   aliases:
     - nilxone-identity
   protocol: http
