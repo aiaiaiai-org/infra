@@ -94,9 +94,10 @@ host_ready() {
 ensure_added_routes() {
   local ingress=nilx-public-edge-managed
   local live="$HOME/.local/share/aiaiaiai-infra/nilx-public-edge/Caddyfile"
-  # Routes added after the first activation: the bot's profile read and the
-  # callback page's progress poll. Without the second, the poll falls through
-  # to the web app's index.html and the Mini App reports a failed check.
+  # Routes added after the first activation: the bot's profile read, the
+  # callback page's progress poll and the bot's live location report. A route
+  # missing here falls through to the web app's index.html (the progress poll
+  # then reports a failed check), so append every new host route.
   local added="/api/v1/telegram/profile /api/v1/telegram/login/progress /api/v1/telegram/location"
   test "$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' "$ingress")" = "$live" \
     || fail 'Unexpected Telegram ingress config mount.'
