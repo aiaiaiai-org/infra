@@ -64,6 +64,7 @@ jobs:
           bash -n deploy/telegram-runtime/activate.sh
           bash -n deploy/telegram-runtime/repair-identity.sh
           bash -n deploy/telegram-runtime/upgrade.sh
+          bash scripts/test-telegram-public-authority.sh
       - name: Validate immutable aiaiaiai snapshots and shared ingress
         run: |
           set -Eeuo pipefail
