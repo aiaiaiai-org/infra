@@ -37,6 +37,16 @@ end
 stdout, stderr, status = run(File.join(ROOT, "scripts", "resolve-workload-target.rb"), "prism-hub", env: { "GITHUB_OUTPUT" => nil })
 abort("prism-hub did not resolve: #{stderr}") unless status.success? && stdout.lines.map(&:chomp).include?("target=edge-dev-1")
 
+# The collector must resolve to the active edge with readiness and no scheduled deployment.
+stdout, stderr, status = run(File.join(ROOT, "scripts", "resolve-workload-target.rb"), "4x-errors", env: { "GITHUB_OUTPUT" => nil })
+abort("4x-errors did not resolve: #{stderr}") unless status.success?
+%w[target=edge-dev-1 network=nilx-candidate alias=4x-errors port=1927 health=/ready].each do |line|
+  abort("4x-errors: missing #{line}") unless stdout.lines.map(&:chomp).include?(line)
+end
+collector = YAML.safe_load_file(File.join(ROOT, "contracts", "services", "4x-errors.yaml"))
+abort("collector delivery must be manual") unless collector.dig("spec", "delivery", "mode") == "manual"
+abort("collector envelope names drifted") unless collector.dig("spec", "runtime", "secrets").sort == %w[BROWSER_INGEST_ORIGINS=BROWSER_INGEST_ORIGINS DATABASE_URL=DATABASE_URL]
+
 # The shape of a retired server's workload contract is still checked, on a copy where it is active.
 stdout, stderr, status = LiveCopy.resolve(ROOT, "market-api-production")
 abort("market-api-production did not resolve on the live copy: #{stderr}") unless status.success?
