@@ -33,6 +33,19 @@ project_core_environment() {
   '
 }
 
+# Verify the workload subject remains stable across the v1 -> v2 transition.
+# Extract only the numeric legacy ID, not the token or signing material.
+legacy_bot_id() {
+  jq -er '
+    [.[] | select(startswith("TELEGRAM_BOT_TOKEN="))] |
+    if length == 0 then ""
+    elif length == 1 and (.[0] | test("^TELEGRAM_BOT_TOKEN=[1-9][0-9]*:[A-Za-z0-9_-]+$"))
+    then .[0] | capture("^TELEGRAM_BOT_TOKEN=(?<id>[0-9]+):").id
+    else error("Invalid legacy Bot identity")
+    end
+  '
+}
+
 capture_bot_environment() {
   # Secret values stay on the target in a mode-0600 file, never in argv/logs.
   docker inspect -f '{{json .Config.Env}}' "$bot" | jq -er '
@@ -192,6 +205,10 @@ main() {
     --entrypoint /opt/telegram-runtime/nilx-one-bot "$bot_image" --gateway-public-key \
     > "$work/public.env" || fail 'Candidate Bot could not prove its public authority.'
   validate_public_authority "$work/public.env" || fail 'Invalid public Bot authority output.'
+  previous_id=$(docker inspect -f '{{json .Config.Env}}' "$host" | legacy_bot_id)
+  candidate_id=$(sed -n 's/^TELEGRAM_BOT_ID=//p' "$work/public.env")
+  [[ -z "$previous_id" || "$previous_id" == "$candidate_id" ]] ||
+    fail 'Candidate Bot ID differs from the existing Core workload subject.'
   # Existing public authority may not silently rotate during an ordinary binary rollout.
   docker inspect -f '{{json .Config.Env}}' "$host" | jq -r '.[] | select(test("^TELEGRAM_BOT_(ID|PUBLIC_KEY)="))' \
     | sort > "$work/previous-public.env"
@@ -232,9 +249,9 @@ main() {
     test "$(docker inspect -f '{{.State.Running}} {{.RestartCount}}' "$service")" = 'true 0' ||
       fail "$service failed readiness."
   done
-  if docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$host" | grep -q '^TELEGRAM_BOT_TOKEN='; then
-    fail 'Core candidate contains a forbidden Bot API token.'
-  fi
+  docker inspect -f '{{json .Config.Env}}' "$host" |
+    jq -e 'type == "array" and all(.[]; startswith("TELEGRAM_BOT_TOKEN=") | not)' >/dev/null ||
+    fail 'Core candidate environment could not prove absence of the Bot API token.'
   committed=true
   # Only after both halves pass the same authority check discard the stopped pair.
   docker rm "$host-previous" "$bot-previous" >/dev/null ||

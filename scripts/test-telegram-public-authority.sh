@@ -31,4 +31,11 @@ for fixture in '["OTHER=first","OTHER=second"]' '["OTHER=line\nnext"]' '["invali
     fail 'Accepted ambiguous environment.'
   fi
 done
+test "$(legacy_bot_id <<< '["TELEGRAM_BOT_TOKEN=123456:synthetic"]')" = 123456
+test -z "$(legacy_bot_id <<< '["OTHER=preserved"]')"
+for fixture in '["TELEGRAM_BOT_TOKEN=123:one","TELEGRAM_BOT_TOKEN=456:two"]' '["TELEGRAM_BOT_TOKEN=invalid"]'; do
+  if legacy_bot_id <<< "$fixture" >/dev/null 2>&1; then
+    fail 'Accepted malformed or ambiguous legacy Bot identity.'
+  fi
+done
 echo 'Telegram public authority environment fixtures passed.'

@@ -232,11 +232,16 @@ rules as above:
   SSH credentials, stage the release and run
   `deploy/telegram-runtime/upgrade.sh`.
 
-`upgrade.sh` keeps each running container's image, network, volumes and
-environment, including the bot token, and swaps only the binary. A service
-whose binary is unchanged is not restarted, so a Core-only change leaves the
-bot polling. A failed readiness check restores the previous container. The
-first activation stays with **Activate 0x1 Telegram runtime on edge-dev-1**.
+`upgrade.sh` preserves each running container's base image, network and named
+volumes. For Gateway v2, it extracts only the verified public Bot ID and key
+from the candidate Bot binary, strips the old Bot API token from Core's
+environment, and refuses an implicit identity/key rotation. Both old
+containers remain available for rollback until the new Core accepts the
+candidate Bot's signed read-only HTTPS probe and both candidates pass readiness.
+The old poller stops before either half changes. A failure restores the prior
+pair and ingress, or reports incomplete rollback. The legacy first-activation
+and repair workflows still require their own public-authority migration;
+do not use them to revert a v2 deployment.
 
 ### Publishing a change to the bot or the login host
 
