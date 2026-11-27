@@ -97,7 +97,7 @@ ensure_added_routes() {
   # Routes added after the first activation: the bot's profile read and the
   # callback page's progress poll. Without the second, the poll falls through
   # to the web app's index.html and the Mini App reports a failed check.
-  local added="/api/v1/telegram/profile /api/v1/telegram/login/progress"
+  local added="/api/v1/telegram/profile /api/v1/telegram/login/progress /api/v1/telegram/location"
   test "$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' "$ingress")" = "$live" \
     || fail 'Unexpected Telegram ingress config mount.'
   cp -p "$live" "$work/previous.Caddyfile"
