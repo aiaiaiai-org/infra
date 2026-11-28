@@ -24,8 +24,8 @@ spec:
     image: ghcr.io/nilx-one/0x1-identity
     branch: master
     signerWorkflow: .github/workflows/package-identity-service.yml
+    # The numeric Bot ID is public metadata, not a Bot API credential.
     envelope:
-      # Public numeric ID from the verified Bot identity, not a Bot API credential.
       - TELEGRAM_BOT_ID
       - TELEGRAM_OIDC_CLIENT_ID
       - TELEGRAM_OIDC_CLIENT_SECRET
