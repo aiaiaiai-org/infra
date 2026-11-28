@@ -6,7 +6,7 @@ require "yaml"
 
 SCRIPT = File.expand_path("prepare-identity-provider-env.rb", __dir__)
 DEFAULT = [
-  "TELEGRAM_BOT_TOKEN=bot-secret",
+  "TELEGRAM_BOT_ID=123456",
   "TELEGRAM_OIDC_CLIENT_SECRET=telegram-secret",
   "DISCORD_CLIENT_SECRET=discord-secret",
   "NILX_BROWSER_HANDOFF_TOKEN=#{'h' * 64}",
@@ -33,7 +33,9 @@ Dir.mktmpdir("identity-secret-contract") do |dir|
   _out, errors, ok = run.call(DEFAULT)
   abort("valid provider rejected: #{errors}") unless ok.success?
   data = File.read(output)
-  abort("Telegram secret absent") unless data.include?("TELEGRAM_OIDC_CLIENT_SECRET=telegram-secret")
+  abort("Telegram browser OAuth secret absent") unless data.include?("TELEGRAM_OIDC_CLIENT_SECRET=telegram-secret")
+  abort("public bot ID absent") unless data.include?("TELEGRAM_BOT_ID=123456\n")
+  abort("Bot token leaked into runtime") if data.include?("TELEGRAM_BOT_TOKEN=")
   abort("handoff token absent") unless data.include?("NILX_BROWSER_HANDOFF_TOKEN=#{'h' * 64}\n")
   abort("partner lookup token absent") unless data.include?("PARTNER_LOOKUP_TOKEN=#{'p' * 64}\n")
   abort("incorrect public identity") unless data.include?("DISCORD_CLIENT_ID=discord-public-id")
@@ -48,10 +50,15 @@ Dir.mktmpdir("identity-secret-contract") do |dir|
     DEFAULT.sub('p' * 64, 'h' * 64),
     DEFAULT.sub('h' * 64, 'x' * 31),
     DEFAULT + "SSH_PRIVATE_KEY=never\n",
-    DEFAULT + "TELEGRAM_BOT_TOKEN=duplicate\n",
+    DEFAULT + "TELEGRAM_BOT_TOKEN=forbidden\n",
+    DEFAULT + "TELEGRAM_BOT_TOKEN=\n",
+    DEFAULT + "TELEGRAM_BOT_ID=duplicate\n",
+    DEFAULT.sub("TELEGRAM_BOT_ID=123456\n", ""),
+    DEFAULT.sub("TELEGRAM_BOT_ID=123456", "TELEGRAM_BOT_ID=0"),
+    DEFAULT.sub("TELEGRAM_BOT_ID=123456", "TELEGRAM_BOT_ID=18446744073709551616"),
     DEFAULT.sub("DISCORD_CLIENT_SECRET=discord-secret\n", ""),
     DEFAULT.sub("GHCR_PULL_TOKEN=ephemeral\n", ""),
-    DEFAULT.sub("TELEGRAM_BOT_TOKEN=", "TELEGRAM_BOT_TOKEN=bad\nTELEGRAM_BOT_TOKEN=")
+    DEFAULT.sub("TELEGRAM_BOT_ID=", "TELEGRAM_BOT_ID=bad\nTELEGRAM_BOT_ID=")
   ].each do |payload|
     stdout, stderr, status = run.call(payload)
     abort("invalid provider payload accepted") if status.success?

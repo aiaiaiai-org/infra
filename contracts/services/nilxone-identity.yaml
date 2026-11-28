@@ -25,7 +25,8 @@ spec:
     branch: master
     signerWorkflow: .github/workflows/package-identity-service.yml
     envelope:
-      - TELEGRAM_BOT_TOKEN
+      # Public numeric ID from the verified Bot identity, not a Bot API credential.
+      - TELEGRAM_BOT_ID
       - TELEGRAM_OIDC_CLIENT_ID
       - TELEGRAM_OIDC_CLIENT_SECRET
       - DISCORD_CLIENT_ID
@@ -47,7 +48,7 @@ spec:
     labels:
       - one.nilx.product=0x1
       - one.nilx.service=identity
-      - one.nilx.identity.contract=19
+      - one.nilx.identity.contract=20
     volumes:
       - nilxone-identity-data:/data
   public:

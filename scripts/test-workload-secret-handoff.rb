@@ -91,7 +91,7 @@ Dir.mktmpdir("scoped-secrets") do |directory|
     abort("registry token leaked into diagnostics") if "#{out}#{err}".include?("short-lived")
   end
 
-  identity = registry + "TELEGRAM_BOT_TOKEN=t\nTELEGRAM_OIDC_CLIENT_SECRET=u\nDISCORD_CLIENT_SECRET=v\nNILX_BROWSER_HANDOFF_TOKEN=#{'h' * 64}\nPARTNER_LOOKUP_TOKEN=#{'p' * 64}\n"
+  identity = registry + "TELEGRAM_BOT_ID=123456\nTELEGRAM_OIDC_CLIENT_SECRET=u\nDISCORD_CLIENT_SECRET=v\nNILX_BROWSER_HANDOFF_TOKEN=#{'h' * 64}\nPARTNER_LOOKUP_TOKEN=#{'p' * 64}\n"
   _out, errors, status = run_unmapped.call(identity, "nilxone-identity")
   abort("encrypted identity rejected without legacy secrets: #{errors}") unless status.success?
   [
@@ -100,7 +100,10 @@ Dir.mktmpdir("scoped-secrets") do |directory|
     identity.sub('h' * 64, 'short'),
     identity.sub(/PARTNER_LOOKUP_TOKEN=.*\n/, ""),
     identity.sub('p' * 64, 'h' * 64),
-    identity + "HUA_HUB_TOKEN=unapproved\n"
+    identity + "HUA_HUB_TOKEN=unapproved\n",
+    identity + "TELEGRAM_BOT_TOKEN=forbidden\n",
+    identity.sub("TELEGRAM_BOT_ID=123456\n", ""),
+    identity.sub("TELEGRAM_BOT_ID=123456", "TELEGRAM_BOT_ID=0")
   ].each do |invalid|
     _, _, result = run_unmapped.call(invalid, "nilxone-identity")
     abort("invalid identity credentials accepted") if result.success?
