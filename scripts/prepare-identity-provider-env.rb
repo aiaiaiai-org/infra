@@ -27,7 +27,8 @@ ids = public_names.to_h do |name|
 end
 abort("missing provider client ID") if ids.values.any?(&:empty?)
 # The Bot identity must come from the signed producer envelope, not an
-# independently supplied dispatch variable. It is compared to Core on target.
+# independently supplied dispatch variable. Matching it against the live Core and
+# Bot pair is the job of the dedicated Identity transition; nothing here does it.
 bot_id = secrets.fetch("TELEGRAM_BOT_ID", "")
 abort("invalid public Telegram bot identity") unless bot_id.match?(/\A[1-9][0-9]{0,19}\z/) && bot_id.to_i <= 18_446_744_073_709_551_615
 abort("invalid provider client ID") if ids.values.any? { |value| value.match?(/[\r\n\0]/) }
