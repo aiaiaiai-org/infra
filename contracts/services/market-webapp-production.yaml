@@ -1,0 +1,23 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: market-webapp-production
+  owner: 0xda-market/webapp-core
+spec:
+  deployment: production
+  network: nilx-candidate
+  aliases:
+    - market-webapp-production
+  protocol: http
+  port: 1927
+  health: /health
+  runtime:
+    kind: container
+    labels:
+      - org.aiaiaiai.product=0xda-market
+      - org.aiaiaiai.service=webapp-core
+  delivery:
+    image: ghcr.io/0xda-market/webapp-core
+    branch: master
+    signerWorkflow: .github/workflows/ci.yml

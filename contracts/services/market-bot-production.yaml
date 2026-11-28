@@ -37,10 +37,8 @@ spec:
       - TELEGRAM_BOT_USERNAME
       - MARKET_API_URL
       - PUBLIC_URL
-  # Production is opt-in only. No scheduled reconciler may deploy this workload.
-  # The producer publishes via manual publish-production.yml from exact green master.
+  # Infra automatically reconciles the latest attested production release.
   delivery:
     image: ghcr.io/0xda-market/telegram-bot-production
     branch: master
     signerWorkflow: .github/workflows/publish-production.yml
-    mode: manual

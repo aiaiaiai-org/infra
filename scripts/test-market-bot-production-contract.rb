@@ -51,11 +51,10 @@ abort "production must supply its own bot identity, API and public URL" unless
   runtime.fetch("producerEnvironment").sort == %w[TELEGRAM_BOT_USERNAME MARKET_API_URL PUBLIC_URL].sort
 abort "prod must never share dev's delivery image" if
   spec.dig("delivery", "image") == test_bot.dig("spec", "delivery", "image")
-abort "production must never deploy on schedule" unless spec.fetch("delivery") == {
+abort "production bot must use its attested delivery" unless spec.fetch("delivery") == {
   "image" => "ghcr.io/0xda-market/telegram-bot-production",
   "branch" => "master",
-  "signerWorkflow" => ".github/workflows/publish-production.yml",
-  "mode" => "manual"
+  "signerWorkflow" => ".github/workflows/publish-production.yml"
 }
 
 route = edge.dig("spec", "routes").find { |entry| entry["service"] == "market-bot-production" }
@@ -74,7 +73,7 @@ abort "production upstream health check must use contract port" unless
 abort "development bot health check must stay on test port" unless
   upstream_checks.include?("http://market-bot-development:10000/health")
 
-puts "production bot release contract verified (manual-only)"
+puts "production bot release contract verified"
 
 identity = load_contract.call("contracts/services/nilxone-identity.yaml")
 core = load_contract.call("contracts/services/market-api-production.yaml")
