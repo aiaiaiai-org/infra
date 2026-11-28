@@ -6,7 +6,7 @@ metadata:
   owner: 0xda-market/trading-lab
 spec:
   deployment: production
-  network: nilx-edge
+  network: nilx-candidate
   aliases:
     - market-trading-lab
   protocol: http
@@ -14,7 +14,7 @@ spec:
   health: /health
   runtime:
     kind: container
-    # No public route. Only workloads on nilx-edge can reach the private service.
+    # No public route. Only workloads on nilx-candidate can reach the private service.
     environment:
       - PORT=1927
     # Trading Lab is part of production Market: both values come from Core's envelope, so

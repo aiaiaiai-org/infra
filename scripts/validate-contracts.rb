@@ -13,11 +13,11 @@ IMAGE_PATTERN = %r{\A[a-z0-9.-]+(/[a-z0-9._-]+)*(:[A-Za-z0-9_.-]+|@sha256:[0-9a-
 SECRET_MAPPING_PATTERN = /\A([A-Z][A-Z0-9_]*)=([A-Z][A-Z0-9_]*)\z/
 # These infrastructure-owned databases are exceptions to product repository ownership.
 INFRA_OWNED_PLACEMENTS = {
-  "market-postgres-production" => "edge-prod-1",
+  "market-postgres-production" => "edge-dev-1",
   "prism-postgres" => "edge-dev-1",
 }.freeze
 # The Prism chain, its Telegram bot and the 0x1 product (nilx-one/*) run on edge-dev-1.
-EDGE_DEV_1_WORKLOADS = %w[prism-hub prism-hubot prism-ai-tts h-ua-bot nilxone-web nilxone-telegram nilxone-discord nilxone-identity].freeze
+EDGE_DEV_1_WORKLOADS = %w[prism-hub prism-hubot prism-ai-tts h-ua-bot nilxone-web nilxone-telegram nilxone-discord nilxone-identity market-api-production market-bot-production market-trading-lab market-trading-lab-okx-collector].freeze
 
 
 def load_yaml(path)

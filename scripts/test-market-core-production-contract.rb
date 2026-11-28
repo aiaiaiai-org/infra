@@ -13,7 +13,7 @@ root = File.expand_path("..", __dir__)
 load_contract = ->(relative) { YAML.safe_load(File.read(File.join(root, relative)), aliases: false) }
 api = load_contract.call("contracts/services/market-api-production.yaml")
 database = load_contract.call("contracts/services/market-postgres-production.yaml")
-edge = load_contract.call("contracts/edges/nilx-edge.yaml")
+edge = load_contract.call("contracts/edges/aiaiaiai-dev-edge.yaml")
 caddy = File.read(File.join(root, "deploy/edge/Caddyfile"))
 
 abort "unexpected owner" unless api.dig("metadata", "owner") == "0xda-market/core"

@@ -296,7 +296,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           # A workload on a retired server must not resolve: no Environment is selected for it.
-          if refused="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb market-api-production 2>&1)"; then
+          if refused="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb market-api-development 2>&1)"; then
             echo "::error::a retired placement resolved"
             exit 1
           fi
