@@ -119,6 +119,18 @@ Roles:
 - If the reviewing tool has no verified dedicated identity, return its findings
   to the requester without posting a GitHub review or review comment.
   Report the identity blocker; do not silently fall back to another account.
+- The identities are configured in `.github/agent-identities.yml`, not in this
+  file: the human owner's accounts, the owner's implementation bot, and for each
+  tool its own dedicated identity. A tool with no entry there has no verified
+  identity. Reviews and review comments published before the file's
+  `effective_from` time stay as they are; they are not deleted or edited, and
+  they are not evidence of independent review.
+- CI (`scripts/check-agent-review-identities.rb`) fails a pull request that
+  carries a review or review comment from the owner's implementation bot, a
+  review signed `**Review by <Tool>**` from an owner account or from an identity
+  not listed for that tool, or a signed review that does not name the commit it
+  was made on. The check cannot see which tool is behind an account: the
+  mapping in the file is what makes the identity verifiable.
 - The first line reads `**Review by <Tool>**`; include the full reviewed head
   commit SHA and identify the implementation tool when known. The tool is the
   actual executing client or service (e.g. Claude Code, ChatGPT, Codex, Cursor),
@@ -146,8 +158,9 @@ Roles:
 
 Verify the authenticated GitHub account, the local Git author and committer,
 the repository and branch, and that they match the roles above. For review-only
-writes, verify the dedicated reviewing identity and exact head instead of local
-Git author/committer metadata. Recheck when
+writes, verify the dedicated reviewing identity (listed in
+`.github/agent-identities.yml`) and exact head instead of local Git
+author/committer metadata. Recheck when
 the session, credentials, repository or environment change. On a mismatch,
 stop and report it instead of switching accounts silently. Before merge,
 verify the exact head CI, required approvals, resolved review threads and

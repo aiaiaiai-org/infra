@@ -18,6 +18,9 @@ jobs:
     name: Contracts
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,6 +36,17 @@ jobs:
 
       - name: Test commit attribution checker
         run: ruby scripts/test-commit-attribution.rb
+
+      - name: Validate agent review identities
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: ruby scripts/check-agent-review-identities.rb
+
+      - name: Test agent review identity checker
+        run: ruby scripts/test-agent-review-identities.rb
 
       - name: Check shared files against the canonical source
         run: ruby scripts/check-shared-sync.rb
