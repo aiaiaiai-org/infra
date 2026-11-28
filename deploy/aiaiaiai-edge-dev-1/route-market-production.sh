@@ -7,7 +7,7 @@ case "$mode" in validate | activate) ;; *) exit 2 ;; esac
 test "$(hostname)" = edge-dev-1
 test "$(id -un)" = deploy
 
-domain=0xda-market.nilx.one
+domain=market.nilx.one
 ingress=nilx-public-edge-managed
 live="$HOME/.local/share/aiaiaiai-infra/nilx-public-edge/Caddyfile"
 test -s "$live"
@@ -37,7 +37,7 @@ trap finish EXIT
 
 cp "$live" "$work_dir/original"
 cat >"$work_dir/market" <<'CADDY'
-0xda-market.nilx.one {
+market.nilx.one {
     encode zstd gzip
 
     handle_path /bot/* {
@@ -50,7 +50,7 @@ cat >"$work_dir/market" <<'CADDY'
 }
 CADDY
 
-if grep -Fq "$domain" "$work_dir/original"; then
+if grep -Eq '(^|[[:space:],/])market[.]nilx[.]one([[:space:],:{]|$)' "$work_dir/original"; then
   awk -v domain="$domain" '$0 == domain " {" { print_block = 1 } print_block { print } print_block && $0 == "}" { exit }' \
     "$work_dir/original" >"$work_dir/current-market"
   if ! cmp -s "$work_dir/current-market" "$work_dir/market"; then

@@ -13,7 +13,7 @@ spec:
   port: 1927
   health: /health
   public:
-    host: 0xda-market.nilx.one
+    host: market.nilx.one
     pathPrefix: /
   runtime:
     kind: container
