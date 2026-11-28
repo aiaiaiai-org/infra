@@ -6,7 +6,7 @@ metadata:
   owner: 0xda-market/trading-lab
 spec:
   deployment: production
-  network: nilx-edge
+  network: nilx-candidate
   aliases:
     - market-trading-lab-okx-collector
   # Nothing listens: the collector only reads the public OKX ticker stream and writes to
