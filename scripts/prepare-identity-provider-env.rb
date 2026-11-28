@@ -5,7 +5,7 @@
 # arbitrary encrypted payload keys. This never prints any credential.
 source = ENV.fetch("WORKLOAD_SECRET_SOURCE_FILE")
 output = ENV.fetch("IDENTITY_PROVIDER_ENV_FILE")
-public_names = %w[TELEGRAM_OIDC_CLIENT_ID DISCORD_CLIENT_ID]
+public_names = %w[TELEGRAM_BOT_ID TELEGRAM_OIDC_CLIENT_ID DISCORD_CLIENT_ID]
 abort("invalid provider file") unless File.file?(source) && File.readable?(source)
 abort("provider file too large") if File.size(source) > 32_768
 
@@ -18,7 +18,7 @@ File.foreach(source, chomp: true) do |entry|
   secrets[name] = value
 end
 
-required = %w[TELEGRAM_BOT_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET NILX_BROWSER_HANDOFF_TOKEN PARTNER_LOOKUP_TOKEN]
+required = %w[TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET NILX_BROWSER_HANDOFF_TOKEN PARTNER_LOOKUP_TOKEN]
 optional = %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
 # The public client IDs come in the producer's envelope (delivery.envelope), or, for a caller that
 # still dispatches, in PROVIDER_* variables. The envelope wins; one source never mixes with the other.
@@ -26,6 +26,11 @@ ids = public_names.to_h do |name|
   [name, secrets.key?(name) ? secrets.fetch(name) : ENV.fetch("PROVIDER_#{name}", "")]
 end
 abort("missing provider client ID") if ids.values.any?(&:empty?)
+# The Bot identity must come from the signed producer envelope, not an
+# independently supplied dispatch variable. Matching it against the live Core and
+# Bot pair is the job of the dedicated Identity transition; nothing here does it.
+bot_id = secrets.fetch("TELEGRAM_BOT_ID", "")
+abort("invalid public Telegram bot identity") unless bot_id.match?(/\A[1-9][0-9]{0,19}\z/) && bot_id.to_i <= 18_446_744_073_709_551_615
 abort("invalid provider client ID") if ids.values.any? { |value| value.match?(/[\r\n\0]/) }
 # NATIVE_AUTH_SECRET, PASSWORD_PEPPER and GITHUB_EVIDENCE_ENCRYPTION_KEY stay on the host and are
 # refused here like any other unapproved name.
@@ -39,7 +44,7 @@ abort("missing GHCR credential") if optional.any? { |name| secrets[name] == "" }
 
 lines = [
   "PUBLIC_ORIGIN=https://nilx.one",
-  "TELEGRAM_BOT_TOKEN=#{secrets.fetch('TELEGRAM_BOT_TOKEN')}",
+  "TELEGRAM_BOT_ID=#{bot_id}",
   "TELEGRAM_OIDC_CLIENT_ID=#{ids.fetch('TELEGRAM_OIDC_CLIENT_ID')}",
   "TELEGRAM_OIDC_CLIENT_SECRET=#{secrets.fetch('TELEGRAM_OIDC_CLIENT_SECRET')}",
   "DISCORD_CLIENT_ID=#{ids.fetch('DISCORD_CLIENT_ID')}",
