@@ -1,0 +1,67 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+name: Route Market production on edge-dev-1
+
+on:
+  workflow_dispatch:
+    inputs:
+      activate:
+        description: Activate the validated Market route on the shared Caddy
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: market-production-ingress-edge-dev-1
+  cancel-in-progress: false
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment: edge-dev-1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate or activate Market production ingress
+        env:
+          ACTIVATE: ${{ inputs.activate }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST_ED25519_PUBKEY: ${{ vars.SSH_HOST_ED25519_PUBKEY }}
+          SSH_PORT: ${{ vars.SSH_PORT || '22' }}
+        run: |
+          set -Eeuo pipefail
+          test "$GITHUB_REF" = refs/heads/master
+          test "$SSH_HOST" = '158.220.74.54'
+          test "$SSH_USER" = deploy
+          test -n "$SSH_PRIVATE_KEY"
+          [[ "$SSH_HOST_ED25519_PUBKEY" =~ ^ssh-ed25519[[:space:]][A-Za-z0-9+/=]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]{1,5}$ ]]
+          (( 10#$SSH_PORT >= 1 && 10#$SSH_PORT <= 65535 ))
+
+          ssh_dir="$(mktemp -d)"
+          trap 'rm -rf "$ssh_dir"' EXIT
+          umask 077
+          printf '%s\n' "$SSH_PRIVATE_KEY" >"$ssh_dir/id_ed25519"
+          host_label="$SSH_HOST"
+          if [[ "$SSH_PORT" != 22 ]]; then host_label="[$SSH_HOST]:$SSH_PORT"; fi
+          printf '%s %s\n' "$host_label" "$SSH_HOST_ED25519_PUBKEY" >"$ssh_dir/known_hosts"
+
+          mode=validate
+          if [[ "$ACTIVATE" == true ]]; then mode=activate; fi
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$ssh_dir/known_hosts" -o ConnectTimeout=10 \
+            -i "$ssh_dir/id_ed25519" -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            "bash -s -- $mode" <deploy/aiaiaiai-edge-dev-1/route-market-production.sh
+
+      - name: Verify public HTTPS
+        if: inputs.activate
+        run: |
+          set -Eeuo pipefail
+          curl -fsS --max-time 10 https://0xda-market.nilx.one/health >/dev/null
+          curl -fsS --max-time 10 https://0xda-market.nilx.one/bot/health >/dev/null
