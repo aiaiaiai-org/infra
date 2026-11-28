@@ -43,6 +43,13 @@ spec:
       service: h-ua-bot
       upstream: h-ua-bot:1927
       health: /health
+    - id: 4x-errors
+      host: ${PRISM_API_DOMAIN}
+      pathPrefix: /4x-errors/
+      stripPrefix: true
+      service: 4x-errors
+      upstream: 4x-errors:1927
+      health: /ready
     - id: nilxone-identity
       host: ${NILX_WEB_DOMAIN}
       pathPrefix: /api/v1/

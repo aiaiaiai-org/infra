@@ -63,6 +63,7 @@ done
 api_block() { awk '$0 == "api.aiaiaiai.org {" { on = 1 } on { print } on && $0 == "}" { exit }' "$1"; }
 replace_api_block() { awk -v new="$2" '$0 == "api.aiaiaiai.org {" { while ((getline line < new) > 0) print line; skip = 1 } !skip { print } skip && $0 == "}" { skip = 0 }' "$1"; }
 without_api_block() { awk '$0 == "api.aiaiaiai.org {" { skip = 1 } !skip { print } skip && $0 == "}" { skip = 0 }' "$1"; }
+collector_route() { api_block "$1" | awk '/^\thandle_path \/4x-errors\/\* \{/ { on = 1 } on { print } on && /^\t\}$/ { exit }'; }
 
 # append: the host is new, so the reviewed block is added at the end. update: the host is already routed and
 # the reviewed block differs (a route was added), so that one block is replaced in place.
@@ -96,10 +97,24 @@ docker run --rm --network nilx-candidate \
   --volume "$candidate:/etc/caddy/Caddyfile:ro" "$image" \
   caddy validate --config /etc/caddy/Caddyfile >/dev/null
 
+# A new or changed collector route must not be activated against an absent or
+# unready workload. Unchanged collector routes do not gate unrelated API changes.
+collector_changed=false
+if [[ "$(collector_route "$live")" != "$(collector_route "$candidate")" ]]; then
+  collector_changed=true
+fi
+
 if [[ "$operation" == validate ]]; then
   healthy_nilx
   echo 'The api.aiaiaiai.org route validates on the existing ingress; no public config changed.'
   exit 0
+fi
+
+if [[ "$collector_changed" == true ]]; then
+  docker exec "$managed" wget -q -T 5 -O /dev/null http://4x-errors:1927/ready || {
+    echo '4x-errors is not ready; deploy the verified collector before activating its route' >&2
+    exit 1
+  }
 fi
 
 if cmp -s "$live" "$candidate"; then
@@ -130,11 +145,22 @@ fi
 for _ in $(seq 1 45); do
   if curl --fail --silent --connect-timeout 5 --max-time 15 \
     --resolve api.aiaiaiai.org:443:127.0.0.1 https://api.aiaiaiai.org/prism-hub/healthz >/dev/null; then
+    if [[ "$collector_changed" == true ]] && ! curl --fail --silent --connect-timeout 5 --max-time 15 \
+      --resolve api.aiaiaiai.org:443:127.0.0.1 https://api.aiaiaiai.org/4x-errors/ready >/dev/null; then
+      sleep 2
+      continue
+    fi
     echo 'api.aiaiaiai.org answers over TLS through the ingress; nilx.one stayed healthy.'
     exit 0
   fi
   sleep 2
 done
+if [[ "$collector_changed" == true ]]; then
+  restore_from "$undo"
+  [[ "$mode" == update ]] || rm -f "$backup"
+  echo 'Collector route readiness was not proved; restored the previous ingress file' >&2
+  exit 1
+fi
 echo 'The route is active and nilx.one is healthy, but api.aiaiaiai.org did not answer over TLS in 90 s' >&2
 echo 'Inspect the ingress logs; roll back with route.sh rollback if needed.' >&2
 exit 1

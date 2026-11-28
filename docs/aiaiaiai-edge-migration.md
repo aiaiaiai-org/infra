@@ -98,8 +98,16 @@ still changed only by the reviewed route scripts. Consequences:
   file from before this update). Deploy the bot first or after; its route answers 502 until it runs.
 - What stays on edge-prod-2 for now: `aiaiaiai-site` (kept as the rollback of the snapshot archive). `4x-ais` is
   retired from this repository: the live issuer (auth.aiaiaiai.org) is deployed by Railway, so it has no workload
-  contract, no route and no export here. Each remaining workload moves, or is retired, in its own change. `4x-errors` is retired: it is a library that lives
-  inside each product plus a Supabase database, not a service on a server, so it has no workload contract and no route.
+  contract, no route and no export here. Each remaining workload moves, or is retired, in its own change.
+- `4x-errors` is an independent HTTP collector, with SDKs in producer products and an external Supabase PostgreSQL database.
+  The collector has a manual delivery contract on edge-dev-1. Its public API is
+  `https://api.aiaiaiai.org/4x-errors/`; `errors.aiaiaiai.org` is reserved for the future dashboard.
+  First merge the placement contract, then publish the collector image and envelope sealed to edge-dev-1.
+  After explicit owner approval, reconcile only 4x-errors, check internal /ready, then separately validate and activate
+  the reviewed API block. The route gate checks collector readiness before changing the ingress and public /ready
+  after reload; on failure it restores the prior API configuration. Existing other routes remain unchanged.
+  Verify allowed browser origins and an explicitly approved synthetic event's acknowledgement and matching database row
+  before activating clients. No database migration or secret rotation is implicit in this change.
 - `backup-prism-postgres` and the diagnostic workflows still name edge-prod-2; they follow in the cleanup change.
 
 ### Hubot credential on edge-dev-1

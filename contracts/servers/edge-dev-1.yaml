@@ -27,6 +27,7 @@ spec:
     - prism-hubot
     - prism-ai-tts
     - h-ua-bot
+    - 4x-errors
     - nilxone-web
     - nilxone-telegram
     - nilxone-discord

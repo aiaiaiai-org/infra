@@ -1,0 +1,34 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+apiVersion: infra.nilx.one/v1
+kind: WorkloadContract
+metadata:
+  name: 4x-errors
+  owner: aiaiaiai-org/4x-errors
+spec:
+  deployment: production
+  network: nilx-candidate
+  aliases:
+    - 4x-errors
+  protocol: http
+  port: 1927
+  health: /ready
+  runtime:
+    kind: container
+    environment:
+      - PORT=1927
+    secrets:
+      - DATABASE_URL=DATABASE_URL
+      - BROWSER_INGEST_ORIGINS=BROWSER_INGEST_ORIGINS
+    labels:
+      - org.aiaiaiai.product=4x-errors
+      - org.aiaiaiai.service=4x-errors
+  public:
+    host: api.aiaiaiai.org
+    pathPrefix: /4x-errors/
+  # A named, owner-approved reconciliation is required; scheduled reconciliation
+  # must not activate this collector. Its configuration comes from its attested envelope.
+  delivery:
+    mode: manual
+    image: ghcr.io/aiaiaiai-org/4x-errors
+    branch: master
+    signerWorkflow: .github/workflows/package-collector.yml

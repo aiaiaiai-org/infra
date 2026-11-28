@@ -17,7 +17,7 @@ INFRA_OWNED_PLACEMENTS = {
   "prism-postgres" => "edge-dev-1",
 }.freeze
 # The Prism chain, its Telegram bot and the 0x1 product (nilx-one/*) run on edge-dev-1.
-EDGE_DEV_1_WORKLOADS = %w[prism-hub prism-hubot prism-ai-tts h-ua-bot nilxone-web nilxone-telegram nilxone-discord nilxone-identity market-api-production market-bot-production market-trading-lab market-trading-lab-okx-collector].freeze
+EDGE_DEV_1_WORKLOADS = %w[prism-hub prism-hubot prism-ai-tts h-ua-bot 4x-errors nilxone-web nilxone-telegram nilxone-discord nilxone-identity market-api-production market-bot-production market-trading-lab market-trading-lab-okx-collector].freeze
 
 
 def load_yaml(path)
