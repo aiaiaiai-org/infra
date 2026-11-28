@@ -35,7 +35,7 @@ abort "missing edge placement" unless server.dig("spec", "workloads").include?("
 abort "Trading Lab must not have a public route" if edge.dig("spec", "routes").any? { |route| route["service"] == "market-trading-lab" }
 
 # Production resolves directly on the active server.
-stdout, stderr, status = Open3.capture3("ruby", File.join(ROOT, "scripts/resolve-workload-target.rb"), "market-trading-lab")
+stdout, stderr, status = Open3.capture3({ "GITHUB_OUTPUT" => nil }, "ruby", File.join(ROOT, "scripts/resolve-workload-target.rb"), "market-trading-lab")
 abort stderr unless status.success?
 %w[target=edge-dev-1 network=nilx-candidate alias=market-trading-lab port=1927 health=/health].each do |line|
   abort "invalid resolution: #{line}" unless stdout.lines.map(&:strip).include?(line)
