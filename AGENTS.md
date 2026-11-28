@@ -71,7 +71,7 @@ Roles:
 |--------------|------------------------------------------|------------------------------------|
 | Commit       | author and committer: owner's bot        | `Assisted-by: <Tool>` trailer      |
 | Pull request | human owner's credentials                | description names tool and bot     |
-| Review       | the reviewing tool                       | `Review by <Tool>` header          |
+| Review       | authenticated reviewing tool identity    | `Review by <Tool>` + exact head SHA |
 | Merge        | human owner's credentials, preferably    | trailers from commits preserved    |
 
 #### Commits
@@ -109,15 +109,39 @@ Roles:
 
 #### Reviews
 
+- Each reviewing agent must publish through its own authenticated GitHub
+  identity, preferably a dedicated official GitHub App or an explicitly
+  configured agent-specific bot. Verify the mapping between the actual
+  reviewing tool and the authenticated actor before publication.
+- Never publish agent reviews or review comments using the human owner's
+  identity or the owner's implementation bot. A textual signature does not
+  authenticate an agent. Never borrow credentials or impersonate a vendor.
+- If the reviewing tool has no verified dedicated identity, return its findings
+  to the requester without posting a GitHub review or review comment.
+  Report the identity blocker; do not silently fall back to another account.
+- The identities are configured in `.github/agent-identities.yml`, not in this
+  file: the human owner's accounts, the owner's implementation bot, and for each
+  tool its own dedicated identity. A tool with no entry there has no verified
+  identity. Reviews and review comments published before the file's
+  `effective_from` time stay as they are; they are not deleted or edited, and
+  they are not evidence of independent review.
+- CI (`scripts/check-agent-review-identities.rb`) fails a pull request that
+  carries a review or review comment from the owner's implementation bot, a
+  review signed `**Review by <Tool>**` from an owner account or from an identity
+  not listed for that tool, or a signed review that does not name the commit it
+  was made on. The check cannot see which tool is behind an account: the
+  mapping in the file is what makes the identity verifiable.
+- The first line reads `**Review by <Tool>**`; include the full reviewed head
+  commit SHA and identify the implementation tool when known. The tool is the
+  actual executing client or service (e.g. Claude Code, ChatGPT, Codex, Cursor),
+  not merely its underlying model. The model may be named separately.
 - Cross-tool review is allowed, including when implementations share one bot
-  account. Reviews and review comments are signed by the reviewing tool: the
-  first line reads `**Review by <Tool>**`. A tool reviewing another tool's
-  work names both.
-- Post the review as a comment review. Do not approve with the human owner's
-  credentials: GitHub does not count an approval of your own pull request,
-  and it would present the agent's verdict as the person's approval. Never
-  claim an approval GitHub has not accepted, dismiss a blocking review to
-  bypass protection, or circumvent a required review.
+  account. Self-review is not independent review; a different account alone
+  does not establish independence. A review of an older head is not evidence
+  that the current head has been reviewed.
+- Post agent reviews as comment reviews, not approvals. Never claim an
+  approval GitHub has not accepted, dismiss a blocking review to bypass
+  protection, or circumvent a required review.
 
 #### Merge
 
@@ -133,7 +157,10 @@ Roles:
 #### Check before the first write
 
 Verify the authenticated GitHub account, the local Git author and committer,
-the repository and branch, and that they match the roles above. Recheck when
+the repository and branch, and that they match the roles above. For review-only
+writes, verify the dedicated reviewing identity (listed in
+`.github/agent-identities.yml`) and exact head instead of local Git
+author/committer metadata. Recheck when
 the session, credentials, repository or environment change. On a mismatch,
 stop and report it instead of switching accounts silently. Before merge,
 verify the exact head CI, required approvals, resolved review threads and

@@ -1,0 +1,24 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+# GitHub identities that may, or may never, publish an agent's review
+# (AGENTS.md, "Reviews"). Identities live here, not in AGENTS.md. This file is
+# per repository: it is not a shared file.
+#
+# effective_from  UTC time from which the rules below apply. Reviews and review
+#                 comments published earlier are left as they are and are not
+#                 evidence of independent review.
+# owner_accounts  Logins of the human owner. A human may review as themselves,
+#                 but a review signed `**Review by <Tool>**` must never come
+#                 from here.
+# owner_bots      Logins of the owner's implementation bot. It is an agent by
+#                 definition: it publishes no review and no review comment.
+# agents          Tool name (as signed in `**Review by <Tool>**`) -> the logins
+#                 of that tool's own dedicated identity: preferably an official
+#                 GitHub App of the vendor, otherwise an explicitly configured
+#                 agent-specific bot. A tool with no entry posts no review: its
+#                 findings go back to the requester.
+effective_from: "2026-11-28T13:00:00Z"
+owner_accounts:
+  - 0x0sky
+owner_bots:
+  - x0skai
+agents: {}
