@@ -1,0 +1,38 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+name: Reconcile production Market contracts
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/reconcile-market-production.yml
+      - contracts/services/market-api-production.yaml
+      - contracts/services/market-bot-production.yaml
+      - contracts/services/market-webapp-production.yaml
+
+permissions:
+  contents: read
+  packages: read
+  deployments: write
+
+jobs:
+  webapp:
+    uses: ./.github/workflows/reconcile-deliveries.yml
+    with:
+      workload: market-webapp-production
+    secrets: inherit
+
+  core:
+    needs: webapp
+    if: ${{ !cancelled() }}
+    uses: ./.github/workflows/reconcile-deliveries.yml
+    with:
+      workload: market-api-production
+    secrets: inherit
+
+  bot:
+    needs: [webapp, core]
+    uses: ./.github/workflows/reconcile-deliveries.yml
+    with:
+      workload: market-bot-production
+    secrets: inherit
