@@ -39,9 +39,9 @@ reject_cross_edge_placement("prism-postgres", "edge-dev-1", "edge-prod-2", "edge
 reject_cross_edge_placement("h-ua-bot", "edge-dev-1", "edge-prod-1", "edge-dev-1")
 reject_cross_edge_placement("4x-errors", "edge-dev-1", "edge-prod-2", "edge-dev-1")
 reject_cross_edge_placement("nilxone-web", "edge-dev-1", "edge-prod-2", "edge-dev-1")
-reject_cross_edge_placement("market-api-production", "edge-prod-1", "edge-prod-2", "edge-prod-1")
-reject_cross_edge_placement("market-trading-lab", "edge-prod-1", "edge-prod-2", "edge-prod-1")
-reject_cross_edge_placement("market-trading-lab-okx-collector", "edge-prod-1", "edge-prod-2", "edge-prod-1")
-reject_cross_edge_placement("market-postgres-production", "edge-prod-1", "edge-prod-2", "edge-prod-1")
+reject_cross_edge_placement("market-api-production", "edge-dev-1", "edge-prod-2", "edge-dev-1")
+reject_cross_edge_placement("market-trading-lab", "edge-dev-1", "edge-prod-2", "edge-dev-1")
+reject_cross_edge_placement("market-trading-lab-okx-collector", "edge-dev-1", "edge-prod-2", "edge-dev-1")
+reject_cross_edge_placement("market-postgres-production", "edge-dev-1", "edge-prod-2", "edge-dev-1")
 
 puts("cross-edge workload placement is rejected for every product contour")

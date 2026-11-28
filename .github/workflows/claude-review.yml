@@ -1,0 +1,51 @@
+# © 2026 aiaiaiai · aiaiaiai.org
+
+name: Claude review
+
+# Claude reviews a pull request under its own GitHub App identity when the
+# human owner asks for it with an `@claude review` comment (AGENTS.md,
+# "Reviews"). The review is a separate Claude run, not the session that wrote
+# the change, so it is independent of it. It needs the Claude GitHub App
+# installed on the organization and the repository secret ANTHROPIC_API_KEY.
+# Nothing here deploys, merges or approves.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: claude-review-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    # Only the human owner can start it. A comment from anyone else, including
+    # an agent or the owner's implementation bot, runs nothing.
+    if: >-
+      github.event.comment.user.login == '0x0sky' &&
+      contains(github.event.comment.body, '@claude review') &&
+      (github.event_name == 'pull_request_review_comment' || github.event.issue.pull_request != null)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Review the pull request
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: >-
+            --append-system-prompt "Review only. Follow AGENTS.md, section Reviews. Publish one comment review, never an approval and never a change to code. The first line must read **Review by Claude Code** and the review must name the full 40-character head commit SHA of the pull request. Say what you checked, what you could not verify, and what blocks merging."

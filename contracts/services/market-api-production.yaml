@@ -6,7 +6,7 @@ metadata:
   owner: 0xda-market/core
 spec:
   deployment: production
-  network: nilx-edge
+  network: nilx-candidate
   aliases:
     - market-api-production
   protocol: http

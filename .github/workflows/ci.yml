@@ -18,6 +18,9 @@ jobs:
     name: Contracts
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,6 +36,17 @@ jobs:
 
       - name: Test commit attribution checker
         run: ruby scripts/test-commit-attribution.rb
+
+      - name: Validate agent review identities
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: ruby scripts/check-agent-review-identities.rb
+
+      - name: Test agent review identity checker
+        run: ruby scripts/test-agent-review-identities.rb
 
       - name: Check shared files against the canonical source
         run: ruby scripts/check-shared-sync.rb
@@ -64,6 +78,7 @@ jobs:
           bash -n deploy/telegram-runtime/activate.sh
           bash -n deploy/telegram-runtime/repair-identity.sh
           bash -n deploy/telegram-runtime/upgrade.sh
+          bash scripts/test-telegram-public-authority.sh
       - name: Validate immutable aiaiaiai snapshots and shared ingress
         run: |
           set -Eeuo pipefail
@@ -295,7 +310,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           # A workload on a retired server must not resolve: no Environment is selected for it.
-          if refused="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb market-api-production 2>&1)"; then
+          if refused="$(env -u GITHUB_OUTPUT ruby scripts/resolve-workload-target.rb market-api-development 2>&1)"; then
             echo "::error::a retired placement resolved"
             exit 1
           fi
@@ -321,7 +336,10 @@ jobs:
           grep -Fxq 'alias=nilxone-identity' <<< "$output"
           grep -Fxq 'port=1927' <<< "$output"
           grep -Fxq 'health=/health' <<< "$output"
-          grep -Fxq 'labels=b25lLm5pbHgucHJvZHVjdD0weDEKb25lLm5pbHguc2VydmljZT1pZGVudGl0eQpvbmUubmlseC5pZGVudGl0eS5jb250cmFjdD0xOQo=' <<< "$output"
+          labels="$(sed -n 's/^labels=//p' <<< "$output" | base64 --decode)"
+          grep -Fxq 'one.nilx.identity.contract=20' <<< "$labels"
+          grep -Fxq 'one.nilx.product=0x1' <<< "$labels"
+          grep -Fxq 'one.nilx.service=identity' <<< "$labels"
           grep -Fxq 'volumes=bmlseG9uZS1pZGVudGl0eS1kYXRhOi9kYXRhCg==' <<< "$output"
           grep -Fxq 'prepare_env=services/identity/deploy/prepare-runtime-env.sh' <<< "$output"
           grep -Fxq 'repository=nilx-one/web' <<< "$output"

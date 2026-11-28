@@ -78,3 +78,17 @@ spec:
       service: nilxone-web
       upstream: nilxone-web:1927
       health: /health
+    - id: market-bot-production
+      host: ${MARKET_DOMAIN}
+      pathPrefix: /bot/
+      stripPrefix: true
+      service: market-bot-production
+      upstream: market-bot-production:1927
+      health: /health
+    - id: market-api-production
+      host: ${MARKET_DOMAIN}
+      pathPrefix: /
+      stripPrefix: false
+      service: market-api-production
+      upstream: market-api-production:1927
+      health: /health

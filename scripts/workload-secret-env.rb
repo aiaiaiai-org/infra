@@ -74,8 +74,13 @@ if !source_file.empty?
     match[2]
   end.uniq
   identity = ENV.fetch("WORKLOAD", "") == "nilxone-identity"
-  provider_names = identity ? %w[TELEGRAM_BOT_TOKEN TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET NILX_BROWSER_HANDOFF_TOKEN PARTNER_LOOKUP_TOKEN] : []
-  extras = secrets.keys - expected - producer_names - provider_names - %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
+  provider_names = identity ? %w[TELEGRAM_BOT_ID TELEGRAM_OIDC_CLIENT_SECRET DISCORD_CLIENT_SECRET NILX_BROWSER_HANDOFF_TOKEN PARTNER_LOOKUP_TOKEN] : []
+  optional_identity_ids = identity ? %w[TELEGRAM_OIDC_CLIENT_ID DISCORD_CLIENT_ID] : []
+  if identity
+    bot_id = secrets.fetch("TELEGRAM_BOT_ID", "")
+    abort("invalid public Telegram bot identity") unless bot_id.match?(/\A[1-9][0-9]{0,19}\z/) && bot_id.to_i <= 18_446_744_073_709_551_615
+  end
+  extras = secrets.keys - expected - producer_names - provider_names - optional_identity_ids - %w[GHCR_PULL_USER GHCR_PULL_TOKEN]
   missing = expected + producer_names + provider_names - secrets.keys
   # A workload that takes its secrets from another workload's envelope (runtime.secretsFrom)
   # receives a superset; only the names its own contract maps ever reach its runtime.

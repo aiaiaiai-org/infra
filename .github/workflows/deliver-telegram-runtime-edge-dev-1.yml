@@ -4,16 +4,21 @@ name: Deliver 0x1 Telegram runtime to edge-dev-1
 
 # Pull-based, like Reconcile deliveries: nilx-one/bot and nilx-one/core hold no
 # credential for Infra. A merge to bot/master (or core/master) builds and
-# attests the binary there; the next scheduled run here verifies the
-# attestation for exactly the branch head and upgrades edge-dev-1. The SSH
-# credentials stay in this repository's edge-dev-1 Environment.
+# attests the binary there. Activation is a separate manual, exact-pair
+# dispatch: do not automatically deliver mixed Core/Bot protocol generations.
+# The SSH credentials stay in this repository's edge-dev-1 Environment.
 
 on:
-  schedule:
-    # Every 15 minutes, offset from Reconcile deliveries. Best effort.
-    - cron: '2,17,32,47 * * * *'
   workflow_dispatch:
     inputs:
+      core_sha:
+        description: Reviewed Core master commit (full SHA)
+        type: string
+        required: true
+      bot_sha:
+        description: Reviewed Bot master commit (full SHA)
+        type: string
+        required: true
       force:
         description: Deliver even if this release was already delivered or failed
         type: boolean
@@ -33,7 +38,7 @@ env:
 
 jobs:
   plan:
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
@@ -46,8 +51,14 @@ jobs:
         id: fetch
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED_CORE_SHA: ${{ inputs.core_sha }}
+          EXPECTED_BOT_SHA: ${{ inputs.bot_sha }}
         run: |
           set -Eeuo pipefail
+          [[ "$EXPECTED_CORE_SHA" =~ ^[0-9a-f]{40}$ && "$EXPECTED_BOT_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::Review and provide both full commit SHAs." >&2
+            exit 1
+          }
           out="$RUNNER_TEMP/telegram-runtime"
           install -d -m 0700 "$out"
           # The successful push run of `workflow` for exactly the master head,
@@ -80,7 +91,10 @@ jobs:
           }
           read -r bot_sha bot_run < <(resolve nilx-one/bot full-ci.yml)
           read -r core_sha core_run < <(resolve nilx-one/core rust.yml)
-          [[ "$bot_sha" =~ ^[0-9a-f]{40}$ && "$core_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$bot_sha" == "$EXPECTED_BOT_SHA" && "$core_sha" == "$EXPECTED_CORE_SHA" ]] || {
+            echo "::error::Core or Bot master moved since the reviewed pair; refusing delivery." >&2
+            exit 1
+          }
           if [[ ! "${bot_run:-}" =~ ^[0-9]+$ || ! "${core_run:-}" =~ ^[0-9]+$ ]]; then
             echo "::notice::A master head has no successful CI run yet (bot ${bot_sha:0:12}, core ${core_sha:0:12}); nothing to deliver."
             echo "ready=false" >> "$GITHUB_OUTPUT"
@@ -134,7 +148,7 @@ jobs:
 
   deliver:
     needs: plan
-    if: needs.plan.outputs.deliver == 'true'
+    if: github.event_name == 'workflow_dispatch' && needs.plan.outputs.deliver == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:

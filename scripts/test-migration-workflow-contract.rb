@@ -82,11 +82,11 @@ check(reseal.include?("retention-days: 1") && !reseal.include?("ssh -") && !rese
 require "yaml"
 dev1 = YAML.safe_load(File.read(File.join(ROOT, "contracts", "servers", "edge-dev-1.yaml")))
 dev_edge = YAML.safe_load(File.read(File.join(ROOT, "contracts", "edges", "aiaiaiai-dev-edge.yaml")))
-check(dev1.dig("spec", "workloads").sort == %w[4x-errors h-ua-bot nilxone-discord nilxone-identity nilxone-telegram nilxone-web prism-ai-tts prism-hub prism-hubot prism-postgres], "edge-dev-1 places the Prism chain, its bot, the collector and the 0x1 product")
+check(dev1.dig("spec", "workloads").sort == %w[4x-errors h-ua-bot market-api-production market-bot-production market-postgres-production market-trading-lab market-trading-lab-okx-collector nilxone-discord nilxone-identity nilxone-telegram nilxone-web prism-ai-tts prism-hub prism-hubot prism-postgres], "edge-dev-1 places exactly the collector, the Prism chain, its bot, the 0x1 product and production Market")
 check(dev1.dig("spec", "state").nil? && dev1.dig("spec", "encryptionRecipient").to_s.start_with?("ssh-ed25519 "), "edge-dev-1 is active and publishes an encryption recipient")
 check(migrate[/^NETWORK=(\S+)/, 1] == dev_edge.dig("spec", "network", "name") && dev1.dig("spec", "edgeNetwork") == dev_edge.dig("spec", "network", "name"), "migrate.sh, the server and its edge name one network")
 check(dev_edge.dig("spec", "placement", "target") == "edge-dev-1" && dev_edge.dig("spec", "entrypoint", "ports") == dev1.dig("spec", "publicPorts"), "the edge describes the one public Caddy and ports of edge-dev-1")
-check(dev_edge.dig("spec", "routes").map { _1["service"] }.sort == %w[4x-errors h-ua-bot nilxone-discord nilxone-identity nilxone-telegram nilxone-web prism-hub prism-hubot], "hub, hubot, the bot, the collector and the 0x1 product are routed; the TTS service has no public route")
+check(dev_edge.dig("spec", "routes").map { _1["service"] }.sort == %w[4x-errors h-ua-bot market-api-production market-bot-production nilxone-discord nilxone-identity nilxone-telegram nilxone-web prism-hub prism-hubot], "hub, hubot, the bot, the collector, the 0x1 product and production Market are routed; the TTS service has no public route")
 
 check(File.read(File.join(ROOT, "deploy", "aiaiaiai-edge-dev-1", "api.Caddyfile")).include?("reverse_proxy h-ua-bot:1927"), "the reviewed api block routes the bot")
 check(route.include?("replace_api_block") && route.include?("without_api_block") && route.include?("ingress.before-update.Caddyfile"), "an already-routed host is updated in place with its own undo")

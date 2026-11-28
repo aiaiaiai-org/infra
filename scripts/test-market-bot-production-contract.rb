@@ -8,8 +8,8 @@ root = File.expand_path("..", __dir__)
 load_contract = ->(path) { YAML.safe_load(File.read(File.join(root, path)), aliases: false) }
 bot = load_contract.call("contracts/services/market-bot-production.yaml")
 test_bot = load_contract.call("contracts/services/market-bot-test.yaml")
-edge = load_contract.call("contracts/edges/nilx-edge.yaml")
-server = load_contract.call("contracts/servers/edge-prod-1.yaml")
+edge = load_contract.call("contracts/edges/aiaiaiai-dev-edge.yaml")
+server = load_contract.call("contracts/servers/edge-dev-1.yaml")
 caddy = File.read(File.join(root, "deploy/edge/Caddyfile"))
 upstream_checks = File.read(File.join(root, "deploy/edge/check-upstreams.sh"))
 
@@ -21,7 +21,7 @@ abort "production must use its own identity and port" unless
   spec["aliases"] == ["market-bot-production"] &&
   spec["port"] == 1927 &&
   runtime["kind"] == "container"
-abort "production bot not placed on edge-prod-1" unless server.dig("spec", "workloads").include?("market-bot-production")
+abort "production bot not placed on edge-dev-1" unless server.dig("spec", "workloads").include?("market-bot-production")
 abort "must not reuse test bot alias" if spec["aliases"] == test_bot.dig("spec", "aliases")
 
 environment = runtime.fetch("environment")

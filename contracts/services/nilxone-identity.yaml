@@ -24,8 +24,9 @@ spec:
     image: ghcr.io/nilx-one/0x1-identity
     branch: master
     signerWorkflow: .github/workflows/package-identity-service.yml
+    # The numeric Bot ID is public metadata, not a Bot API credential.
     envelope:
-      - TELEGRAM_BOT_TOKEN
+      - TELEGRAM_BOT_ID
       - TELEGRAM_OIDC_CLIENT_ID
       - TELEGRAM_OIDC_CLIENT_SECRET
       - DISCORD_CLIENT_ID
@@ -47,7 +48,7 @@ spec:
     labels:
       - one.nilx.product=0x1
       - one.nilx.service=identity
-      - one.nilx.identity.contract=19
+      - one.nilx.identity.contract=20
     volumes:
       - nilxone-identity-data:/data
   public:

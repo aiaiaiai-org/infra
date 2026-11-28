@@ -21,7 +21,7 @@ end
 
 # --- entrypoint 1: Deploy workload and the recipient dispatch path resolve a workload's server.
 # A workload on a retired server is refused, and nothing reaches the job's outputs.
-%w[market-api-production market-bot-production market-postgres-production aiaiaiai-site].each do |workload|
+%w[market-api-development market-bot-test market-trading-lab-development aiaiaiai-site].each do |workload|
   Dir.mktmpdir("retired-output") do |dir|
     output = File.join(dir, "output")
     stdout, stderr, status = run(File.join(ROOT, "scripts", "resolve-workload-target.rb"), workload,
@@ -48,10 +48,10 @@ abort("collector delivery must be manual") unless collector.dig("spec", "deliver
 abort("collector envelope names drifted") unless collector.dig("spec", "runtime", "secrets").sort == %w[BROWSER_INGEST_ORIGINS=BROWSER_INGEST_ORIGINS DATABASE_URL=DATABASE_URL]
 
 # The shape of a retired server's workload contract is still checked, on a copy where it is active.
-stdout, stderr, status = LiveCopy.resolve(ROOT, "market-api-production")
-abort("market-api-production did not resolve on the live copy: #{stderr}") unless status.success?
+stdout, stderr, status = LiveCopy.resolve(ROOT, "market-api-development")
+abort("market-api-development did not resolve on the live copy: #{stderr}") unless status.success?
 %w[target=edge-prod-1 network=nilx-edge].each do |line|
-  abort("market-api-production: missing #{line}") unless stdout.lines.map(&:chomp).include?(line)
+  abort("market-api-development: missing #{line}") unless stdout.lines.map(&:chomp).include?(line)
 end
 
 # The 0x1 product runs on edge-dev-1: it resolves there, in the managed ingress's network.
