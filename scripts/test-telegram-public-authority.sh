@@ -39,3 +39,11 @@ for fixture in '["TELEGRAM_BOT_TOKEN=123:one","TELEGRAM_BOT_TOKEN=456:two"]' '["
   fi
 done
 echo 'Telegram public authority environment fixtures passed.'
+
+# Speech transport uses only the existing signed Core Gateway. Never proxy
+# the producer's private /api/v1/speech ingest or a broad wildcard here.
+route_line="$(grep 'local added=' deploy/telegram-runtime/upgrade.sh)"
+for path in /api/v1/telegram/speech/pull /api/v1/telegram/speech/ack; do
+  [[ " $route_line " == *" $path "* || "$route_line" == *" $path\"" ]] || fail 'Missing exact speech delivery route.'
+done
+[[ "$route_line" != *" /api/v1/speech"* && "$route_line" != *"/api/v1/telegram/speech/*"* ]] || fail 'Speech ingress broadened beyond signed delivery endpoints.'

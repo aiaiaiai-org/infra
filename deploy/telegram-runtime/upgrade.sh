@@ -72,7 +72,7 @@ host_ready() {
 }
 
 prepare_routes() {
-  local added="/api/v1/telegram/profile /api/v1/telegram/login/progress /api/v1/telegram/location /api/v1/telegram/activation /api/v1/telegram/activation/answer /api/v1/telegram/notifications/pull /api/v1/telegram/notifications/ack /api/v1/telegram/admin/delivery/pull /api/v1/telegram/admin/delivery/ack /api/v1/telegram/admin/decide /api/v1/telegram/gateway/health"
+  local added="/api/v1/telegram/profile /api/v1/telegram/login/progress /api/v1/telegram/location /api/v1/telegram/activation /api/v1/telegram/activation/answer /api/v1/telegram/notifications/pull /api/v1/telegram/notifications/ack /api/v1/telegram/admin/delivery/pull /api/v1/telegram/admin/delivery/ack /api/v1/telegram/admin/decide /api/v1/telegram/gateway/health /api/v1/telegram/speech/pull /api/v1/telegram/speech/ack"
   test "$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' "$ingress")" = "$live" \
     || fail 'Unexpected Telegram ingress config mount.'
   test -f "$live" && test ! -L "$live"
