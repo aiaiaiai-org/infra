@@ -146,6 +146,11 @@ contracts(dir, option("--workload")).each do |contract|
     next
   end
 
+  if workload == "market-bot-production" && last_delivery("market-webapp-production")&.fetch(:state) != "success"
+    summary << "#{workload}: waiting for successful production WebApp delivery"
+    next
+  end
+
   delivery = contract.dig("spec", "delivery")
   image = delivery.fetch("image")
   sha = branch_head(repository, delivery.fetch("branch"))

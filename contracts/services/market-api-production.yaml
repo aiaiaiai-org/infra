@@ -50,11 +50,8 @@ spec:
     labels:
       - org.aiaiaiai.product=0xda-market
       - org.aiaiaiai.service=market-api
-  # Staged, manual-only: the scheduled reconciler MUST NOT start production Core.
-  # After Core publishes an attested image+envelope and PostgreSQL bootstrap,
-  # dispatch Reconcile deliveries with workload=market-api-production explicitly.
+  # Infra automatically reconciles the latest attested production release.
   delivery:
     image: ghcr.io/0xda-market/core
     branch: master
     signerWorkflow: .github/workflows/ci.yml
-    mode: manual
