@@ -63,5 +63,5 @@ jobs:
         if: inputs.activate
         run: |
           set -Eeuo pipefail
-          curl -fsS --max-time 10 https://0xda-market.nilx.one/health >/dev/null
-          curl -fsS --max-time 10 https://0xda-market.nilx.one/bot/health >/dev/null
+          curl -fsS --max-time 10 https://market.nilx.one/health >/dev/null
+          curl -fsS --max-time 10 https://market.nilx.one/bot/health >/dev/null
