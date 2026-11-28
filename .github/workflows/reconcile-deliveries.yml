@@ -8,6 +8,12 @@ on:
   schedule:
     # Every 15 minutes. GitHub runs schedules on a best-effort basis.
     - cron: '7,22,37,52 * * * *'
+  workflow_call:
+    inputs:
+      workload:
+        description: Workload to reconcile
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       workload:
